@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReaderController } from '../app/useReaderController';
 import type { RecentDocItem } from '../core/storage/documents';
 import { describeFile, validateFile } from './media';
@@ -9,9 +9,23 @@ export function useAppMedia(reader: ReaderController) {
   const [pending, setPending] = useState(false);
   const current = useRef<ActiveMedia | null>(null), progress = useRef<MediaProgress>({ lastPage: 1, totalPages: 1, position: 0 });
   const generation = useRef(0);
+  const dirty = useRef(false);
   const { openFile: openPdf, openRecent: openRecentPdf, closeDocument, setDocumentError } = reader;
-  const commit = useCallback((value: ActiveMedia | null) => { current.current = value; setActive(value); if (value) progress.current = value.item; }, []);
-  const persist = useCallback(async () => { if (current.current?.saved) await updateMedia(current.current.item.id, progress.current).catch(() => {}); }, []);
+  const commit = useCallback((value: ActiveMedia | null) => { current.current = value; setActive(value); dirty.current = false; if (value) progress.current = value.item; }, []);
+  const persist = useCallback(async () => {
+    if (!current.current?.saved || !dirty.current) return;
+    const source = current.current, snapshot = progress.current;
+    dirty.current = false;
+    try { await updateMedia(source.item.id, snapshot); }
+    catch { if (current.current === source) dirty.current = true; }
+  }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => { void persist(); }, 5000);
+    const flush = () => { void persist(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => { window.clearInterval(timer); window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', flush); void persist(); };
+  }, [persist]);
   const close = useCallback(async () => { const ticket = ++generation.current; await persist(); if (ticket !== generation.current) return; current.current = null; setActive(null); setPending(false); }, [persist]);
   const open = useCallback(async (file: File) => {
     if (describeFile(file.name).kind !== 'pdf') {
@@ -51,6 +65,10 @@ export function useAppMedia(reader: ReaderController) {
     } catch (error) { if (ticket === generation.current) setDocumentError(error instanceof Error ? error.message : 'تعذر فتح الملف المحفوظ.'); }
     finally { if (ticket === generation.current) setPending(false); }
   }, [persist, commit, closeDocument, openRecentPdf, setDocumentError]);
-  const updateProgress = useCallback((value: MediaProgress) => { progress.current = value; }, []);
+  const updateProgress = useCallback((value: MediaProgress) => {
+    if (value.lastPage !== progress.current.lastPage || value.totalPages !== progress.current.totalPages || value.position !== progress.current.position) {
+      progress.current = value; dirty.current = true;
+    }
+  }, []);
   return { active, pending, open, openRecent, close, updateProgress };
 }

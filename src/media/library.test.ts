@@ -1,8 +1,28 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { listMedia, loadMedia, newMediaItem, removeMedia, storeMedia, updateMedia } from './library';
+import { listMedia, loadMedia, loadDrawing, saveDrawing, newMediaItem, removeMedia, storeMedia, updateMedia } from './library';
+import type { MediaDrawing } from './drawing';
 
 beforeEach(() => removeMedia());
 describe('local media library', () => {
+  it('persists separate slide ink and deletes it together with the file', async () => {
+    const file = new File(['slides'], 'lesson.pptx'), item = newMediaItem(file);
+    await storeMedia(file, item);
+    const drawing: MediaDrawing = { 1: [{ color: '#e11d48', opacity: 1, width: 0.003, points: [{ x: 0.1, y: 0.2 }] }], 2: [] };
+    await saveDrawing(item.id, drawing);
+    expect(await loadDrawing(item.id)).toEqual(drawing);
+    await saveDrawing(item.id, { ...drawing, 1: [] });
+    expect((await loadDrawing(item.id))[1]).toEqual([]);
+    await removeMedia(item.id);
+    expect(await loadDrawing(item.id)).toEqual({});
+    await expect(saveDrawing(item.id, drawing)).rejects.toThrow();
+  });
+  it('rejects invalid drawing data without overwriting saved ink', async () => {
+    const file = new File(['image'], 'lesson.png'), item = newMediaItem(file);
+    await storeMedia(file, item);
+    await saveDrawing(item.id, { 1: [] });
+    await expect(saveDrawing(item.id, { 1: [{ points: [{ x: Infinity, y: 0 }] }] } as unknown as MediaDrawing)).rejects.toThrow();
+    expect(await loadDrawing(item.id)).toEqual({ 1: [] });
+  });
   it('keeps files with identical names separate and restores their contents', async () => {
     const first = new File(['first'], 'lesson.txt', { type: 'text/plain' });
     const second = new File(['second'], 'lesson.txt', { type: 'text/plain' });
@@ -32,5 +52,16 @@ describe('local media library', () => {
     }
     expect(await listMedia()).toHaveLength(12);
     await expect(loadMedia(first)).rejects.toThrow();
+  });
+  it('protects annotated files from automatic cache eviction', async () => {
+    const file = new File(['image'], 'annotated.png'), item = newMediaItem(file);
+    item.lastOpened = 0;
+    await storeMedia(file, item); await saveDrawing(item.id, { 1: [] });
+    for (let index = 0; index < 13; index++) {
+      const next = new File(['clip'], `clip-${index}.mp4`);
+      await storeMedia(next, newMediaItem(next));
+    }
+    expect((await loadMedia(item.id)).file.name).toBe('annotated.png');
+    expect(await listMedia()).toHaveLength(12);
   });
 });

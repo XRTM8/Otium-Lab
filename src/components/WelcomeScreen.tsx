@@ -63,6 +63,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [recents, setRecents] = useState<LibraryItem[]>([]);
+  const [libraryError, setLibraryError] = useState('');
   const [showThemeMenu, setShowThemeMenu] = useState(false);
 
   const t = getTranslations(currentLang);
@@ -449,6 +450,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         {/* Stored Recent Files with Theme-aware styling */}
         {recents.length > 0 && (
           <div className="w-full text-start pt-4 border-t border-line space-y-2.5">
+            {libraryError && <p role="alert" className="text-xs text-danger-ink">{libraryError}</p>}
             <div className="flex items-center justify-between text-xs text-ink-muted px-1">
               <span className="flex items-center gap-1.5 font-medium">
                 <Clock className="w-3.5 h-3.5 opacity-80" />
@@ -459,9 +461,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               </span>
               <button
                 onClick={async () => {
-                  await clearAllStoredDocuments();
-                  await removeMedia();
-                  setRecents([]);
+                  if (!window.confirm(currentLang === 'ar' ? 'حذف جميع الملفات المحفوظة من مكتبة هذا الجهاز؟ سيُحذف أيضاً شرح الصور والشرائح المحفوظ.' : 'Delete all cached files from this device library, including saved image and slide ink?')) return;
+                  try {
+                    await clearAllStoredDocuments(); await removeMedia(); setRecents([]); setLibraryError('');
+                  } catch { setLibraryError(currentLang === 'ar' ? 'تعذر إكمال الحذف؛ حدّث المكتبة وحاول مجدداً.' : 'Deletion failed. Refresh the library and try again.'); loadRecents(); }
                 }}
                 className="hover:text-danger-ink transition-colors flex items-center gap-1 text-[11px] text-ink-faint hover:text-ink-muted"
                 title={t.clearAll}
@@ -557,8 +560,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
-                        if (r.id.startsWith('media:')) await removeMedia(r.id); else await removeDocumentFromStorage(r.id);
-                        loadRecents();
+                        if (r.id.startsWith('media:') && !window.confirm(currentLang === 'ar' ? 'حذف هذا الملف من مكتبة الجهاز مع شرحه المحفوظ؟' : 'Delete this cached file and its saved ink from this device?')) return;
+                        try {
+                          if (r.id.startsWith('media:')) await removeMedia(r.id); else await removeDocumentFromStorage(r.id);
+                          setLibraryError(''); loadRecents();
+                        } catch { setLibraryError(currentLang === 'ar' ? 'تعذر حذف الملف؛ حاول مجدداً.' : 'Could not delete this file. Try again.'); }
                       }}
                       title={t.deleteTooltip}
                       aria-label={t.deleteTooltip}
@@ -594,7 +600,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 {currentLang === 'ar' ? 'Otium Lab · نسخة تجريبية' : 'Otium Lab · Experimental'}
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-semibold">
-                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ' : 'Media preview'}
+                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ 02' : 'Media preview 02'}
               </span>
               <ExternalLink className="w-3 h-3 text-ink-muted group-hover:text-accent opacity-70 group-hover:opacity-100 transition-opacity" />
             </a>

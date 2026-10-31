@@ -33,3 +33,9 @@ it('discards an interrupted gesture instead of leaving a stuck draft', async () 
   expect(svg.querySelector('polyline')).toBeNull();
   expect(svg.querySelector('circle')).toBeNull();
 });
+it('cancels an unfinished stroke when returning to navigation', async () => {
+  await pointer('pointerdown'); await pointer('pointermove', 100, 50);
+  await act(async () => root.render(<StrictMode><Ink enabled={false} color="#ff0000" width={1600} height={900} /></StrictMode>));
+  await pointer('pointerup');
+  expect(svg.querySelector('polyline')).toBeNull();
+});

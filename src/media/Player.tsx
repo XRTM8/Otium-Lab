@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import { Play, Pause, Volume2, VolumeX, RotateCcw, RotateCw } from 'lucide-react';
 import { formatTime, mediaErrorMessage } from './media';
 
 export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, onPosition }: {
@@ -12,6 +14,7 @@ export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, o
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
+  const [buffering, setBuffering] = useState(true);
   useEffect(() => {
     const element = media.current;
     if (!element) return;
@@ -23,37 +26,54 @@ export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, o
       element.load();
     }
     return () => { element.pause(); element.srcObject = null; element.removeAttribute('src'); element.load(); };
-  }, [url, onError]); // Each source gets a fresh Player instance.
+  }, [url]); // Callback changes must not reset an already-playing source.
   useEffect(() => { if (frozen) media.current?.pause(); }, [frozen]);
+  const seek = (offset: number) => {
+    const element = media.current;
+    if (element && duration) element.currentTime = Math.max(0, Math.min(duration, element.currentTime + offset));
+  };
+  const toggle = () => {
+    const element = media.current;
+    if (!element || frozen) return;
+    if (element.paused) void element.play().catch(() => onError('تعذّر بدء التشغيل؛ تحقق من ترميز الملف وصلاحية تشغيل الصوت.'));
+    else element.pause();
+  };
+  const keyboard = (event: KeyboardEvent<HTMLElement>) => {
+    if (frozen || event.altKey || event.ctrlKey || event.metaKey || (event.target as HTMLElement).matches('input,select,textarea,button,[contenteditable=true]')) return;
+    if (event.key === ' ' || event.key.toLowerCase() === 'k') { event.preventDefault(); toggle(); }
+    else if (event.key === 'ArrowRight') { event.preventDefault(); seek(10); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); seek(-10); }
+    else if (event.key.toLowerCase() === 'm') { event.preventDefault(); setMuted(value => !value); }
+  };
   return <>
-    <video ref={media} src={url} playsInline preload="metadata" muted={muted} className={audio ? 'audio-element' : ''}
+    <video ref={media} src={url} playsInline preload="metadata" muted={muted} className={audio ? 'audio-element' : ''} tabIndex={frozen ? -1 : 0} aria-label="تشغيل المقطع، مسافة للإيقاف وأسهم للتقديم" onKeyDown={keyboard} onClick={toggle}
       onLoadedMetadata={event => {
         const element = event.currentTarget;
         setDuration(Number.isFinite(element.duration) ? element.duration : 0);
+        setBuffering(false);
         if (initialTime > 0 && Number.isFinite(element.duration)) element.currentTime = Math.min(initialTime, Math.max(0, element.duration - 0.1));
         if (element.videoWidth) onSize(element.videoWidth, element.videoHeight);
       }}
       onResize={event => { const element = event.currentTarget; if (element.videoWidth) onSize(element.videoWidth, element.videoHeight); }}
       onTimeUpdate={event => { setTime(event.currentTarget.currentTime); onPosition?.(event.currentTarget.currentTime); }}
+      onWaiting={() => setBuffering(true)} onCanPlay={() => setBuffering(false)} onPlaying={() => setBuffering(false)}
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-      onEnded={() => setPlaying(false)} onError={event => onError(mediaErrorMessage(event.currentTarget.error?.code))} />
+      onEnded={() => setPlaying(false)} onError={event => { setBuffering(false); onError(mediaErrorMessage(event.currentTarget.error?.code)); }} />
     {audio && <div className="audio-art"><span>♫</span><p>مساحة استماع وشرح</p></div>}
-    {!frozen && <div className="player-controls" aria-label="التحكم بالوسائط" onPointerDown={event => event.stopPropagation()}>
-      <button onClick={() => {
-        const element = media.current;
-        if (!element) return;
-        if (element.paused) void element.play().catch(() => onError('تعذّر بدء التشغيل؛ تحقق من ترميز الملف وصلاحية تشغيل الصوت.'));
-        else element.pause();
-      }}>{playing ? 'إيقاف مؤقت' : 'تشغيل'}</button>
+    {buffering && !frozen && <span className="media-loading" role="status">جارٍ تجهيز المقطع…</span>}
+    {!frozen && <div className="player-controls" aria-label="التحكم بالوسائط" onKeyDown={keyboard} onPointerDown={event => event.stopPropagation()}>
+      <button aria-label={playing ? 'إيقاف مؤقت' : 'تشغيل'} onClick={toggle}>{playing ? <Pause size={19} /> : <Play size={19} />}</button>
+      <button aria-label="إرجاع 10 ثوانٍ" disabled={!duration} onClick={() => seek(-10)}><RotateCcw size={17} /><span className="player-skip">10</span></button>
+      <button aria-label="تقديم 10 ثوانٍ" disabled={!duration} onClick={() => seek(10)}><RotateCw size={17} /><span className="player-skip">10</span></button>
       <>
         <span className="clock">{formatTime(time)} / {formatTime(duration)}</span>
-        <input aria-label="موضع التشغيل" type="range" min={0} max={duration || 0} step={0.1} value={Math.min(time, duration)} disabled={!duration}
+        <input className="player-timeline" aria-label="موضع التشغيل" type="range" min={0} max={duration || 0} step={0.1} value={Math.min(time, duration)} disabled={!duration}
           onChange={event => { if (media.current) media.current.currentTime = Number(event.target.value); }} />
         <select aria-label="سرعة التشغيل" value={rate} onChange={event => { const next = Number(event.target.value); setRate(next); if (media.current) media.current.playbackRate = next; }}>
           {[0.5, 0.75, 1, 1.25, 1.5, 2].map(value => <option key={value} value={value}>{value}×</option>)}
         </select>
       </>
-      <button aria-pressed={muted} onClick={() => setMuted(value => !value)}>{muted ? 'تشغيل الصوت' : 'كتم الصوت'}</button>
+      <button aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'} aria-pressed={muted} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
     </div>}
   </>;
 }

@@ -18,6 +18,24 @@ it('preserves a local video URL through StrictMode effect replay', async () => {
   await act(async () => root.render(<StrictMode><Player url="blob:lesson" frozen={false} onSize={vi.fn()} onError={vi.fn()} /></StrictMode>));
   expect(host.querySelector('video')?.getAttribute('src')).toBe('blob:lesson');
 });
+it('does not reload a playing source when a callback changes', async () => {
+  await act(async () => root.render(<Player url="blob:lesson" frozen={false} onSize={vi.fn()} onError={vi.fn()} />));
+  const loads = vi.mocked(HTMLMediaElement.prototype.load).mock.calls.length;
+  await act(async () => root.render(<Player url="blob:lesson" frozen={false} onSize={vi.fn()} onError={vi.fn()} />));
+  expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(loads);
+});
+it('restores playback position and clamps ten-second skips to the media duration', async () => {
+  await act(async () => root.render(<Player url="blob:lesson" initialTime={17} frozen={false} onSize={vi.fn()} onError={vi.fn()} />));
+  const video = host.querySelector('video')!;
+  Object.defineProperty(video, 'duration', { configurable: true, value: 20 });
+  await act(async () => video.dispatchEvent(new Event('loadedmetadata')));
+  expect(video.currentTime).toBe(17);
+  await act(async () => (host.querySelector('button[aria-label="تقديم 10 ثوانٍ"]') as HTMLButtonElement).click());
+  expect(video.currentTime).toBe(20);
+  video.currentTime = 3;
+  await act(async () => (host.querySelector('button[aria-label="إرجاع 10 ثوانٍ"]') as HTMLButtonElement).click());
+  expect(video.currentTime).toBe(0);
+});
 
 it('pauses the video for annotation and releases playback when the source is removed', async () => {
   const props = { url: 'blob:lesson', onSize: vi.fn(), onError: vi.fn() };
