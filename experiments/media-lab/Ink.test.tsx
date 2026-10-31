@@ -1,7 +1,7 @@
 import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { Ink } from './Ink';
+import { Ink } from '../../src/media/Ink';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;

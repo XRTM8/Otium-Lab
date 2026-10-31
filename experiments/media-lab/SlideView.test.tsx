@@ -1,10 +1,10 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { Pptx } from './SlideView';
-import { readSlide } from './pptx';
-import type { Deck, Slide } from './pptx';
-vi.mock('./pptx', () => ({ readSlide: vi.fn() }));
+import { Pptx } from '../../src/media/SlideView';
+import { readSlide } from '../../src/media/pptx';
+import type { Deck, Slide } from '../../src/media/pptx';
+vi.mock('../../src/media/pptx', () => ({ readSlide: vi.fn() }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const deck = {} as Deck;
 const slide = { background: '#fff', limited: false, elements: [{ x: 0, y: 0, width: 100, height: 100, rotation: 0,

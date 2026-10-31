@@ -14,6 +14,8 @@ import { BeamModal } from '../board/beam/BeamModal';
 import { DocumentInkProvider } from '../components/DocumentInk';
 import { TeachingProvider, useTeaching } from '../components/TeachingContext';
 import { useDeviceUsage } from '../platform/deviceUsage';
+import { useAppMedia } from '../media/useAppMedia';
+const MediaWorkspace = React.lazy(() => import('../media/MediaWorkspace').then(module => ({ default: module.MediaWorkspace })));
 import type { BoardSnippet } from '../board/types';
 
 /** Windows shell: floating desktop toolbar, Otium Board split-screen studio, and Smart Beam. */
@@ -24,6 +26,7 @@ export const DesktopShell: React.FC = () => {
 const DesktopReader: React.FC = () => {
   const { role, receiver } = useDeviceUsage();
   const reader = useReaderController({ keyboard: true, dragDrop: false });
+  const media = useAppMedia(reader);
   const teaching = useTeaching();
   const isBoardOpen = teaching.prefs.boardEnabled && teaching.layout !== 'document';
   const setIsBoardOpen = useCallback((value: boolean | ((previous: boolean) => boolean)) => {
@@ -111,16 +114,14 @@ const DesktopReader: React.FC = () => {
     };
 
     const handleDrop = (e: DragEvent) => {
+      const alreadyHandled = e.defaultPrevented;
       e.preventDefault();
       dragCounter = 0;
       setIsDraggingOverWindow(false);
+      if (alreadyHandled) return;
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        void reader.openFile(file);
-      } else {
-        reader.setDocumentError(reader.lang === 'ar' ? 'يرجى اختيار ملف PDF صالح.' : 'Please select a valid PDF file.');
-      }
+      void media.open(file);
     };
 
     window.addEventListener('dragenter', handleDragEnter);
@@ -171,7 +172,7 @@ const DesktopReader: React.FC = () => {
       window.removeEventListener('drop', handleDrop);
       if (tauriUnlisten) tauriUnlisten();
     };
-  }, [reader.openFile, reader.loadDocumentBytes]);
+  }, [media.open, reader.loadDocumentBytes]);
 
   // Global keyboard shortcuts: Ctrl+B / Cmd+B for Board toggle
   useEffect(() => {
@@ -191,7 +192,7 @@ const DesktopReader: React.FC = () => {
       className={`relative w-screen h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme}`}
       style={{ backgroundColor: getThemeBackground(reader.theme) }}
     >
-      {!reader.doc ? (
+      {media.active ? <React.Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}><MediaWorkspace key={media.active.item.id} source={media.active} reader={reader} onClose={() => void media.close()} onOpen={file => void media.open(file)} onProgress={media.updateProgress} /></React.Suspense> : !reader.doc ? (
         <>
           <WelcomeScreen
             currentTheme={reader.theme}
@@ -199,9 +200,9 @@ const DesktopReader: React.FC = () => {
             onThemeChange={reader.changeTheme}
             onToggleLanguage={reader.changeLanguage}
             onOpenSettings={() => reader.setIsSettingsOpen(true)}
-            onOpenFile={reader.openFile}
+            onOpenFile={media.open}
             onOpenSample={reader.openSample}
-            onOpenRecent={reader.openRecent}
+            onOpenRecent={media.openRecent}
             onOpenBeam={() => setIsBeamOpen(true)}
           />
           {reader.isLoading && (
@@ -287,6 +288,7 @@ const DesktopReader: React.FC = () => {
       )}
 
       <ReaderOverlays reader={reader} />
+      {media.pending && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
 
       {/* Otium Smart Beam Modal */}
       <BeamModal

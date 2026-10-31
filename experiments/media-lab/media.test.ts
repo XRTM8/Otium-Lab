@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { describeFile, validateFile, fitSize, formatTime, SourceLease, mediaErrorMessage } from './media';
+import { describeFile, validateFile, fitSize, formatTime, SourceLease, mediaErrorMessage } from '../../src/media/media';
 
 describe('media file policy', () => {
   it('accepts known extensions with empty browser MIME but never trusts HTML/SVG', () => {

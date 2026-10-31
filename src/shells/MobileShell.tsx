@@ -16,6 +16,8 @@ import { useMobileFullscreen } from '../platform/useMobileFullscreen';
 import { useDeviceUsage } from '../platform/deviceUsage';
 import { BoardSplitWorkspace } from '../board/components/BoardSplitWorkspace';
 import type { BoardSnippet } from '../board/types';
+import { useAppMedia } from '../media/useAppMedia';
+const MediaWorkspace = React.lazy(() => import('../media/MediaWorkspace').then(module => ({ default: module.MediaWorkspace })));
 
 const ScannerModal = React.lazy(() =>
   import('../scanner/ScannerModal').then((m) => ({ default: m.ScannerModal }))
@@ -31,6 +33,7 @@ const MobileReader: React.FC = () => {
   const teaching = useTeaching();
   const { receiver } = useDeviceUsage();
   const reader = useReaderController({ keyboard: false, dragDrop: false });
+  const media = useAppMedia(reader);
   const { setPresentation, setReaderTools, setLayout, setTarget, presentation, layout } = teaching;
   const { boardEnabled } = teaching.prefs;
   const { isImmersive, setIsImmersive } = reader;
@@ -110,16 +113,16 @@ const MobileReader: React.FC = () => {
       className={`relative w-full h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme}`}
       style={{ backgroundColor: getThemeBackground(reader.theme), height: '100dvh' }}
     >
-      {!reader.doc ? (
+      {media.active ? <Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}><MediaWorkspace key={media.active.item.id} source={media.active} reader={reader} onClose={() => void media.close()} onOpen={file => void media.open(file)} onProgress={media.updateProgress} /></Suspense> : !reader.doc ? (
         <WelcomeScreen
           currentTheme={reader.theme}
           currentLang={reader.lang}
           onThemeChange={reader.changeTheme}
           onToggleLanguage={reader.changeLanguage}
           onOpenSettings={() => reader.setIsSettingsOpen(true)}
-          onOpenFile={reader.openFile}
+          onOpenFile={media.open}
           onOpenSample={reader.openSample}
-          onOpenRecent={reader.openRecent}
+          onOpenRecent={media.openRecent}
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenBeam={() => setIsBeamOpen(true)}
         />
@@ -178,6 +181,7 @@ const MobileReader: React.FC = () => {
       )}
 
       <ReaderOverlays reader={reader} mobile={teaching.mobile} />
+      {media.pending && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
 
       <Suspense fallback={null}>
         {isScannerOpen && (

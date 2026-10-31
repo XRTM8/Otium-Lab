@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatTime, mediaErrorMessage } from './media';
 
-export function Player({ url, audio, frozen, onSize, onError }: {
+export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, onPosition }: {
   url?: string; audio?: boolean; frozen: boolean;
   onSize: (width: number, height: number) => void; onError: (message: string) => void;
+  initialTime?: number; onPosition?: (position: number) => void;
 }) {
   const media = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -29,10 +30,11 @@ export function Player({ url, audio, frozen, onSize, onError }: {
       onLoadedMetadata={event => {
         const element = event.currentTarget;
         setDuration(Number.isFinite(element.duration) ? element.duration : 0);
+        if (initialTime > 0 && Number.isFinite(element.duration)) element.currentTime = Math.min(initialTime, Math.max(0, element.duration - 0.1));
         if (element.videoWidth) onSize(element.videoWidth, element.videoHeight);
       }}
       onResize={event => { const element = event.currentTarget; if (element.videoWidth) onSize(element.videoWidth, element.videoHeight); }}
-      onTimeUpdate={event => setTime(event.currentTarget.currentTime)}
+      onTimeUpdate={event => { setTime(event.currentTarget.currentTime); onPosition?.(event.currentTarget.currentTime); }}
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
       onEnded={() => setPlaying(false)} onError={event => onError(mediaErrorMessage(event.currentTarget.error?.code))} />
     {audio && <div className="audio-art"><span>♫</span><p>مساحة استماع وشرح</p></div>}

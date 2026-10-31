@@ -1,15 +1,15 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { describeFile, validateFile, fitSize, SourceLease } from './media';
-import { openPptx } from './pptx';
-import type { Deck } from './pptx';
-import type { FileKind } from './media';
-import { Ink } from './Ink';
-import { Player } from './Player';
+import { describeFile, validateFile, fitSize, SourceLease } from '../../src/media/media';
+import { openPptx } from '../../src/media/pptx';
+import type { Deck } from '../../src/media/pptx';
+import type { FileKind } from '../../src/media/media';
+import { Ink } from '../../src/media/Ink';
+import { Player } from '../../src/media/Player';
 import sampleVideo from './samples/lesson.mp4?url';
 
 type Source = { id: number; name: string; kind: FileKind; url?: string; text?: string; deck?: Deck };
 const Pdf = lazy(() => import('./Pdf').then(module => ({ default: module.Pdf })));
-const Pptx = lazy(() => import('./SlideView').then(module => ({ default: module.Pptx })));
+const Pptx = lazy(() => import('../../src/media/SlideView').then(module => ({ default: module.Pptx })));
 
 export function Lab() {
   const lease = useRef(new SourceLease());

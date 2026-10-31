@@ -32,6 +32,9 @@ import { triggerHaptic } from '../core/utils/haptics';
 import { isTauriRuntime, openExternalLink } from '../platform/runtime';
 import { getCurrentVersion } from '../core/updates/currentVersion';
 import { BrowserFullscreenButton } from './BrowserFullscreenButton';
+import { APP_FILE_ACCEPT, listMedia, removeMedia, type MediaKind } from '../media/library';
+import { formatTime } from '../media/media';
+type LibraryItem = RecentDocItem & { mediaKind?: MediaKind; position?: number };
 
 interface WelcomeScreenProps {
   currentTheme: ThemeMode;
@@ -59,19 +62,25 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [recents, setRecents] = useState<RecentDocItem[]>([]);
+  const [recents, setRecents] = useState<LibraryItem[]>([]);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
 
   const t = getTranslations(currentLang);
 
   const loadRecents = async () => {
-    const docs = await getRecentDocumentsList();
-    setRecents(docs);
+    const [docs, media] = await Promise.all([getRecentDocumentsList().catch(() => []), listMedia().catch(() => [])]);
+    setRecents([...docs, ...media].sort((a, b) => b.lastOpened - a.lastOpened));
   };
 
   useEffect(() => {
     loadRecents();
   }, []);
+  const paged = (item: LibraryItem) => !item.mediaKind || item.mediaKind === 'presentation';
+  const progressLabel = (item: LibraryItem) => {
+    if (paged(item)) return t.pageOf(item.lastPage, item.totalPages);
+    const names = currentLang === 'ar' ? { video: 'فيديو', audio: 'صوت', image: 'صورة', text: 'نص', presentation: 'شرائح' } : { video: 'Video', audio: 'Audio', image: 'Image', text: 'Text', presentation: 'Slides' };
+    return `${names[item.mediaKind!]}${item.position ? ` · ${formatTime(item.position)}` : ''}`;
+  };
 
   const themesList: { id: ThemeMode; label: string; dot: string }[] = [
     { id: 'paper', label: t.themes.paper, dot: '#d4c5a9' },
@@ -118,9 +127,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        onOpenFile(file);
-      }
+      onOpenFile(file);
     }
   };
 
@@ -353,14 +360,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-accent font-mono">
-                  {currentLang === 'ar' ? 'متابعة القراءة' : 'Resume Reading'}
+                  {recents[0].mediaKind ? (currentLang === 'ar' ? 'متابعة العرض' : 'Resume viewing') : (currentLang === 'ar' ? 'متابعة القراءة' : 'Resume Reading')}
                 </span>
                 <span className="text-xs sm:text-sm font-bold text-ink truncate group-hover:text-accent transition-colors">
                   <bdi>{recents[0].name}</bdi>
                 </span>
                 <span className="text-[11px] text-ink-muted font-mono">
-                  {t.pageOf(recents[0].lastPage, recents[0].totalPages)}
-                  {recents[0].totalPages > 0 && (
+                  {progressLabel(recents[0])}
+                  {paged(recents[0]) && recents[0].totalPages > 0 && (
                     <span className="ml-1 text-accent font-semibold">
                       ({Math.min(100, Math.round((recents[0].lastPage / recents[0].totalPages) * 100))}%)
                     </span>
@@ -394,17 +401,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
           <div className="space-y-1">
             <div className="text-sm font-semibold text-ink">
-              {isMobileDevice ? t.dropzoneTitleTouch : t.dropzoneTitle}
+              {currentLang === 'ar' ? 'فتح ملف' : 'Open a file'}
             </div>
             <div className="text-xs text-ink-muted">
-              {isMobileDevice ? t.dropzoneSubtitleTouch : t.dropzoneSubtitle}
+              {currentLang === 'ar' ? `${isMobileDevice ? 'اختر' : 'اسحب أو اختر'} PDF أو فيديو أو صورة أو شرائح PPTX` : `${isMobileDevice ? 'Choose' : 'Drop or choose'} a PDF, video, image or PPTX`}
             </div>
           </div>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,application/pdf"
+            accept={APP_FILE_ACCEPT}
             className="hidden"
             onChange={handleFileInput}
           />
@@ -453,6 +460,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <button
                 onClick={async () => {
                   await clearAllStoredDocuments();
+                  await removeMedia();
                   setRecents([]);
                 }}
                 className="hover:text-danger-ink transition-colors flex items-center gap-1 text-[11px] text-ink-faint hover:text-ink-muted"
@@ -504,8 +512,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                       </span>
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-ink-muted font-mono">
                         <span className="font-sans font-medium text-ink-muted">
-                          {t.pageOf(r.lastPage, r.totalPages)}
-                          {r.totalPages > 0 && (
+                          {progressLabel(r)}
+                          {paged(r) && r.totalPages > 0 && (
                             <span className="text-[10px] text-accent font-mono ml-1 mr-1">
                               ({Math.min(100, Math.round((r.lastPage / r.totalPages) * 100))}%)
                             </span>
@@ -532,7 +540,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                         )}
                       </div>
 
-                      {r.totalPages > 0 && (
+                      {paged(r) && r.totalPages > 0 && (
                         <div className="w-full h-0.5 bg-white/[0.08] rounded-full overflow-hidden mt-1.5">
                           <div
                             className="h-full bg-accent transition-all duration-300 rounded-full"
@@ -549,7 +557,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
-                        await removeDocumentFromStorage(r.id);
+                        if (r.id.startsWith('media:')) await removeMedia(r.id); else await removeDocumentFromStorage(r.id);
                         loadRecents();
                       }}
                       title={t.deleteTooltip}
@@ -586,7 +594,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 {currentLang === 'ar' ? 'تحميل أحدث إصدار' : 'Download Latest Release'}
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-semibold">
-                v{getCurrentVersion()}
+                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ' : 'Media preview'}
               </span>
               <ExternalLink className="w-3 h-3 text-ink-muted group-hover:text-accent opacity-70 group-hover:opacity-100 transition-opacity" />
             </a>

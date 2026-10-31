@@ -1,7 +1,7 @@
 import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { Player } from './Player';
+import { Player } from '../../src/media/Player';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;

@@ -308,6 +308,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const loadingTaskRef = useRef<PDFDocumentLoadingTask | null>(null);
   const loadGenerationRef = useRef(0);
+  const fileReadGenerationRef = useRef(0);
   const annotationsGenerationRef = useRef(0);
   const annotationsHydratedRef = useRef(false);
   const bookmarksHydratedRef = useRef(false);
@@ -1060,6 +1061,11 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   ]);
 
   const closeDocument = useCallback(() => {
+    fileReadGenerationRef.current++;
+    loadGenerationRef.current++;
+    const pendingTask = loadingTaskRef.current;
+    loadingTaskRef.current = null;
+    if (pendingTask) void pendingTask.destroy().catch(() => {});
     stopTts();
     if (pageSaveTimerRef.current !== null && docIdRef.current) {
       window.clearTimeout(pageSaveTimerRef.current);
@@ -1392,10 +1398,13 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   }, []);
 
   const openFile = useCallback(async (file: File) => {
+    const fileGeneration = ++fileReadGenerationRef.current;
     try {
       const buffer = await file.arrayBuffer();
+      if (fileGeneration !== fileReadGenerationRef.current) return false;
       return await loadDocumentRef.current(buffer, file.name);
     } catch (error) {
+      if (fileGeneration !== fileReadGenerationRef.current) return false;
       setDocumentError(describeDocumentError(error, lang));
       console.error('Error reading file:', error);
       return false;

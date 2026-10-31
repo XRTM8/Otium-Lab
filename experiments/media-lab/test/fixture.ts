@@ -1,5 +1,5 @@
 import { deflateRawSync } from 'node:zlib';
-import { crc32 } from '../zip.ts';
+import { crc32 } from '../../../src/media/zip.ts';
 
 export function zipFixture(files: Record<string, string | Uint8Array>, compress = true) {
   const chunks: Uint8Array[] = [], directory: Uint8Array[] = [];

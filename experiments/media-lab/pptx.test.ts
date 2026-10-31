@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { openPptx, readSlide } from './pptx';
-import { crc32, LocalZip, resolvePart } from './zip';
+import { openPptx, readSlide } from '../../src/media/pptx';
+import { crc32, LocalZip, resolvePart } from '../../src/media/zip';
 import { zipFixture, deckParts, slideXml } from './test/fixture';
 
 it('reads native deflate, slide order, geometry, Arabic and basic run styling locally', async () => {
