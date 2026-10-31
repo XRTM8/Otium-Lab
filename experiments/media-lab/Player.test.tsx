@@ -32,13 +32,3 @@ it('pauses the video for annotation and releases playback when the source is rem
   expect(element.hasAttribute('src')).toBe(false);
   expect(element.srcObject).toBeNull();
 });
-
-it('keeps screen preview muted, attaches the selected stream and cleans srcObject on close', async () => {
-  const stream = new MediaStream();
-  await act(async () => root.render(<Player stream={stream} frozen={false} onSize={vi.fn()} onError={vi.fn()} />));
-  const element = host.querySelector('video')!;
-  expect(element.srcObject).toBe(stream);
-  expect(element.muted).toBe(true);
-  await act(async () => root.unmount());
-  expect(element.srcObject).toBeNull();
-});

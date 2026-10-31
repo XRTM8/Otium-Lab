@@ -60,28 +60,12 @@ it('treats HTML inside a text file as text, and closes without keeping its conte
   expect(host.textContent).not.toContain('window.bad');
 });
 
-it('does not read or upload a PowerPoint file when showing the engine experiment', async () => {
+it('rejects a damaged PPTX locally and never offers cloud embedding or a window picker', async () => {
   const file = new File(['fake archive'], 'lecture.pptx');
-  const read = vi.spyOn(file, 'arrayBuffer');
   await upload(file);
-  expect(host.querySelector('.office-card')).toBeTruthy();
-  expect(host.textContent).toContain('الحركات تحتاج محرك عرض حقيقياً');
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('PPTX');
   expect(URL.createObjectURL).not.toHaveBeenCalled();
-  expect(read).not.toHaveBeenCalled();
   expect(host.querySelector('iframe')).toBeNull();
-});
-
-it('only loads the Microsoft iframe after explicit submission and removes it on close', async () => {
-  // The DOM test environment intentionally disables iframe networking.
-  const input = host.querySelector('input[type=url]') as HTMLInputElement;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'https://onedrive.live.com/embed?resid=ABC!123&authkey=TEST');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  expect(host.querySelector('iframe')).toBeNull();
-  await act(async () => button('فتح عبر Microsoft').click());
-  expect(host.querySelector('iframe')?.getAttribute('src')).toBe('https://onedrive.live.com/embed?resid=ABC!123&authkey=TEST');
-  expect(host.querySelector('iframe')?.getAttribute('referrerpolicy')).toBe('no-referrer');
-  await act(async () => button('إغلاق الملف').click());
-  expect(host.querySelector('iframe')).toBeNull();
+  expect(host.querySelector('input[type=url]')).toBeNull();
+  expect(host.textContent).not.toContain('التقاط نافذة');
 });

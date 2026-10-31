@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { describeFile, validateFile, fitSize, formatTime, SourceLease, mediaErrorMessage, captureErrorMessage, powerPointEmbedUrl } from './media';
+import { describeFile, validateFile, fitSize, formatTime, SourceLease, mediaErrorMessage } from './media';
 
 describe('media file policy', () => {
   it('accepts known extensions with empty browser MIME but never trusts HTML/SVG', () => {
@@ -17,12 +17,12 @@ describe('media file policy', () => {
   });
   it('routes PowerPoint to engine guidance, never falsely to a static slide renderer', () => {
     expect(describeFile('lecture.pptx').kind).toBe('presentation');
-    expect(describeFile('lecture.ppt').kind).toBe('presentation');
+    expect(validateFile({ name: 'lecture.ppt', size: 100 })).toContain('PPT القديمة');
+    expect(validateFile({ name: 'lecture.pptx', size: 41 * 1024 ** 2 })).toBeTruthy();
     expect(describeFile('book.docx').kind).toBe('office');
   });
-  it('explains a failed decoder and cancelled screen picker', () => {
+  it('explains a failed decoder', () => {
     expect(mediaErrorMessage(4)).toContain('H.264');
-    expect(captureErrorMessage(new DOMException('', 'NotAllowedError'))).toContain('إعادة المحاولة');
   });
 });
 
@@ -31,31 +31,12 @@ describe('source lifecycle', () => {
     const urls = { createObjectURL: vi.fn(() => 'blob:local-1'), revokeObjectURL: vi.fn() };
     return { urls, lease: new SourceLease(urls) };
   };
-  const mockStream = () => {
-    const stop = vi.fn();
-    return { stop, stream: { getTracks: () => [{ stop }] } as unknown as MediaStream };
-  };
   it('revokes a video URL when another file opens or the workspace closes', () => {
     const { lease, urls } = setup();
     lease.file(lease.replace(), new Blob(['video']));
     lease.replace();
     lease.replace();
     expect(urls.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:local-1');
-  });
-  it('stops a late screen-share result after the user has cancelled or opened another file', () => {
-    const { lease } = setup();
-    const picker = lease.replace();
-    lease.replace();
-    const capture = mockStream();
-    expect(lease.capture(picker, capture.stream)).toBe(false);
-    expect(capture.stop).toHaveBeenCalledOnce();
-  });
-  it('stops accepted capture tracks on close', () => {
-    const { lease } = setup();
-    const capture = mockStream();
-    expect(lease.capture(lease.replace(), capture.stream)).toBe(true);
-    lease.replace();
-    expect(capture.stop).toHaveBeenCalledOnce();
   });
   it('prevents an obsolete text read or file open from replacing the current document', () => {
     const { lease, urls } = setup();
@@ -65,17 +46,6 @@ describe('source lifecycle', () => {
     expect(lease.current(second)).toBe(true);
     expect(lease.file(first, new Blob(['stale']))).toBeNull();
     expect(urls.createObjectURL).not.toHaveBeenCalled();
-  });
-});
-
-describe('Microsoft embedding boundary', () => {
-  it('allows an existing official OneDrive embed link', () => {
-    expect(powerPointEmbedUrl(' https://onedrive.live.com/embed?resid=ABC!123&authkey=TEST ')).toBe('https://onedrive.live.com/embed?resid=ABC!123&authkey=TEST');
-  });
-  it('rejects scripts, short links, lookalike hosts, credentials, alternate ports and arbitrary pages', () => {
-    for (const url of ['javascript:alert(1)', 'http://onedrive.live.com/embed?resid=1', 'https://onedrive.live.com.attacker.test/embed?resid=1', 'https://onedrive.live.com@attacker.test/embed?resid=1', 'https://user@onedrive.live.com/embed?resid=1', 'https://onedrive.live.com:8443/embed?resid=1', 'https://onedrive.live.com/view?resid=1', 'https://onedrive.live.com/embed', 'https://1drv.ms/p/abc', '<iframe src="https://onedrive.live.com/embed?resid=1"></iframe>']) {
-      expect(powerPointEmbedUrl(url)).toBeNull();
-    }
   });
 });
 

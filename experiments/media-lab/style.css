@@ -157,11 +157,6 @@ header p{
   font-size:13px;
   white-space:nowrap
 }
-.capture-note{
-  font-size:11px;
-  direction:rtl;
-  color:#bacabf
-}
 .audio-element{
   opacity:0
 }
@@ -393,9 +388,6 @@ footer nav{
   .clock{
     font-size:11px
   }
-  .capture-note{
-    display:none
-  }
 }
 @media(max-height:500px){
   header{
@@ -435,44 +427,26 @@ footer nav{
     padding:3px 16px
   }
 }
-.online-form{
-  margin-top:24px;
-  padding:18px;
-  border:1px solid #354e3f;
-  border-radius:16px;
-  background:#ffffff04
+.pptx-slide{
+  display:block;
+  width:100%;
+  height:100%
 }
-.online-form h2{
-  font-size:17px;
-  margin:0 0 8px
-}
-.online-form p{
-  font-size:12px;
-  line-height:1.9;
-  color:#b6c5bb
-}
-.online-form>div{
+.slide-text{
   display:flex;
-  gap:8px;
-  flex-wrap:wrap
+  flex-direction:column;
+  overflow:hidden;
+  white-space:pre-wrap;
+  overflow-wrap:break-word;
+  font-family:Arial,'Cairo Variable',sans-serif;
+  line-height:1.2
 }
-.online-form input{
-  flex:1;
-  min-width:200px;
-  min-height:46px;
-  background:#0d1912;
-  color:#e7eee9;
-  border:1px solid #405b49;
-  border-radius:10px;
-  padding:10px;
-  font:13px sans-serif
+.slide-text p{
+  margin:0;
+  flex-shrink:0
 }
-.online-frame{
-  border:0;
-  background:#fff;
-  flex-shrink:0;
-  max-width:100%;
-  max-height:100%
+.slide-loading{
+  padding:20px
 }
 .sample-play{
   margin:8px

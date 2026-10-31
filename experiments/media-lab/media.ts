@@ -7,7 +7,7 @@ const formats: Record<string, [FileKind, string]> = {
   png: ['image', 'image/png'], jpg: ['image', 'image/jpeg'], jpeg: ['image', 'image/jpeg'],
   webp: ['image', 'image/webp'], gif: ['image', 'image/gif'], avif: ['image', 'image/avif'],
   pdf: ['pdf', 'application/pdf'], txt: ['text', 'text/plain'], md: ['text', 'text/plain'],
-  ppt: ['presentation', ''], pptx: ['presentation', ''], pps: ['presentation', ''], ppsx: ['presentation', ''],
+  pptx: ['presentation', ''], ppsx: ['presentation', ''],
   doc: ['office', ''], docx: ['office', ''], xls: ['office', ''], xlsx: ['office', ''],
 };
 
@@ -20,9 +20,10 @@ export function describeFile(name: string) {
 export function validateFile(file: Pick<File, 'name' | 'size'>): string | null {
   const { kind } = describeFile(file.name);
   if (!file.size) return 'الملف فارغ.';
+  if (/\.(ppt|pps)$/i.test(file.name)) return 'صيغة PPT القديمة غير مدعومة حالياً. استخدم PPTX أو PDF.';
   if (kind === 'unsupported') return 'هذه الصيغة غير مدعومة في التجربة. ملفات HTML وSVG والبرامج لا تُشغّل هنا.';
-  const limit = kind === 'text' ? 2 * 1024 ** 2 : kind === 'pdf' || kind === 'image' ? 80 * 1024 ** 2 : 2 * 1024 ** 3;
-  return file.size > limit ? 'الملف أكبر من حد التجربة: 2 MB للنص، 80 MB للصور وPDF، و2 GB للوسائط.' : null;
+  const limit = kind === 'text' ? 2 * 1024 ** 2 : kind === 'presentation' ? 40 * 1024 ** 2 : kind === 'pdf' || kind === 'image' ? 80 * 1024 ** 2 : 2 * 1024 ** 3;
+  return file.size > limit ? 'الملف أكبر من حد التجربة: 2 MB للنص، 40 MB لـPPTX، 80 MB للصور وPDF، و2 GB للوسائط.' : null;
 }
 
 export function fitSize(space: { width: number; height: number }, content: { width: number; height: number }) {
@@ -41,35 +42,15 @@ export function mediaErrorMessage(code?: number) {
   return 'تعذّر تشغيل الوسائط. تأكد من سلامة الملف ودعم المتصفح لترميزه.';
 }
 
-export function captureErrorMessage(error: unknown) {
-  const name = error instanceof Error ? error.name : '';
-  if (name === 'NotAllowedError' || name === 'AbortError') return 'لم تبدأ مشاركة النافذة. يمكنك إعادة المحاولة واختيار نافذة العرض.';
-  return 'تعذّر التقاط النافذة. الميزة تحتاج متصفح حاسب يدعم مشاركة الشاشة واتصالاً آمناً أو localhost.';
-}
-
-// Accept an already-issued Microsoft embed link, never a local upload URL or
-// arbitrary iframe HTML. Bearer query parameters remain only in component state.
-export function powerPointEmbedUrl(value: string): string | null {
-  try {
-    const url = new URL(value.trim());
-    if (url.protocol !== 'https:' || url.hostname !== 'onedrive.live.com' || url.port || url.username || url.password) return null;
-    if (url.pathname !== '/embed' || !url.searchParams.get('resid') || url.hash) return null;
-    return url.href;
-  } catch { return null; }
-}
-
-// A new source invalidates pending file reads and screen-picker requests.
+// A new source invalidates pending local file reads.
 export class SourceLease {
   private generation = 0;
-  private stream?: MediaStream;
   private url?: string;
   private urls: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
   constructor(urls: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'> = URL) { this.urls = urls; }
   replace() {
     this.generation++;
-    this.stream?.getTracks().forEach(track => track.stop());
     if (this.url) this.urls.revokeObjectURL(this.url);
-    this.stream = undefined;
     this.url = undefined;
     return this.generation;
   }
@@ -78,13 +59,5 @@ export class SourceLease {
     if (!this.current(ticket)) return null;
     this.url = this.urls.createObjectURL(blob);
     return this.url;
-  }
-  capture(ticket: number, stream: MediaStream) {
-    if (!this.current(ticket)) {
-      stream.getTracks().forEach(track => track.stop());
-      return false;
-    }
-    this.stream = stream;
-    return true;
   }
 }
