@@ -1,3 +1,4 @@
+import { localStorage } from '../lab/storage';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 

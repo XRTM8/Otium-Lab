@@ -1,3 +1,4 @@
+import { localStorage } from '../../lab/storage';
 import type { FontFamilyId } from '../types';
 
 interface FontDefinition {

@@ -1,3 +1,4 @@
+import { localStorage } from '../../../lab/storage';
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {

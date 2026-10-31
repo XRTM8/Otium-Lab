@@ -1,3 +1,4 @@
+import { localStorage } from '../../lab/storage';
 import { describe, expect, it, vi } from 'vitest';
 import type { TextAnnotation } from '../types';
 import { loadStoredAnnotations, saveStoredAnnotations } from './annotations';

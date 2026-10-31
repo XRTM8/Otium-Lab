@@ -1,3 +1,4 @@
+import { labIndexedDB } from '../../lab/storage';
 export interface InkPoint { x: number; y: number }
 export interface InkMark {
   id: string;
@@ -93,7 +94,7 @@ export function paintInk(ctx: CanvasRenderingContext2D, marks: InkMark[], width:
 
 function inkDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('otium-page-ink', 1);
+    const request = labIndexedDB.open('otium-page-ink', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('documents');
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

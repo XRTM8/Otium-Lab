@@ -1,3 +1,4 @@
+import { labIndexedDB } from '../../lab/storage';
 // Local document storage. Metadata and PDF bytes live in separate object
 // stores so listing the library never deserialises hundreds of megabytes.
 import { fingerprintDocument } from './documentIdentity';
@@ -123,7 +124,7 @@ async function migrateLegacyDatabase(targetDb: IDBDatabase): Promise<void> {
       // place would re-import stale progress on every launch and overwrite the
       // current library.
       try {
-        const cleanup = indexedDB.deleteDatabase(LEGACY_DB_NAME);
+        const cleanup = labIndexedDB.deleteDatabase(LEGACY_DB_NAME);
         cleanup.onsuccess = () => resolve();
         cleanup.onerror = () => resolve();
         cleanup.onblocked = () => resolve();
@@ -132,7 +133,7 @@ async function migrateLegacyDatabase(targetDb: IDBDatabase): Promise<void> {
       }
     };
 
-    const request = indexedDB.open(LEGACY_DB_NAME);
+    const request = labIndexedDB.open(LEGACY_DB_NAME);
     request.onerror = () => finish(null, false);
     request.onblocked = () => finish(null, false);
     request.onsuccess = () => {
@@ -200,7 +201,7 @@ function openDB(): Promise<IDBDatabase> {
       return;
     }
 
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = labIndexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
       const db = request.result;
@@ -257,7 +258,7 @@ function openDB(): Promise<IDBDatabase> {
       if (err?.name === 'VersionError') {
         console.warn('IndexedDB version error. Resetting database to recover...', err);
         try {
-          indexedDB.deleteDatabase(DB_NAME);
+          labIndexedDB.deleteDatabase(DB_NAME);
         } catch {
           // ignore
         }

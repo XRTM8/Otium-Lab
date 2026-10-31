@@ -1,3 +1,4 @@
+import { localStorage } from '../lab/storage';
 // @vitest-environment happy-dom
 import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';

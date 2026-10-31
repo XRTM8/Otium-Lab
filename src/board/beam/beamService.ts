@@ -1,3 +1,4 @@
+import { localStorage, LAB_PREFIX } from '../../lab/storage';
 import type {
   BeamMessage,
   BeamPeerState,
@@ -34,7 +35,7 @@ export class BeamSendError extends Error {
   }
 }
 
-const BEAM_CHANNEL_NAME = 'otium_smart_beam_channel';
+const BEAM_CHANNEL_NAME = 'otium_lab_smart_beam_channel';
 const BEAM_STORAGE_KEY = 'otium_beam_last_event';
 const RECENT_ROOMS_KEY = 'otium_recent_beam_rooms';
 const RECEIVER_ROOM_KEY = 'otium_receiver_room_code';
@@ -135,7 +136,7 @@ function isBrowserNetworkAvailable(): boolean {
 
 function topicForRoom(roomCode: string): string {
   const clean = roomCode.trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-  return `otium_beam_${clean}`;
+  return `otium_lab_beam_${clean}`;
 }
 
 function safeTopicPart(value: string): string {
@@ -326,7 +327,7 @@ export function parseBeamLaunch(hash = '', search = ''): BeamLaunchParams {
 export function buildBeamLink(roomCode: string, role: BeamLaunchRole = 'sender'): string {
   const room = formatRoomCode(roomCode);
   const roleValue = role === 'receiver' ? 'receive' : 'send';
-  return `https://is.gd/otium#/beam?room=${encodeURIComponent(room)}&role=${roleValue}`;
+  return `https://xrtm8.github.io/Otium-Lab/#/beam?room=${encodeURIComponent(room)}&role=${roleValue}`;
 }
 
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -499,7 +500,7 @@ export class BeamService {
       typeof window.addEventListener === 'function'
     ) {
       window.addEventListener('storage', (event) => {
-        if (event.key === BEAM_STORAGE_KEY && event.newValue) {
+        if (event.key === LAB_PREFIX + BEAM_STORAGE_KEY && event.newValue) {
           try {
             void this.handleIncoming(JSON.parse(event.newValue), 'local');
           } catch {}

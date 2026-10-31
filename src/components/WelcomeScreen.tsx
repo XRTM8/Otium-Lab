@@ -578,20 +578,20 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <div className="w-full pt-6 pb-2 border-t border-line/60 flex flex-col items-center gap-2.5 text-ink select-none animate-in fade-in duration-300">
             {/* Latest Release Download Button */}
             <a
-              href="https://github.com/XRTM8/Otium/releases/latest"
+              href="https://github.com/XRTM8/Otium-Lab"
               onClick={(e) => {
                 e.preventDefault();
-                void openExternalLink('https://github.com/XRTM8/Otium/releases/latest');
+                void openExternalLink('https://github.com/XRTM8/Otium-Lab');
               }}
               target="_blank"
               rel="noopener noreferrer"
               className="group fluid-press px-4 py-2 rounded-full bg-surface border border-line hover:border-accent/50 shadow-sm flex items-center gap-2 text-xs font-semibold text-ink hover:text-accent transition-all duration-200"
-              title={currentLang === 'ar' ? `تحميل أحدث إصدار v${getCurrentVersion()}` : `Download Latest Release v${getCurrentVersion()}`}
+              title={currentLang === 'ar' ? `نسخة تجريبية مبنية على v${getCurrentVersion()}` : `Preview based on v${getCurrentVersion()}`}
             >
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <Download className="w-3.5 h-3.5 text-accent" />
               <span>
-                {currentLang === 'ar' ? 'تحميل أحدث إصدار' : 'Download Latest Release'}
+                {currentLang === 'ar' ? 'Otium Lab · نسخة تجريبية' : 'Otium Lab · Experimental'}
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-semibold">
                 v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ' : 'Media preview'}

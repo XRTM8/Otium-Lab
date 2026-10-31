@@ -1,4 +1,4 @@
-name: Deploy Otium Web to GitHub Pages
+name: Test and deploy Otium Lab
 
 on:
   push:
@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.repository == 'XRTM8/Otium-Lab'
     name: Build Otium Web Application
     runs-on: ubuntu-latest
     steps:
@@ -35,6 +36,9 @@ jobs:
       - name: Run automated regression suite
         run: npm test -- --reporter=dot
 
+      - name: Test media engines
+        run: npm run lab:media:test
+
       - name: Check application source
         run: npm run lint
 
@@ -42,7 +46,10 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Build Web Application
-        run: npm run build
+        run: |
+          npm run prebuild
+          npx tsc -b
+          npx vite build
 
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3

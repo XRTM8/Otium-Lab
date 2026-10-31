@@ -1,3 +1,4 @@
+import { labIndexedDB } from '../../../lab/storage';
 /**
  * Persistent Document Library Store for Otium Scan.
  * Saves compiled PDFs and scan sessions so users can access, re-read,
@@ -27,7 +28,7 @@ async function getLibraryDB(): Promise<IDBDatabase> {
   if (dbInstance) return dbInstance;
 
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = labIndexedDB.open(DB_NAME, 1);
 
     req.onupgradeneeded = (e) => {
       const db = (e.target as IDBOpenDBRequest).result;

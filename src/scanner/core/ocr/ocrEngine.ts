@@ -1,3 +1,4 @@
+import { localStorage } from '../../../lab/storage';
 import type { OcrWordToken } from '../pdf';
 
 const workers = new Map<string, Promise<any>>();

@@ -1,3 +1,4 @@
+import { labIndexedDB } from '../lab/storage';
 import type { RecentDocItem } from '../core/storage/documents';
 import { describeFile } from './media';
 export type MediaKind = 'video' | 'audio' | 'image' | 'text' | 'presentation';
@@ -7,7 +8,7 @@ const SINGLE_LIMIT = 128 * 1024 ** 2, TOTAL_LIMIT = 256 * 1024 ** 2, COUNT_LIMIT
 let database: Promise<IDBDatabase> | undefined;
 function db() {
   if (!database) database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('otium_media_library', 1);
+    const request = labIndexedDB.open('otium_media_library', 1);
     request.onupgradeneeded = () => { request.result.createObjectStore('items', { keyPath: 'id' }); request.result.createObjectStore('files'); };
     request.onsuccess = () => { const value = request.result; value.onversionchange = () => { value.close(); database = undefined; }; resolve(value); };
     request.onerror = () => { database = undefined; reject(request.error); };

@@ -1,8 +1,9 @@
+import { labIndexedDB } from '../../lab/storage';
 import type { BoardPageData, BoardSnippet } from '../types';
 export interface BoardSnapshot { pages: BoardPageData[]; currentPage: number; snippets: BoardSnippet[] }
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('otium-teaching-board', 1);
+    const request = labIndexedDB.open('otium-teaching-board', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('documents');
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

@@ -1,3 +1,4 @@
+import { localStorage, labIndexedDB } from '../../lab/storage';
 import type { AnnotationQuad, AnnotationRect, TextAnnotation } from '../types';
 
 interface ColorOption {
@@ -52,7 +53,7 @@ function openDatabase(): Promise<IDBDatabase | null> {
       resolve(db);
     };
 
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = labIndexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = () => {
       const db = request.result;

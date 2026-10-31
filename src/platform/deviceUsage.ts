@@ -1,3 +1,4 @@
+import { localStorage } from '../lab/storage';
 import { useState, useSyncExternalStore } from 'react';
 export type DeviceUsage = 'auto' | 'handheld' | 'display' | 'board';
 export type DeviceRole = Exclude<DeviceUsage, 'auto'> | 'computer';

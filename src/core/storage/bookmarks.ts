@@ -1,3 +1,4 @@
+import { localStorage } from '../../lab/storage';
 import type { BookmarkItem } from '../types';
 
 const STORAGE_PREFIX = 'otium_bookmarks_';

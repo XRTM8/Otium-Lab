@@ -1,3 +1,4 @@
+import { localStorage } from '../lab/storage';
 import React, { useEffect, useRef, useState } from 'react';
 import { DeviceUsageSetting } from './DeviceUsageSetting';
 import {

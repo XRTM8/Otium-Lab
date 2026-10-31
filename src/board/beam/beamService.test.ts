@@ -1,3 +1,4 @@
+import { localStorage } from '../../lab/storage';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   arrayBufferToBase64,

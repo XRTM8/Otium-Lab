@@ -1,3 +1,4 @@
+import { localStorage, labIndexedDB } from '../../../lab/storage';
 /**
  * IndexedDB Page Storage Engine.
  * Swaps high-resolution raw images and canvases to local disk storage,
@@ -18,7 +19,7 @@ async function getDB(): Promise<IDBDatabase> {
   if (dbInstance) return dbInstance;
 
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = labIndexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;

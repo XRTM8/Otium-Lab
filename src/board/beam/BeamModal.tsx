@@ -579,7 +579,7 @@ export const BeamModal: React.FC<BeamModalProps> = ({
               </h3>
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="text-[10px] font-mono text-accent bg-accent/10 px-1.5 py-0.2 rounded-md font-bold">
-                  is.gd/otium
+                  xrtm8.github.io/Otium-Lab/
                 </span>
                 <span className="text-[10px] text-ink-muted">
                   {lang === 'ar' ? 'ربط فوري' : 'Zero-config'}
@@ -714,7 +714,7 @@ export const BeamModal: React.FC<BeamModalProps> = ({
                 </span>
                 <span className="text-ink-muted leading-tight">
                   {lang === 'ar' ? 'على السبورة: افتح الرابط ' : 'On Board: Open '}
-                  <strong className="text-accent font-mono font-bold">is.gd/otium</strong>
+                  <strong className="text-accent font-mono font-bold">xrtm8.github.io/Otium-Lab/</strong>
                 </span>
               </div>
               <div className="flex items-start gap-1.5">
@@ -996,7 +996,7 @@ export const BeamModal: React.FC<BeamModalProps> = ({
             {/* Quick URL reminder */}
             <div className="text-[10px] text-ink-muted flex items-center gap-1 font-mono">
               <span>{lang === 'ar' ? 'رابط السبورة السريع:' : 'Quick link:'}</span>
-              <strong className="text-accent underline">is.gd/otium</strong>
+              <strong className="text-accent underline">xrtm8.github.io/Otium-Lab/</strong>
             </div>
 
             {/* Direct Open PDF on this PC / Smartboard Card */}

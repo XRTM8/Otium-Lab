@@ -1,3 +1,4 @@
+import { labIndexedDB } from '../../lab/storage';
 import { describe, expect, it } from 'vitest';
 import {
   getDocumentFromStorage,
@@ -6,7 +7,7 @@ import {
 
 function deleteDatabase(name: string): Promise<void> {
   return new Promise((resolve) => {
-    const request = indexedDB.deleteDatabase(name);
+    const request = labIndexedDB.deleteDatabase(name);
     request.onsuccess = () => resolve();
     request.onerror = () => resolve();
     request.onblocked = () => resolve();
@@ -15,7 +16,7 @@ function deleteDatabase(name: string): Promise<void> {
 
 function openVersionOne(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('otium_reader_db', 1);
+    const request = labIndexedDB.open('otium_reader_db', 1);
     request.onupgradeneeded = () => {
       request.result.createObjectStore('documents', { keyPath: 'id' });
     };
