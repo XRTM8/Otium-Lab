@@ -119,7 +119,7 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
   return <section ref={workspace} className={`otium-media-viewer ${hidden ? 'media-focused' : ''}`} dir={ar ? 'rtl' : 'ltr'} aria-label={label('عارض الملفات', 'File viewer')}
     onKeyDown={event => {
       if (event.key === 'Escape') { event.currentTarget.querySelectorAll('details[open]').forEach(details => details.removeAttribute('open')); }
-      if (!deck || event.altKey || event.ctrlKey || event.metaKey || (event.target as HTMLElement).matches('input,select,textarea,[contenteditable=true]')) return;
+      if (!deck || event.altKey || event.ctrlKey || event.metaKey || (event.target as HTMLElement).closest('input,select,textarea,dialog,details,[contenteditable=true]')) return;
       if (event.key === 'ArrowRight' || event.key === 'PageDown') { event.preventDefault(); setPage(value => Math.min(total, value + 1)); }
       else if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); setPage(value => Math.max(1, value - 1)); }
       else if (event.key === 'Home') { event.preventDefault(); setPage(1); }
@@ -140,7 +140,7 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
       <button type="button" className="toolbar-icon min-h-11 min-w-11" aria-label={label('تغيير الثيم', 'Change theme')} onClick={() => reader.changeTheme(themes[(themes.indexOf(reader.theme) + 1) % themes.length])}><Palette size={19} /></button>
       <button type="button" className="toolbar-icon min-h-11 min-w-11" aria-label={label('ملء الشاشة', 'Fullscreen')} onClick={() => void reader.handleToggleFullscreen()}><Maximize size={19} /></button>
     </header>}
-    <input hidden ref={input} type="file" accept={APP_FILE_ACCEPT} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) { setDraw(true); onOpen(file); } }} />
+    <input hidden ref={input} type="file" accept={APP_FILE_ACCEPT} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onOpen(file); }} />
     {!hidden && !source.saved && <p className="media-notice text-ink-muted" role="status">{label('هذا الملف مفتوح دون حفظ في المكتبة؛ أعد اختياره بعد الإغلاق.', 'This file is open without library storage; reselect it after closing.')}</p>}
     <input hidden ref={backupInput} type="file" accept=".json,application/json" onChange={async event => {
       const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;

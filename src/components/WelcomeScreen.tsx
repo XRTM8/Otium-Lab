@@ -35,6 +35,7 @@ import { BrowserFullscreenButton } from './BrowserFullscreenButton';
 import { APP_FILE_ACCEPT, listMedia, removeMedia, type MediaKind } from '../media/library';
 import { formatTime } from '../media/media';
 import { ConfirmDialog } from '../library/ConfirmDialog';
+import { registerBackHandler } from '../core/navigation/backHandler';
 import '../library/library.css';
 type LibraryItem = RecentDocItem & { mediaKind?: MediaKind; position?: number };
 
@@ -63,18 +64,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenBeam
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const themeButton = useRef<HTMLButtonElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [recents, setRecents] = useState<LibraryItem[]>([]);
   const [libraryError, setLibraryError] = useState('');
+  const [libraryLoadFailed, setLibraryLoadFailed] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [deleting, setDeleting] = useState<LibraryItem | 'all' | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
 
   const t = getTranslations(currentLang);
+  useEffect(() => {
+    if (!showThemeMenu) return;
+    const close = () => { setShowThemeMenu(false); themeButton.current?.focus(); return true; };
+    const unregister = registerBackHandler(close);
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); close(); }
+    };
+    document.addEventListener('keydown', escape);
+    return () => { unregister(); document.removeEventListener('keydown', escape); };
+  }, [showThemeMenu]);
 
   const loadRecents = async () => {
-    const [docs, media] = await Promise.all([getRecentDocumentsList().catch(() => []), listMedia().catch(() => [])]);
-    setRecents([...docs, ...media].sort((a, b) => b.lastOpened - a.lastOpened));
+    const [docs, media] = await Promise.allSettled([getRecentDocumentsList(), listMedia()]);
+    setLibraryLoadFailed(docs.status === 'rejected' || media.status === 'rejected');
+    setRecents(previous => [
+      ...(docs.status === 'fulfilled' ? docs.value : previous.filter(item => !item.mediaKind)),
+      ...(media.status === 'fulfilled' ? media.value : previous.filter(item => !!item.mediaKind))
+    ].sort((a, b) => b.lastOpened - a.lastOpened));
   };
 
   useEffect(() => {
@@ -258,6 +275,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           {/* Theme Picker Dropdown Trigger (Only opens when clicked) */}
           <div className="relative">
             <button
+              ref={themeButton}
+              aria-expanded={showThemeMenu}
+              aria-controls="home-reading-themes"
               onClick={() => setShowThemeMenu(!showThemeMenu)}
               title={t.themeLabel}
               className="fluid-press flex items-center gap-2 px-3 py-1.5 rounded-full chrome-surface text-xs cursor-pointer"
@@ -281,6 +301,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   onClick={() => setShowThemeMenu(false)}
                 />
                 <div
+                  id="home-reading-themes"
                   dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
                   className="chrome-surface absolute right-0 top-full mt-2 w-52 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl"
                 >
@@ -452,9 +473,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         )}
 
         {/* Stored Recent Files with Theme-aware styling */}
+        {(libraryError || libraryLoadFailed) && <div role="alert" className="w-full text-xs text-danger-ink space-y-2">
+          <p>{libraryError || (currentLang === 'ar' ? 'تعذر تحميل جزء من المكتبة. ملفاتك لم تُحذف؛ حاول مجدداً.' : 'Part of your library could not be loaded. Your files have not been deleted; try again.')}</p>
+          <button type="button" className="btn-secondary min-h-11 px-4 rounded-xl" onClick={() => void loadRecents()}>{currentLang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</button>
+        </div>}
         {recents.length > 0 && (
           <div className="w-full text-start pt-4 border-t border-line space-y-2.5">
-            {libraryError && <p role="alert" className="text-xs text-danger-ink">{libraryError}</p>}
             <div className="flex items-center justify-between text-xs text-ink-muted px-1">
               <span className="flex items-center gap-1.5 font-medium">
                 <Clock className="w-3.5 h-3.5 opacity-80" />
@@ -594,7 +618,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 {currentLang === 'ar' ? 'Otium Lab 04 · نسخة تجريبية' : 'Otium Lab 04 · Experimental'}
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-semibold">
-                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ 03' : 'Media preview 03'}
+                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ 04' : 'Media preview 04'}
               </span>
               <ExternalLink className="w-3 h-3 text-ink-muted group-hover:text-accent opacity-70 group-hover:opacity-100 transition-opacity" />
             </a>
