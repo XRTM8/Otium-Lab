@@ -13,6 +13,7 @@ val tauriProperties = Properties().apply {
         propFile.inputStream().use { load(it) }
     }
 }
+val labBuild = 3
 
 val keystorePropertiesFile = file("keystore.properties")
 val keystoreProperties = Properties().apply {
@@ -51,8 +52,8 @@ android {
         applicationId = "com.otium.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
-        versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt() * 100 + labBuild
+        versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0") + "-lab.$labBuild"
     }
 
     signingConfigs {
@@ -84,6 +85,7 @@ android {
             }
         }
         getByName("release") {
+            applicationIdSuffix = ".lab"
             // Never fall back to debug signing for a distributable APK.
             signingConfig = signingConfigs.getByName("release")
             // Keep R8 off for this hotfix. Tauri bridges into Kotlin/WebView

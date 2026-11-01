@@ -8,8 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.Handler
-import android.os.Looper
 import android.print.PageRange
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
@@ -30,7 +28,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -39,18 +36,12 @@ class MainActivity : TauriActivity() {
   private var appWebView: WebView? = null
   private var ttsBridge: AndroidTtsBridge? = null
   private var immersive = true
-  private val mainHandler = Handler(Looper.getMainLooper())
 
-  private var pendingPdfBase64: String? = null
-  private var pendingPdfName: String? = null
-  private var incomingPdfFile: File? = null
-  private var incomingPdfName: String? = null
+  private val incomingDocuments by lazy { IncomingPdfStore(cacheDir) }
   private var pendingExportContent: String? = null
   private var pendingExportMime: String? = null
   private var pendingBinaryBytes: ByteArray? = null
   private var pendingBinaryMime: String = "application/octet-stream"
-  private var deliveryGeneration = 0
-  private var intentGeneration = 0
 
   /**
    * Otium 1.0 registered a cache-first service worker. WebView storage
@@ -116,7 +107,7 @@ class MainActivity : TauriActivity() {
     ttsBridge = AndroidTtsBridge(this, webView).also { bridge ->
       webView.addJavascriptInterface(bridge, "OtiumTts")
     }
-    schedulePdfDelivery()
+    notifyWebIncomingPdf()
   }
 
   /** Receives the active theme from the shared web UI. */
@@ -179,51 +170,23 @@ class MainActivity : TauriActivity() {
   private inner class FileBridge {
     @JavascriptInterface
     fun getPendingDocumentInfo(): String {
-      val file = incomingPdfFile ?: return "{\"hasDocument\":false}"
-      if (!file.exists() || file.length() == 0L) {
-        return "{\"hasDocument\":false}"
-      }
-      val name = incomingPdfName ?: "document.pdf"
-      val size = file.length()
+      val info = incomingDocuments.info() ?: return "{\"hasDocument\":false}"
       return JSONObject().apply {
-        put("hasDocument", true)
-        put("name", name)
-        put("size", size)
+        put("id", info.id); put("name", info.name); put("loading", info.loading)
+        put("hasDocument", info.file != null); put("size", info.file?.length() ?: 0L)
+        if (info.error != null) put("error", info.error)
       }.toString()
     }
 
     @JavascriptInterface
-    fun readPendingDocumentChunk(offset: Int, chunkSize: Int): String {
-      val file = incomingPdfFile ?: return ""
-      if (!file.exists()) return ""
-      val fileSize = file.length()
-      if (offset < 0 || offset >= fileSize) return ""
-
-      val toRead = Math.min(chunkSize.toLong(), fileSize - offset).toInt()
-      if (toRead <= 0) return ""
-
+    fun readPendingDocumentChunkV2(id: String, offset: Int, count: Int): String {
       return try {
-        RandomAccessFile(file, "r").use { raf ->
-          raf.seek(offset.toLong())
-          val buffer = ByteArray(toRead)
-          raf.readFully(buffer)
-          Base64.encodeToString(buffer, Base64.NO_WRAP)
-        }
-      } catch (t: Throwable) {
-        t.printStackTrace()
-        ""
-      }
+        incomingDocuments.read(id, offset.toLong(), count)?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: ""
+      } catch (_: Exception) { "" }
     }
 
     @JavascriptInterface
-    fun clearPendingDocument(): Boolean {
-      try {
-        incomingPdfFile?.delete()
-      } catch (_: Throwable) {}
-      incomingPdfFile = null
-      incomingPdfName = null
-      return true
-    }
+    fun acknowledgeDocument(id: String): Boolean = incomingDocuments.acknowledge(id)
 
     @JavascriptInterface
     fun saveTextFile(content: String, fileName: String, mimeType: String): Boolean {
@@ -659,7 +622,7 @@ class MainActivity : TauriActivity() {
   override fun onResume() {
     super.onResume()
     if (immersive) applyImmersive(true)
-    schedulePdfDelivery()
+    notifyWebIncomingPdf()
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -669,10 +632,7 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onDestroy() {
-    deliveryGeneration += 1
-    mainHandler.removeCallbacksAndMessages(null)
-    try { incomingPdfFile?.delete() } catch (_: Throwable) {}
-    incomingPdfFile = null
+    incomingDocuments.close()
     ttsBridge?.shutdown()
     ttsBridge = null
     appWebView = null
@@ -680,44 +640,25 @@ class MainActivity : TauriActivity() {
   }
 
   private fun handlePdfIntent(intent: Intent?) {
-    if (intent == null) return
-
-    val uris = try {
-      extractPdfUris(intent)
-    } catch (t: Throwable) {
-      t.printStackTrace()
-      emptyList()
-    }
+    if (intent == null || intent.action !in listOf(Intent.ACTION_VIEW, Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE)) return
+    val uris = try { extractPdfUris(intent) } catch (_: Exception) { emptyList() }
     if (uris.isEmpty()) return
-
-    val generation = ++intentGeneration
-    val uri = uris.first()
-
+    val id = incomingDocuments.begin()
+    notifyWebIncomingPdf()
     Thread {
       try {
-        val fileName = resolveDisplayName(uri)
-        val tempFile = File(cacheDir, "incoming_opened_doc.pdf")
-        if (tempFile.exists()) tempFile.delete()
-
-        // Memory-safe stream directly from content provider into internal cache (safe against Telegram OOM)
-        val copied = contentResolver.openInputStream(uri)?.use { input ->
-          FileOutputStream(tempFile).use { output ->
-            input.copyTo(output, bufferSize = 32 * 1024)
-          }
-        } ?: 0L
-
-        if (copied <= 0L || !tempFile.exists()) return@Thread
-
-        runOnUiThread {
-          if (generation != intentGeneration || isDestroyed) return@runOnUiThread
-
-          incomingPdfFile = tempFile
-          incomingPdfName = fileName
-          notifyWebIncomingPdf()
-        }
-      } catch (t: Throwable) {
-        t.printStackTrace()
+        val uri = uris.first()
+        if (uri.scheme !in listOf("content", "file")) throw java.io.IOException("مصدر الملف غير مدعوم.")
+        if (!isPdfUri(intent, uri)) throw java.io.IOException("اختر ملف PDF صالحاً.")
+        val name = resolveDisplayName(uri)
+        contentResolver.openInputStream(uri)?.use { input -> incomingDocuments.copy(id, input, name) }
+          ?: throw java.io.IOException("تعذر الوصول إلى الملف؛ أعد تنزيله من تلغرام ثم اختر فتح باستخدام Otium Lab.")
+      } catch (_: SecurityException) {
+        incomingDocuments.fail(id, "صلاحية قراءة الملف غير متاحة. أعد فتحه من تلغرام أو احفظه في التنزيلات أولاً.")
+      } catch (error: Exception) {
+        incomingDocuments.fail(id, error.message ?: "تعذر فتح ملف PDF. أعد تنزيله وحاول مجدداً.")
       }
+      runOnUiThread { if (!isDestroyed && incomingDocuments.current(id)) notifyWebIncomingPdf() }
     }.start()
   }
 
@@ -751,10 +692,13 @@ class MainActivity : TauriActivity() {
     }
 
     intent.data?.let(candidates::add)
+    if (intent.action == Intent.ACTION_VIEW) intent.clipData?.let { clip ->
+      for (index in 0 until clip.itemCount) clip.getItemAt(index)?.uri?.let(candidates::add)
+    }
 
     return candidates
       .distinct()
-      .filter { uri -> isPdfUri(intent, uri) }
+      .filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
   }
 
   @Suppress("DEPRECATION")
@@ -805,6 +749,7 @@ class MainActivity : TauriActivity() {
     }
 
     return (queriedName ?: uri.lastPathSegment?.substringAfterLast('/'))
+      ?.take(180)
       ?.trim()
       ?.replace(Regex("[\\u0000-\\u001f]"), "")
       ?.substringAfterLast('/')
@@ -816,78 +761,8 @@ class MainActivity : TauriActivity() {
     return if (rawName.endsWith(".pdf", ignoreCase = true)) rawName else "$rawName.pdf"
   }
 
-  private fun schedulePdfDelivery() {
-    notifyWebIncomingPdf()
-    if (pendingPdfBase64 == null) return
-
-    deliveryGeneration += 1
-    val generation = deliveryGeneration
-    mainHandler.removeCallbacksAndMessages(null)
-    attemptPdfDelivery(generation, 0)
-  }
-
-  private fun attemptPdfDelivery(generation: Int, attempt: Int) {
-    if (generation != deliveryGeneration) return
-
-    val base64 = pendingPdfBase64 ?: return
-    val fileName = pendingPdfName ?: "document.pdf"
-    val webView = appWebView
-
-    if (webView == null) {
-      schedulePdfRetry(generation, attempt)
-      return
-    }
-
-    webView.post {
-      if (generation != deliveryGeneration) return@post
-
-      try {
-        // Probe before building the (potentially very large) payload script.
-        // Retrying must not allocate a full copy of the PDF every 200 ms.
-        webView.evaluateJavascript("typeof window.__OTIUM_LOAD_PDF_BASE64__") { bridgeType ->
-          if (generation != deliveryGeneration) return@evaluateJavascript
-
-          if (bridgeType?.trim() != "\"function\"") {
-            schedulePdfRetry(generation, attempt + 1)
-            return@evaluateJavascript
-          }
-
-          val script = "(function(){try{var load=window.__OTIUM_LOAD_PDF_BASE64__;if(typeof load!=='function'){return false;}load(${JSONObject.quote(base64)},${JSONObject.quote(fileName)});return true;}catch(e){return false;}})()"
-
-          webView.post {
-            if (generation != deliveryGeneration) return@post
-
-            try {
-              webView.evaluateJavascript(script) { result ->
-                if (generation != deliveryGeneration) return@evaluateJavascript
-
-                if (result?.trim() == "true") {
-                  pendingPdfBase64 = null
-                  pendingPdfName = null
-                } else {
-                  schedulePdfRetry(generation, attempt + 1)
-                }
-              }
-            } catch (_: Exception) {
-              schedulePdfRetry(generation, attempt + 1)
-            }
-          }
-        }
-      } catch (_: Exception) {
-        schedulePdfRetry(generation, attempt + 1)
-      }
-    }
-  }
-
-  private fun schedulePdfRetry(generation: Int, attempt: Int) {
-    if (generation != deliveryGeneration || attempt >= MAX_DELIVERY_ATTEMPTS) return
-    mainHandler.postDelayed({ attemptPdfDelivery(generation, attempt + 1) }, DELIVERY_RETRY_MS)
-  }
-
   companion object {
-    private const val DELIVERY_RETRY_MS = 200L
-    private const val MAX_DELIVERY_ATTEMPTS = 150
     private const val REQUEST_SAVE_TEXT = 0x0751
-  private const val REQUEST_SAVE_BINARY = 0x0752
+    private const val REQUEST_SAVE_BINARY = 0x0752
   }
 }

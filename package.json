@@ -4,6 +4,7 @@
   "version": "1.9.15",
   "type": "module",
   "scripts": {
+    "lab:app:build": "node scripts/copy-ocr-assets.mjs && tsc -b && vite build",
     "lab:media": "vite --config experiments/media-lab/vite.config.ts",
     "lab:media:build": "tsc -p experiments/media-lab/tsconfig.json && vite build --config experiments/media-lab/vite.config.ts",
     "lab:media:test": "vitest run --config experiments/media-lab/vitest.config.ts",

@@ -5,10 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReaderController } from '../app/useReaderController';
 import { useAppMedia } from './useAppMedia';
 import { storeMedia, updateMedia } from './library';
+import { registerIncomingDocumentHandler } from '../platform/incomingDocument';
+vi.mock('../platform/incomingDocument', () => ({ registerIncomingDocumentHandler: vi.fn(() => () => {}) }));
 vi.mock('./library', async importActual => ({ ...await importActual<typeof import('./library')>(), storeMedia: vi.fn(), updateMedia: vi.fn() }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement, current: ReturnType<typeof useAppMedia>;
-const reader = { openFile: vi.fn(), openRecent: vi.fn(), closeDocument: vi.fn(), setDocumentError: vi.fn() } as unknown as ReaderController;
+const reader = { openFile: vi.fn(), openRecent: vi.fn(), closeDocument: vi.fn(), setDocumentError: vi.fn(), loadDocumentBytes: vi.fn(async () => true) } as unknown as ReaderController;
 function Probe() {
   const value = useAppMedia(reader);
   useLayoutEffect(() => { current = value; }, [value]);
@@ -38,4 +40,14 @@ it('does not let an older file finish opening over the latest file', async () =>
   await act(async () => { finish(true); await pending; });
   expect(current.active?.file.name).toBe('second.mp4');
   expect(reader.closeDocument).toHaveBeenCalledTimes(1);
+});
+it('does not let a slow Telegram transfer replace a newer manually-opened file', async () => {
+  const [incoming, , reading] = vi.mocked(registerIncomingDocumentHandler).mock.calls[0];
+  await act(async () => reading!(true, 'telegram-old'));
+  expect(current.pending).toBe(true);
+  await act(async () => current.open(new File(['clip'], 'newer.mp4')));
+  let accepted: unknown;
+  await act(async () => { accepted = await incoming({ data: new ArrayBuffer(10), name: 'old.pdf', id: 'telegram-old' }); reading!(false, 'telegram-old'); });
+  expect(accepted).toBe(false); expect(reader.loadDocumentBytes).not.toHaveBeenCalled();
+  expect(current.active?.file.name).toBe('newer.mp4'); expect(current.pending).toBe(false);
 });

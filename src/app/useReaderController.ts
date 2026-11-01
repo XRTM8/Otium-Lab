@@ -64,7 +64,6 @@ import {
 } from '../core/settings/preferences';
 import { computeOptimalPageScale, measureRefreshRate } from '../core/reader/device';
 import { clearSearchTextCache } from '../core/search/documentSearch';
-import { registerIncomingDocumentHandler } from '../platform/incomingDocument';
 import { applyDomTheme, syncNativeTheme } from '../platform/theme';
 import { syncNativeImmersive } from '../platform/ui';
 import { stopTts } from '../platform/tts';
@@ -1391,12 +1390,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     loadDocumentRef.current = loadPdfData;
   });
 
-  useEffect(() => {
-    return registerIncomingDocumentHandler((incoming) => {
-      void loadDocumentRef.current(incoming.data, incoming.name);
-    });
-  }, []);
-
   const openFile = useCallback(async (file: File) => {
     const fileGeneration = ++fileReadGenerationRef.current;
     try {
@@ -1455,7 +1448,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   }, [lang]);
 
   const loadDocumentBytes = useCallback(async (data: ArrayBuffer, name: string) => {
-    await loadPdfData(data, name);
+    return await loadPdfData(data, name);
   }, [loadPdfData]);
 
   const openRecent = useCallback(async (recent: RecentDocItem) => {

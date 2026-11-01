@@ -288,7 +288,7 @@ const DesktopReader: React.FC = () => {
       )}
 
       <ReaderOverlays reader={reader} />
-      {media.pending && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
+      {media.pending && !reader.passwordModal.isOpen && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
 
       {/* Otium Smart Beam Modal */}
       <BeamModal

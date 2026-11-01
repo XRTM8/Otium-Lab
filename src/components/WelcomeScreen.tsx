@@ -600,7 +600,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 {currentLang === 'ar' ? 'Otium Lab · نسخة تجريبية' : 'Otium Lab · Experimental'}
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-semibold">
-                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ 02' : 'Media preview 02'}
+                v{getCurrentVersion()} · {currentLang === 'ar' ? 'مختبر الصيغ 03' : 'Media preview 03'}
               </span>
               <ExternalLink className="w-3 h-3 text-ink-muted group-hover:text-accent opacity-70 group-hover:opacity-100 transition-opacity" />
             </a>

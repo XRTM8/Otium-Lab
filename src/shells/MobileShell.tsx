@@ -181,7 +181,7 @@ const MobileReader: React.FC = () => {
       )}
 
       <ReaderOverlays reader={reader} mobile={teaching.mobile} />
-      {media.pending && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
+      {media.pending && !reader.passwordModal.isOpen && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
 
       <Suspense fallback={null}>
         {isScannerOpen && (
