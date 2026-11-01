@@ -4,7 +4,7 @@
   "version": "1.9.15",
   "type": "module",
   "scripts": {
-    "lab:app:build": "node scripts/copy-ocr-assets.mjs && tsc -b && vite build",
+    "lab:app:build": "npm run lab:check && node scripts/copy-ocr-assets.mjs && tsc -b && vite build",
     "lab:media": "vite --config experiments/media-lab/vite.config.ts",
     "lab:media:build": "tsc -p experiments/media-lab/tsconfig.json && vite build --config experiments/media-lab/vite.config.ts",
     "lab:media:test": "vitest run --config experiments/media-lab/vitest.config.ts",
@@ -24,7 +24,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:android": "tauri android build --apk",
-    "tauri:android:split": "tauri android build --apk --split-per-abi"
+    "tauri:android:split": "tauri android build --apk --split-per-abi",
+    "lab:check": "node scripts/check-lab.mjs"
   },
   "dependencies": {
     "@fontsource-variable/cairo": "^5.3.0",

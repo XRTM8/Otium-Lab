@@ -1,6 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
 import type { InkPoint, InkStroke } from './drawing';
+const StrokeShape = memo(function StrokeShape({ stroke, width, height }: { stroke: InkStroke; width: number; height: number }) {
+  return stroke.points.length === 1
+    ? <circle cx={stroke.points[0].x * width} cy={stroke.points[0].y * height} r={stroke.width * width / 2} fill={stroke.color} opacity={stroke.opacity} />
+    : <polyline points={stroke.points.map(p => `${p.x * width},${p.y * height}`).join(' ')} fill="none" stroke={stroke.color} opacity={stroke.opacity} strokeWidth={stroke.width * width} strokeLinecap="round" strokeLinejoin="round" />;
+});
 
 export function Ink({ enabled, color, width, height, strokes: controlled, onChange, size = 3, highlighter = false }: {
   enabled: boolean; color: string; width: number; height: number;
@@ -40,8 +45,6 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
       cancel();
       if (finished) { const next = [...strokes, finished]; if (onChange) onChange(next); else setInternal(next); }
     }} onPointerCancel={cancel} onLostPointerCapture={cancel}>
-    {[...strokes, ...(draft ? [draft] : [])].map((stroke, index) => stroke.points.length === 1
-      ? <circle key={index} cx={stroke.points[0].x * width} cy={stroke.points[0].y * height} r={stroke.width * width / 2} fill={stroke.color} opacity={stroke.opacity} />
-      : <polyline key={index} points={stroke.points.map(p => `${p.x * width},${p.y * height}`).join(' ')} fill="none" stroke={stroke.color} opacity={stroke.opacity} strokeWidth={stroke.width * width} strokeLinecap="round" strokeLinejoin="round" />)}
+    {[...strokes, ...(draft ? [draft] : [])].map((stroke, index) => <StrokeShape key={index} stroke={stroke} width={width} height={height} />)}
   </svg>;
 }

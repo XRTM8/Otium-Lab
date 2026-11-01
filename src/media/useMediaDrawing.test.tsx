@@ -50,3 +50,14 @@ it('retains unsaved ink on a failed write and retries on the next edit', async (
   await act(async () => current.undo());
   expect(current.status).toBe('saved'); expect(current.strokes).toEqual([stroke]);
 });
+it('restores all backup pages and allows undo without exporting an old snapshot', async () => {
+  vi.mocked(loadDrawing).mockResolvedValue({ 1: [stroke] });
+  await act(async () => root.render(<Probe />));
+  const replacement = { ...stroke, color: '#00ff00' };
+  await act(async () => current.replaceDrawing({ 1: [replacement], 2: [stroke] }));
+  expect(current.getDrawing()).toEqual({ 1: [replacement], 2: [stroke] });
+  await act(async () => current.undo());
+  expect(current.getDrawing()[1]).toEqual([stroke]);
+  await act(async () => root.render(<Probe page={2} />));
+  expect(current.strokes).toEqual([stroke]);
+});

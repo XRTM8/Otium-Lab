@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { listMedia, loadMedia, loadDrawing, saveDrawing, newMediaItem, removeMedia, storeMedia, updateMedia } from './library';
 import type { MediaDrawing } from './drawing';
+import { writeFavorites } from '../library/model';
 
 beforeEach(() => removeMedia());
 describe('local media library', () => {
@@ -63,5 +64,14 @@ describe('local media library', () => {
     }
     expect((await loadMedia(item.id)).file.name).toBe('annotated.png');
     expect(await listMedia()).toHaveLength(12);
+  });
+  it('keeps favorite media cached until the user removes its favorite status', async () => {
+    const file = new File(['clip'], 'favorite.mp4'), item = newMediaItem(file); item.lastOpened = 0;
+    await storeMedia(file, item); writeFavorites([item.id]);
+    for (let index = 0; index < 13; index++) { const next = new File(['clip'], `clip-${index}.mp4`); await storeMedia(next, newMediaItem(next)); }
+    expect((await loadMedia(item.id)).file.name).toBe('favorite.mp4');
+    writeFavorites([]);
+    const next = new File(['clip'], 'last.mp4'); await storeMedia(next, newMediaItem(next));
+    await expect(loadMedia(item.id)).rejects.toThrow();
   });
 });

@@ -1,0 +1,21 @@
+{
+  "identifier": "com.otium.reader.lab",
+  "productName": "Otium Lab",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Otium Lab — Reader & Media",
+        "url": "index.html",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 420,
+        "minHeight": 550,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false
+      }
+    ]
+  }
+}

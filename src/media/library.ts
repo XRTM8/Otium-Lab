@@ -2,6 +2,7 @@ import { labIndexedDB } from '../lab/storage';
 import type { RecentDocItem } from '../core/storage/documents';
 import { describeFile } from './media';
 import { validDrawing, type MediaDrawing } from './drawing';
+import { readFavorites } from '../library/model';
 export type MediaKind = 'video' | 'audio' | 'image' | 'text' | 'presentation';
 export type MediaLibraryItem = RecentDocItem & { mediaKind: MediaKind; position: number };
 export type MediaProgress = { lastPage: number; totalPages: number; position: number };
@@ -51,7 +52,7 @@ export async function storeMedia(file: File, item: MediaLibraryItem): Promise<bo
       const previous = (event.target as IDBRequest<MediaLibraryItem[]>).result.sort((a, b) => b.lastOpened - a.lastOpened);
       const drawings = tx.objectStore('drawings').getAllKeys();
       drawings.onsuccess = () => {
-        const protectedIds = new Set(drawings.result);
+        const protectedIds = new Set([...drawings.result, ...readFavorites()]);
         const protectedItems = previous.filter(old => old.id !== item.id && protectedIds.has(old.id));
         let bytes = file.size + protectedItems.reduce((sum, old) => sum + old.sizeBytes, 0), count = 1 + protectedItems.length;
         // A cache limit must never silently erase a teacher's saved annotations.

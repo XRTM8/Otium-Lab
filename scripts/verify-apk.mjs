@@ -6,7 +6,7 @@
  * Verifies, for every APK given:
  *   1. it carries an APK Signature Scheme v2/v3 signature
  *   2. the signing certificate matches the expected SHA-256 fingerprint
- *   3. versionName matches package.json and versionCode is sane
+ *   3. versionName matches the Lab build and versionCode is sane
  *   4. minSdk / targetSdk match the declared policy
  *   5. native libraries are 16 KB page-size aligned (Android 15+ requirement)
  *
@@ -16,7 +16,7 @@
  *
  * Options:
  *   --expect-cert <sha256>   required certificate fingerprint
- *   --expect-version <ver>   defaults to package.json version
+ *   --expect-version <ver>   defaults to the Android Lab build version
  *   --min-sdk <n>            default 24
  *   --target-sdk <n>         default: read from APK, warn if below 35
  *   --skip-16kb              skip the page-size alignment check
@@ -27,6 +27,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { labVersion } from './lab-version.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -61,7 +62,7 @@ if (options.apks.length === 0) {
 
 if (!options.expectVersion) {
   try {
-    options.expectVersion = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+    options.expectVersion = labVersion().android;
   } catch {
     options.expectVersion = null;
   }
@@ -182,6 +183,7 @@ function verifyOne(file) {
   facts.abis = [...new Set(facts.abis)];
 
   if (!facts.package) problems.push('unreadable APK manifest (aapt2 failed)');
+  if (facts.package !== 'com.otium.reader.lab') problems.push('Refusing an APK that does not use the separate Otium Lab package ID');
   if (options.expectVersion && facts.versionName !== options.expectVersion) {
     problems.push(`versionName is ${facts.versionName}, expected ${options.expectVersion}`);
   }
