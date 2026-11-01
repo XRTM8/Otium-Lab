@@ -41,6 +41,13 @@ it('does not let an older file finish opening over the latest file', async () =>
   expect(current.active?.file.name).toBe('second.mp4');
   expect(reader.closeDocument).toHaveBeenCalledTimes(1);
 });
+it('keeps the current media open when a saved PDF cannot be opened', async () => {
+  await act(async () => current.open(new File(['clip'], 'lesson.mp4')));
+  vi.mocked(reader.openRecent).mockResolvedValueOnce(false);
+  await act(async () => current.openRecent({ id: 'missing', name: 'missing.pdf', available: true, lastPage: 1, totalPages: 1, lastOpened: 0, sizeBytes: 10 }));
+  expect(current.active?.file.name).toBe('lesson.mp4');
+  expect(current.pending).toBe(false);
+});
 it('does not let a slow Telegram transfer replace a newer manually-opened file', async () => {
   const [incoming, , reading] = vi.mocked(registerIncomingDocumentHandler).mock.calls[0];
   await act(async () => reading!(true, 'telegram-old'));

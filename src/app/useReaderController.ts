@@ -1436,14 +1436,15 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     setIsLoading(true);
     setDocumentError(null);
     try {
-      const response = await fetch('/sample.pdf');
+      const response = await fetch(`${import.meta.env.BASE_URL}sample.pdf`);
       if (!response.ok) throw new Error(`Sample document returned ${response.status}`);
       const buffer = await response.arrayBuffer();
-      await loadDocumentRef.current(buffer, SAMPLE_DOCUMENT_NAME);
+      return await loadDocumentRef.current(buffer, SAMPLE_DOCUMENT_NAME);
     } catch (error) {
       setDocumentError(describeDocumentError(error, lang));
       setIsLoading(false);
       console.error('Error loading sample:', error);
+      return false;
     }
   }, [lang]);
 
@@ -1453,8 +1454,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
 
   const openRecent = useCallback(async (recent: RecentDocItem) => {
     if (recent.name === SAMPLE_DOCUMENT_NAME) {
-      await openSample();
-      return;
+      return await openSample();
     }
 
     if (!recent.available) {
@@ -1463,12 +1463,18 @@ export function useReaderController(capabilities: ReaderCapabilities) {
           ? 'هذا المستند في مكتبتك لكن ملفه غير موجود على هذا الجهاز. أعد فتح ملف الـ PDF لاستعادته.'
           : 'This book is in your library but its PDF is not on this device. Open the PDF file again to restore it.'
       );
-      return;
+      return false;
     }
 
     setIsLoading(true);
     setDocumentError(null);
-    const data = await getDocumentFromStorage(recent.id);
+    let data;
+    try { data = await getDocumentFromStorage(recent.id); }
+    catch {
+      setIsLoading(false);
+      setDocumentError(lang === 'ar' ? 'تعذر قراءة المستند المحفوظ. حاول مجدداً أو أعد استيراد الملف.' : 'Could not read the saved document. Try again or import the file again.');
+      return false;
+    }
     if (!data) {
       setIsLoading(false);
       setDocumentError(
@@ -1476,9 +1482,9 @@ export function useReaderController(capabilities: ReaderCapabilities) {
           ? 'هذا المستند لم يعد محفوظاً على هذا الجهاز.'
           : 'This document is no longer stored on this device.'
       );
-      return;
+      return false;
     }
-    await loadDocumentRef.current(data, recent.name);
+    return await loadDocumentRef.current(data, recent.name);
   }, [lang, openSample]);
 
   // 1. Broadcast page flip when connected as Otium Beam sender (e.g. mobile remote)

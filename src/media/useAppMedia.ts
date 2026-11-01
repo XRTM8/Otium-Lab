@@ -79,8 +79,8 @@ export function useAppMedia(reader: ReaderController) {
       await persist();
       if (ticket !== generation.current) return;
       if (!item.id.startsWith('media:')) {
-        await openRecentPdf(item);
-        if (ticket === generation.current) commit(null);
+        const opened = await openRecentPdf(item);
+        if (ticket === generation.current && opened !== false) commit(null);
         return;
       }
       const stored = await loadMedia(item.id);

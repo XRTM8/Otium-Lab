@@ -11,15 +11,24 @@ let host:HTMLDivElement,root:Root;
 const props={ currentTheme:'paper' as const,currentLang:'ar' as const,onThemeChange:vi.fn(),onToggleLanguage:vi.fn(),onOpenFile:vi.fn(),onOpenRecent:vi.fn() };
 beforeEach(async()=>{host=document.createElement('div');document.body.append(host);root=createRoot(host);await act(async()=>root.render(<WelcomeScreen {...props}/>));});
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();});
-it('opens the selected file and filters by media kind',async()=>{
- await act(async()=> (host.querySelector('button[aria-label="فتح Lesson.pdf"]') as HTMLButtonElement).click());
+it('opens a saved file from the classic recent list',async()=>{
+ await act(async()=> (host.querySelector('[aria-label="فتح Lesson.pdf"]') as HTMLElement).click());
  expect(props.onOpenRecent).toHaveBeenCalledWith(expect.objectContaining({id:'pdf'}));
- await act(async()=>[...host.querySelectorAll('.lab-filters button')].find(b=>b.textContent==='الفيديو')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
- expect(host.querySelectorAll('.lab-file')).toHaveLength(1); expect(host.querySelector('.lab-file')!.textContent).toContain('Video.mp4');
+ expect(host.querySelector('[aria-label="فتح Video.mp4"]')).not.toBeNull();
 });
 it('requires explicit confirmation before deleting media and preserves it when cancelled',async()=>{
  await act(async()=> (host.querySelector('button[aria-label="حذف من المكتبة: Video.mp4"]') as HTMLButtonElement).click());
  expect(host.querySelector('dialog')).not.toBeNull(); expect(removeMedia).not.toHaveBeenCalled();
  await act(async()=>[...host.querySelectorAll('dialog button')].find(b=>b.textContent==='إلغاء')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
- expect(removeMedia).not.toHaveBeenCalled(); expect(host.querySelectorAll('.lab-file')).toHaveLength(2);
+ expect(removeMedia).not.toHaveBeenCalled(); expect(host.querySelector('[aria-label="فتح Video.mp4"]')).not.toBeNull();
+});
+it('does not open a file when using the delete button keyboard',async()=>{
+ const button=host.querySelector('button[aria-label="حذف من المكتبة: Video.mp4"]')!;
+ await act(async()=>button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
+ expect(props.onOpenRecent).not.toHaveBeenCalled();
+});
+it('deletes media only after confirming',async()=>{
+ await act(async()=> (host.querySelector('button[aria-label="حذف من المكتبة: Video.mp4"]') as HTMLButtonElement).click());
+ await act(async()=>[...host.querySelectorAll('dialog button')].find(b=>b.textContent==='حذف')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+ expect(removeMedia).toHaveBeenCalledWith('media:video');
 });
