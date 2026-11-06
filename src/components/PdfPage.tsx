@@ -36,23 +36,29 @@ interface ActiveAnnotation {
 const PAGE_BACKGROUND: Record<ThemeMode, string> = {
   amoled: '#000000',
   midnight: '#06090f',
-  amber: '#140f0c',
+  amber: '#18130e',
   parchment: '#fbf6ea',
-  eink: '#e5e7eb',
+  eink: '#eaeaea',
   pure: '#ffffff',
-  paper: '#fdfcf8',
+  paper: '#f7f4ee',
   sakura: '#fdf6f7',
   forest: '#0c1813',
   nordic: '#15181e'
 };
 
 const THEME_FILTERS: Partial<Record<ThemeMode, string>> = {
-  amoled: 'invert(1) hue-rotate(180deg)',
+  // 1. OLED Black: Invert white canvas, calibrate text to soft silver-white (#E6E6E6) to prevent darkroom glare
+  amoled: 'invert(1) hue-rotate(180deg) contrast(1.04) brightness(0.92)',
+  // 2. Warm Sepia: Deep candlelit amber warmth with 100% blue-light suppression for late night reading
+  amber: 'invert(0.92) sepia(0.72) hue-rotate(-22deg) contrast(1.04) brightness(0.88)',
+  // 3. Day Paper: Authentic warm paper texture tint, softens stark digital white PDFs into comfortable daylight book paper
+  paper: 'sepia(0.20) contrast(0.98) brightness(0.98)',
+  // 4. E-Ink Mono: Pristine grayscale contrast mirroring Kindle Paperwhite
+  eink: 'grayscale(1) contrast(1.15) brightness(0.96)',
+  // Legacy aliases for backward compatibility
   midnight: 'invert(0.92) hue-rotate(185deg) contrast(1.02) brightness(0.96)',
-  amber: 'invert(0.90) sepia(0.55) hue-rotate(-15deg) contrast(1.02) brightness(0.96)',
   forest: 'invert(0.92) sepia(0.35) hue-rotate(90deg) contrast(1.02) brightness(0.96)',
-  nordic: 'invert(0.92) hue-rotate(175deg) contrast(1.02) brightness(0.94)',
-  eink: 'grayscale(1) contrast(1.08) brightness(0.98)'
+  nordic: 'invert(0.92) hue-rotate(175deg) contrast(1.02) brightness(0.94)'
 };
 
 function themeFilter(theme: ThemeMode): string | null {

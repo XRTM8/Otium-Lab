@@ -4,6 +4,7 @@ import type { RecentDocItem } from '../core/storage/documents';
 import { describeFile, validateFile } from './media';
 import { registerIncomingDocumentHandler } from '../platform/incomingDocument';
 import { loadMedia, mediaKind, newMediaItem, storeMedia, updateMedia, type MediaLibraryItem, type MediaProgress } from './library';
+import { loadDocumentTheme, saveDocumentTheme } from '../core/settings/preferences';
 export type ActiveMedia = { file: File; item: MediaLibraryItem; saved: boolean };
 export function useAppMedia(reader: ReaderController) {
   const [active, setActive] = useState<ActiveMedia | null>(null);
@@ -14,7 +15,18 @@ export function useAppMedia(reader: ReaderController) {
   const generation = useRef(0);
   const dirty = useRef(false);
   const { openFile: openPdf, openRecent: openRecentPdf, closeDocument, setDocumentError } = reader;
-  const commit = useCallback((value: ActiveMedia | null) => { current.current = value; setActive(value); dirty.current = false; if (value) progress.current = value.item; }, []);
+  const commit = useCallback((value: ActiveMedia | null) => {
+    current.current = value;
+    setActive(value);
+    dirty.current = false;
+    if (value) {
+      progress.current = value.item;
+      const savedTheme = loadDocumentTheme(value.item.id, value.file.name);
+      if (savedTheme) {
+        reader.changeTheme(savedTheme, false);
+      }
+    }
+  }, [reader]);
   const persist = useCallback(async () => {
     if (!current.current?.saved || !dirty.current) return;
     const source = current.current, snapshot = progress.current;
@@ -43,6 +55,11 @@ export function useAppMedia(reader: ReaderController) {
       nativeRequest.current = null; setNativePending(false);
     }
   }), []);
+  useEffect(() => {
+    if (current.current?.item.id && reader.theme) {
+      saveDocumentTheme(current.current.item.id, reader.theme);
+    }
+  }, [reader.theme]);
   useEffect(() => {
     const timer = window.setInterval(() => { void persist(); }, 5000);
     const flush = () => { void persist(); };

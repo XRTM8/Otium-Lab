@@ -47,6 +47,33 @@
     background-color: var(--app-bg, #f4ede1);
     color: var(--ink, #2d261e);
     font-family: var(--font-ui, var(--app-font-family, 'Tajawal', 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Optical Typography & Font Anti-Blooming across reading themes */
+  .theme-amoled {
+    letter-spacing: 0.012em;
+  }
+  .theme-amoled .textLayer span {
+    font-weight: 420;
+    -webkit-font-smoothing: antialiased;
+  }
+  .theme-amber {
+    letter-spacing: 0.008em;
+  }
+  .theme-amber .textLayer span {
+    font-weight: 440;
+    -webkit-font-smoothing: antialiased;
+  }
+  .theme-paper .textLayer span {
+    letter-spacing: 0.002em;
+    font-weight: 450;
+  }
+  .theme-eink .textLayer span {
+    letter-spacing: -0.004em;
+    font-weight: 470;
   }
 
   :root {
