@@ -135,31 +135,27 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     return `${names[item.mediaKind!]}${item.position ? ` · ${formatTime(item.position)}` : ''}`;
   };
 
-  // The 4 Purposeful Optical Reading Modes (No Gimmicks, No AI Slop)
-  const masterThemes: { id: ThemeMode; label: string; dot: string; hint: string }[] = [
+  // The 4 pure color themes (No AI Slop, pure color names)
+  const masterThemes: { id: ThemeMode; label: string; dot: string }[] = [
     {
       id: 'paper',
-      label: currentLang === 'ar' ? 'ورق نهاري' : 'Day Paper',
-      dot: '#d4c5a9',
-      hint: currentLang === 'ar' ? 'طبيعي ومريح للعين' : 'Natural daylight'
+      label: currentLang === 'ar' ? 'ورقي' : 'Paper',
+      dot: '#d4c5a9'
     },
     {
       id: 'amber',
-      label: currentLang === 'ar' ? 'سيبيا دافئ' : 'Warm Sepia',
-      dot: '#f59e0b',
-      hint: currentLang === 'ar' ? 'قراءة ليلية بلا ضوء أزرق' : 'Zero blue light'
+      label: currentLang === 'ar' ? 'كهرماني' : 'Amber',
+      dot: '#f59e0b'
     },
     {
       id: 'amoled',
-      label: currentLang === 'ar' ? 'سواد OLED' : 'OLED Black',
-      dot: '#10b981',
-      hint: currentLang === 'ar' ? 'سواد مطبق وتوفير طاقة' : 'True pitch black'
+      label: currentLang === 'ar' ? 'أسود' : 'Black',
+      dot: '#10b981'
     },
     {
       id: 'eink',
-      label: currentLang === 'ar' ? 'حبر إلكتروني' : 'E-Ink Mono',
-      dot: '#a3a3a3',
-      hint: currentLang === 'ar' ? 'أحادي اللون لتركيز فائق' : 'Pure distraction-free'
+      label: currentLang === 'ar' ? 'رمادي' : 'Gray',
+      dot: '#a3a3a3'
     }
   ];
 
@@ -274,57 +270,36 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           )}
         </div>
 
-        {/* Right: 4-Theme Segmented Frosted Glass Island */}
+        {/* Right: Theme Picker Capsule Button with Smooth Pop Animation */}
         <div className="pointer-events-auto flex items-center gap-2">
-          {/* Desktop/Tablet: Direct 4-Theme Glass Segmented Switcher */}
-          <div className="hidden sm:flex items-center gap-1 p-1 rounded-full chrome-surface shadow-md">
-            {masterThemes.map((th) => {
-              const isSelected = currentTheme === th.id;
-              return (
-                <button
-                  key={th.id}
-                  onClick={() => {
-                    triggerHaptic('light');
-                    onThemeChange(th.id);
-                  }}
-                  title={th.hint}
-                  className={`fluid-press flex items-center gap-1.5 px-3 py-1 rounded-full text-xs transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-hover-strong text-ink font-semibold shadow-xs border border-line'
-                      : 'text-ink-muted hover:text-ink hover:bg-hover-subtle border border-transparent'
-                  }`}
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shadow-xs"
-                    style={{ backgroundColor: th.dot }}
-                  />
-                  <span className="text-[11px]">{th.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Mobile: Compact Frosted Glass Dropdown Trigger */}
-          <div className="relative sm:hidden">
+          <div className="relative">
             <button
               ref={themeButton}
               aria-expanded={showThemeMenu}
               aria-controls="home-reading-themes"
-              onClick={() => setShowThemeMenu(!showThemeMenu)}
+              onClick={() => {
+                triggerHaptic('light');
+                setShowThemeMenu(!showThemeMenu);
+              }}
               title={t.themeLabel}
-              className="fluid-press flex items-center gap-2 px-3 py-1.5 rounded-full chrome-surface text-xs cursor-pointer"
+              className="fluid-press flex items-center gap-2 px-3.5 py-1.5 rounded-full chrome-surface text-xs cursor-pointer hover:border-line-strong transition-all duration-300 shadow-sm"
             >
               <span
-                className="w-2.5 h-2.5 rounded-full ring-2 ring-line-strong transition-colors"
+                className="w-2.5 h-2.5 rounded-full ring-2 ring-line-strong transition-colors duration-300"
                 style={{ backgroundColor: activeThemeMeta.dot }}
               />
-              <span className="font-medium text-[11px] text-ink">
+              <span className="font-semibold text-[11px] text-ink">
                 {activeThemeMeta.label}
               </span>
               <Palette className="w-3.5 h-3.5 text-ink-muted" />
-              <ChevronDown className={`w-3 h-3 text-ink-muted transition-transform duration-200 ${showThemeMenu ? 'rotate-180' : ''}`} />
+              <ChevronDown
+                className={`w-3 h-3 text-ink-muted transition-transform duration-300 ${
+                  showThemeMenu ? 'rotate-180' : ''
+                }`}
+              />
             </button>
 
+            {/* Animated Frosted Glass Menu */}
             {showThemeMenu && (
               <>
                 <div
@@ -334,10 +309,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <div
                   id="home-reading-themes"
                   dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
-                  className="chrome-surface absolute right-0 top-full mt-2 w-48 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
+                  className="chrome-surface absolute right-0 top-full mt-2 w-44 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
                 >
-                  <div className={`text-[10px] uppercase px-2.5 py-1 text-ink-faint font-semibold ${currentLang === 'ar' ? 'font-sans' : 'font-mono tracking-wider'}`}>
-                    {currentLang === 'ar' ? 'أجواء القراءة' : 'Reading Modes'}
+                  <div className={`text-[10px] uppercase px-2.5 py-1 text-ink-faint font-semibold tracking-wider ${currentLang === 'ar' ? 'font-sans' : 'font-mono'}`}>
+                    {t.readingThemesTitle}
                   </div>
                   {masterThemes.map((th) => {
                     const isSelected = currentTheme === th.id;
@@ -349,18 +324,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                           onThemeChange(th.id);
                           setShowThemeMenu(false);
                         }}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-colors ${
+                        className={`fluid-press w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-colors duration-200 cursor-pointer ${
                           isSelected
                             ? 'bg-hover-strong text-ink font-semibold border border-line'
-                            : 'hover:bg-hover-subtle text-ink-muted border border-transparent'
+                            : 'hover:bg-hover-subtle text-ink-muted hover:text-ink border border-transparent'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                           <span
-                            className="w-3 h-3 rounded-full border border-black/30 shadow-xs shrink-0"
+                            className="w-3.5 h-3.5 rounded-full border border-black/25 shadow-xs shrink-0 transition-transform duration-200"
                             style={{ backgroundColor: th.dot }}
                           />
-                          <span>{th.label}</span>
+                          <span className="text-xs font-medium">{th.label}</span>
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-ink shrink-0" />}
                       </button>

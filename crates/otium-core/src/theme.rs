@@ -41,8 +41,8 @@ impl ThemeMode {
         match self {
             ThemeMode::OledBlack => ThemePalette {
                 id: ThemeMode::OledBlack,
-                name: "OLED Dark".into(),
-                name_ar: "سواد الليل".into(),
+                name: "Black".into(),
+                name_ar: "أسود".into(),
                 bg_canvas: "#000000".into(),
                 bg_surface: "#0A0A0C".into(),
                 bg_card: "#141418".into(),
@@ -56,8 +56,8 @@ impl ThemeMode {
             },
             ThemeMode::WarmSepia => ThemePalette {
                 id: ThemeMode::WarmSepia,
-                name: "Warm Sepia".into(),
-                name_ar: "السيبيا الدافئ".into(),
+                name: "Amber".into(),
+                name_ar: "كهرماني".into(),
                 bg_canvas: "#18130E".into(),
                 bg_surface: "#221B14".into(),
                 bg_card: "#2E241B".into(),
@@ -71,8 +71,8 @@ impl ThemeMode {
             },
             ThemeMode::DayPaper => ThemePalette {
                 id: ThemeMode::DayPaper,
-                name: "Day Paper".into(),
-                name_ar: "الورق النهاري".into(),
+                name: "Paper".into(),
+                name_ar: "ورقي".into(),
                 bg_canvas: "#F7F4EE".into(),
                 bg_surface: "#EFEAE0".into(),
                 bg_card: "#E5DFD3".into(),
@@ -86,8 +86,8 @@ impl ThemeMode {
             },
             ThemeMode::EInkMono => ThemePalette {
                 id: ThemeMode::EInkMono,
-                name: "E-Ink Mono".into(),
-                name_ar: "الحبر الإلكتروني".into(),
+                name: "Gray".into(),
+                name_ar: "رمادي".into(),
                 bg_canvas: "#ECECEC".into(),
                 bg_surface: "#E0E0E0".into(),
                 bg_card: "#D4D4D4".into(),

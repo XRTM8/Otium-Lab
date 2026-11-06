@@ -14,7 +14,7 @@ pub fn main() -> Result<(), slint::PlatformError> {
     // Helper to sync theme palette colors to Slint UI
     fn update_ui_palette(window: &app_ui::MainWindow, state: &AppState) {
         let palette = state.palette();
-        window.set_theme_name(format!("{} ({})", palette.name, palette.name_ar).into());
+        window.set_theme_name(format!("اللون: {}", palette.name_ar).into());
 
         // Parse hex colors for Slint
         fn parse_color(hex: &str) -> Color {
