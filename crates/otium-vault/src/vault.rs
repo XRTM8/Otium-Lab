@@ -1,5 +1,5 @@
 use std::path::Path;
-use redb::{Database, TableDefinition};
+use redb::{Database, ReadableTable, TableDefinition};
 
 use crate::crypto::VaultCrypto;
 use otium_core::{OtiumError, Result};
@@ -42,6 +42,10 @@ impl SovereignVault {
 
     pub fn lock(&mut self) {
         self.key = None;
+    }
+
+    pub fn is_unlocked(&self) -> bool {
+        self.key.is_some()
     }
 
     /// Store an encrypted document payload
@@ -92,5 +96,24 @@ impl SovereignVault {
         } else {
             Ok(None)
         }
+    }
+
+    /// List all document IDs stored in the vault
+    pub fn list_documents(&self) -> Result<Vec<String>> {
+        let read_txn = self
+            .db
+            .begin_read()
+            .map_err(|e| OtiumError::Vault(e.to_string()))?;
+        let table = read_txn
+            .open_table(DOC_TABLE)
+            .map_err(|e| OtiumError::Vault(e.to_string()))?;
+
+        let mut list = Vec::new();
+        let iter = table.iter().map_err(|e| OtiumError::Vault(e.to_string()))?;
+        for item in iter {
+            let (key, _) = item.map_err(|e| OtiumError::Vault(e.to_string()))?;
+            list.push(key.value().to_string());
+        }
+        Ok(list)
     }
 }
