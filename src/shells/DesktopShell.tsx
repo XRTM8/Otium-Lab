@@ -189,7 +189,7 @@ const DesktopReader: React.FC = () => {
   return (
     <DocumentInkProvider reader={reader}>
     <div
-      className={`relative w-screen h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme}`}
+      className={`relative w-screen h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme} transition-colors duration-500 ease-out`}
       style={{ backgroundColor: getThemeBackground(reader.theme) }}
     >
       {media.active ? <React.Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}><MediaWorkspace key={media.active.item.id} source={media.active} reader={reader} onClose={() => void media.close()} onOpen={file => void media.open(file)} onProgress={media.updateProgress} /></React.Suspense> : !reader.doc ? (

@@ -110,7 +110,7 @@ const MobileReader: React.FC = () => {
   return (
     <DocumentInkProvider reader={reader}>
     <div
-      className={`relative w-full h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme}`}
+      className={`relative w-full h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme} transition-colors duration-500 ease-out`}
       style={{ backgroundColor: getThemeBackground(reader.theme), height: '100dvh' }}
     >
       {media.active ? <Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}><MediaWorkspace key={media.active.item.id} source={media.active} reader={reader} onClose={() => void media.close()} onOpen={file => void media.open(file)} onProgress={media.updateProgress} /></Suspense> : !reader.doc ? (

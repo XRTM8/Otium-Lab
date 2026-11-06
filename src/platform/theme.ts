@@ -41,6 +41,39 @@ export function applyDomTheme(theme: ThemeMode): void {
 }
 
 /**
+ * Triggers a hardware-accelerated top-to-bottom waterfall curtain
+ * when View Transitions API is unavailable or disabled.
+ */
+export function triggerThemeWaterfall(theme: ThemeMode): void {
+  if (typeof document === 'undefined') return;
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+
+  const bg = getThemeBackground(theme);
+
+  const existing = document.getElementById('otium-waterfall-fallback');
+  if (existing) existing.remove();
+
+  const curtain = document.createElement('div');
+  curtain.id = 'otium-waterfall-fallback';
+  curtain.className = 'otium-theme-waterfall-fallback';
+  curtain.style.backgroundColor = bg;
+  document.body.appendChild(curtain);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      curtain.classList.add('otium-waterfall-running');
+    });
+  });
+
+  window.setTimeout(() => {
+    curtain.classList.add('otium-waterfall-exit');
+    window.setTimeout(() => {
+      curtain.remove();
+    }, 220);
+  }, 500);
+}
+
+/**
  * Keeps the native chrome in step with the in-app theme:
  * - Windows: native dark/light title bar and resize background.
  * - Android: status/navigation bar colour plus icon appearance via OtiumTheme.
