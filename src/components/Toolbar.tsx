@@ -68,7 +68,7 @@ interface ToolbarProps {
   pageDimensions?: { width: number; height: number };
 }
 
-const THEME_DOTS: Record<ThemeMode, string> = {
+export const THEME_DOTS: Record<ThemeMode, string> = {
   paper: '#d4c5a9',
   amoled: '#10b981',
   eink: '#9ca3af',
@@ -187,11 +187,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
-  const themes = (Object.keys(THEME_DOTS) as ThemeMode[]).map((id) => ({
-    id,
-    label: t.themes[id],
-    dot: THEME_DOTS[id]
-  }));
+  const masterThemesList: { id: ThemeMode; label: string; dot: string }[] = [
+    { id: 'paper', label: t.themes.paper, dot: '#d4c5a9' },
+    { id: 'amber', label: t.themes.amber, dot: '#f59e0b' },
+    { id: 'amoled', label: t.themes.amoled, dot: '#10b981' },
+    { id: 'eink', label: t.themes.eink, dot: '#a3a3a3' }
+  ];
+
+  const themes = masterThemesList;
 
   const isAr = readingDirection === 'rtl';
   const handleLeftStep = () => {

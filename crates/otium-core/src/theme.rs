@@ -1,26 +1,22 @@
 use serde::{Deserialize, Serialize};
 
-/// Otium's 8 OLED-optimized visual themes designed for distraction-free reading.
+/// Otium's 4 refined functional themes designed for distraction-free reading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum ThemeMode {
-    /// Pure deep black (#000000) for OLED battery preservation and minimum light emissions.
+    /// Pure deep black (#000000) for OLED battery preservation and dark environments.
     #[default]
-    Obsidian,
-    /// Deep midnight azure with cool blue tones (#0B132B).
-    MidnightAzure,
-    /// Warm cozy sepia amber (#1C160E) for night reading.
-    WarmAmber,
-    /// Soft velvety purple-tinted obsidian (#140D1F).
-    PureAmethyst,
-    /// Dark ruby crimson (#1A0B0E) for night vision preservation.
-    RubyCrimson,
-    /// Authentic natural tactile paper texture (#F4EEDD background / #2C2621 ink).
-    NaturalPaper,
-    /// Sleek modern crystal diamond steel (#0D1117).
-    CrystalDiamond,
-    /// High-contrast monochromatic black and white (#FFFFFF / #000000) mirroring E-Ink displays.
-    EInk,
+    #[serde(alias = "obsidian", alias = "midnight-azure", alias = "amoled")]
+    OledBlack,
+    /// Warm cozy sepia amber (#18130E) for night reading without blue light.
+    #[serde(alias = "warm-amber", alias = "amber", alias = "pure-amethyst", alias = "ruby-crimson")]
+    WarmSepia,
+    /// Authentic natural tactile paper texture (#F7F4EE background / #1E1C19 ink) for daytime.
+    #[serde(alias = "natural-paper", alias = "paper", alias = "pure")]
+    DayPaper,
+    /// High-contrast monochromatic paper (#ECECEC / #0F0F0F) mirroring E-Ink displays.
+    #[serde(alias = "e-ink", alias = "eink", alias = "crystal-diamond")]
+    EInkMono,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -43,124 +39,64 @@ pub struct ThemePalette {
 impl ThemeMode {
     pub fn palette(&self) -> ThemePalette {
         match self {
-            ThemeMode::Obsidian => ThemePalette {
-                id: ThemeMode::Obsidian,
-                name: "Obsidian Black".into(),
-                name_ar: "حجر السج الأسود".into(),
+            ThemeMode::OledBlack => ThemePalette {
+                id: ThemeMode::OledBlack,
+                name: "OLED Dark".into(),
+                name_ar: "سواد الليل".into(),
                 bg_canvas: "#000000".into(),
-                bg_surface: "#080808".into(),
-                bg_card: "#121212".into(),
+                bg_surface: "#0A0A0C".into(),
+                bg_card: "#141418".into(),
                 text_primary: "#EDEDED".into(),
                 text_secondary: "#A1A1A1".into(),
                 text_muted: "#666666".into(),
-                border: "#1F1F1F".into(),
+                border: "#202026".into(),
                 accent: "#10B981".into(),
-                spine_divider: "#1A1A1A".into(),
+                spine_divider: "#121216".into(),
                 is_dark: true,
             },
-            ThemeMode::MidnightAzure => ThemePalette {
-                id: ThemeMode::MidnightAzure,
-                name: "Midnight Azure".into(),
-                name_ar: "أزرق منتصف الليل".into(),
-                bg_canvas: "#0B132B".into(),
-                bg_surface: "#1C2541".into(),
-                bg_card: "#263252".into(),
-                text_primary: "#E2E8F0".into(),
-                text_secondary: "#94A3B8".into(),
-                text_muted: "#64748B".into(),
-                border: "#2A3859".into(),
-                accent: "#38BDF8".into(),
-                spine_divider: "#1E2A47".into(),
-                is_dark: true,
-            },
-            ThemeMode::WarmAmber => ThemePalette {
-                id: ThemeMode::WarmAmber,
-                name: "Warm Amber".into(),
-                name_ar: "العنبر الدافئ".into(),
-                bg_canvas: "#1A140E".into(),
-                bg_surface: "#261D15".into(),
-                bg_card: "#34281D".into(),
+            ThemeMode::WarmSepia => ThemePalette {
+                id: ThemeMode::WarmSepia,
+                name: "Warm Sepia".into(),
+                name_ar: "السيبيا الدافئ".into(),
+                bg_canvas: "#18130E".into(),
+                bg_surface: "#221B14".into(),
+                bg_card: "#2E241B".into(),
                 text_primary: "#FDE68A".into(),
                 text_secondary: "#D97706".into(),
                 text_muted: "#92400E".into(),
-                border: "#3F3022".into(),
+                border: "#3D3024".into(),
                 accent: "#F59E0B".into(),
-                spine_divider: "#2B2117".into(),
+                spine_divider: "#261D15".into(),
                 is_dark: true,
             },
-            ThemeMode::PureAmethyst => ThemePalette {
-                id: ThemeMode::PureAmethyst,
-                name: "Pure Amethyst".into(),
-                name_ar: "الجمشت النقي".into(),
-                bg_canvas: "#140D1F".into(),
-                bg_surface: "#211533".into(),
-                bg_card: "#2F1E4A".into(),
-                text_primary: "#F3E8FF".into(),
-                text_secondary: "#C084FC".into(),
-                text_muted: "#7E22CE".into(),
-                border: "#3B255C".into(),
-                accent: "#A855F7".into(),
-                spine_divider: "#26183B".into(),
-                is_dark: true,
-            },
-            ThemeMode::RubyCrimson => ThemePalette {
-                id: ThemeMode::RubyCrimson,
-                name: "Ruby Crimson".into(),
-                name_ar: "الياقوت القرمزي".into(),
-                bg_canvas: "#18090C".into(),
-                bg_surface: "#291116".into(),
-                bg_card: "#3A1A21".into(),
-                text_primary: "#FFE4E6".into(),
-                text_secondary: "#FB7185".into(),
-                text_muted: "#BE123C".into(),
-                border: "#48202A".into(),
-                accent: "#F43F5E".into(),
-                spine_divider: "#2E1319".into(),
-                is_dark: true,
-            },
-            ThemeMode::NaturalPaper => ThemePalette {
-                id: ThemeMode::NaturalPaper,
-                name: "Natural Paper".into(),
-                name_ar: "الورق الطبيعي".into(),
-                bg_canvas: "#F4EEDD".into(),
-                bg_surface: "#EBE3CE".into(),
-                bg_card: "#E0D7BF".into(),
-                text_primary: "#2C2621".into(),
-                text_secondary: "#5C5349".into(),
-                text_muted: "#8C8072".into(),
-                border: "#D5C9AE".into(),
-                accent: "#8B5CF6".into(),
-                spine_divider: "#C8BA9C".into(),
+            ThemeMode::DayPaper => ThemePalette {
+                id: ThemeMode::DayPaper,
+                name: "Day Paper".into(),
+                name_ar: "الورق النهاري".into(),
+                bg_canvas: "#F7F4EE".into(),
+                bg_surface: "#EFEAE0".into(),
+                bg_card: "#E5DFD3".into(),
+                text_primary: "#1E1C19".into(),
+                text_secondary: "#4D463E".into(),
+                text_muted: "#786E63".into(),
+                border: "#DAD2C3".into(),
+                accent: "#D97706".into(),
+                spine_divider: "#D2C9B8".into(),
                 is_dark: false,
             },
-            ThemeMode::CrystalDiamond => ThemePalette {
-                id: ThemeMode::CrystalDiamond,
-                name: "Crystal Diamond".into(),
-                name_ar: "الماس البلوري".into(),
-                bg_canvas: "#0D1117".into(),
-                bg_surface: "#161B22".into(),
-                bg_card: "#21262D".into(),
-                text_primary: "#F0F6FC".into(),
-                text_secondary: "#8B949E".into(),
-                text_muted: "#484F58".into(),
-                border: "#30363D".into(),
-                accent: "#58A6FF".into(),
-                spine_divider: "#252B33".into(),
-                is_dark: true,
-            },
-            ThemeMode::EInk => ThemePalette {
-                id: ThemeMode::EInk,
-                name: "E-Ink Monochrome".into(),
-                name_ar: "حبر إلكتروني (E-Ink)".into(),
-                bg_canvas: "#FFFFFF".into(),
-                bg_surface: "#F3F4F6".into(),
-                bg_card: "#E5E7EB".into(),
-                text_primary: "#000000".into(),
-                text_secondary: "#1F2937".into(),
-                text_muted: "#4B5563".into(),
-                border: "#000000".into(),
-                accent: "#000000".into(),
-                spine_divider: "#9CA3AF".into(),
+            ThemeMode::EInkMono => ThemePalette {
+                id: ThemeMode::EInkMono,
+                name: "E-Ink Mono".into(),
+                name_ar: "الحبر الإلكتروني".into(),
+                bg_canvas: "#ECECEC".into(),
+                bg_surface: "#E0E0E0".into(),
+                bg_card: "#D4D4D4".into(),
+                text_primary: "#0F0F0F".into(),
+                text_secondary: "#383838".into(),
+                text_muted: "#616161".into(),
+                border: "#BFBFBF".into(),
+                accent: "#404040".into(),
+                spine_divider: "#B0B0B0".into(),
                 is_dark: false,
             },
         }

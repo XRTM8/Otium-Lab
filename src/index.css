@@ -793,23 +793,54 @@
   background: var(--surface-1);
   border: 1px solid var(--line);
   color: var(--ink);
-  backdrop-filter: blur(18px) saturate(1.3);
-  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.12) inset,
     0 12px 36px -12px rgba(0, 0, 0, 0.32);
 }
 
 .theme-amoled .chrome-surface {
-  background: rgba(10, 10, 10, 0.90);
+  background: rgba(10, 10, 12, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
     0 16px 44px -12px rgba(0, 0, 0, 0.75);
 }
 
+.theme-amber .chrome-surface {
+  background: rgba(26, 18, 12, 0.75);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  backdrop-filter: blur(30px) saturate(1.3);
+  -webkit-backdrop-filter: blur(30px) saturate(1.3);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 14px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+.theme-paper .chrome-surface {
+  background: rgba(248, 243, 233, 0.78);
+  border: 1px solid rgba(45, 38, 30, 0.18);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 12px 32px -10px rgba(45, 38, 30, 0.16);
+}
+
+.theme-eink .chrome-surface {
+  background: rgba(234, 234, 234, 0.82);
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(24px) saturate(1.1);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.50) inset,
+    0 12px 28px -10px rgba(0, 0, 0, 0.20);
+}
+
 .theme-midnight .chrome-surface,
-.theme-amber .chrome-surface,
 .theme-forest .chrome-surface,
 .theme-nordic .chrome-surface {
   box-shadow:

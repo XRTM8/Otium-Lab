@@ -58,12 +58,12 @@ const translations: Record<Language, Translations> = {
   ar: {
     themeLabel: 'بيئة القراءة',
     themes: {
-      paper: 'ورق دافئ',
+      paper: 'ورق نهاري',
       midnight: 'ليلي عميق',
       eink: 'حبر إلكتروني',
-      amber: 'كهرماني هادئ',
+      amber: 'سيبيا دافئ',
       pure: 'أبيض استوديو',
-      amoled: 'أسود مطلق',
+      amoled: 'سواد OLED',
       parchment: 'ورق قديم',
       sakura: 'ساكورا وردي',
       forest: 'غابة هادئة',

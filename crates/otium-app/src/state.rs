@@ -36,7 +36,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            current_theme: ThemeMode::Obsidian,
+            current_theme: ThemeMode::OledBlack,
             view_mode: ViewMode::SinglePage,
             zoom: ZoomLevel::FitWidth,
             rotation: PageRotation::Rotate0,
@@ -70,14 +70,10 @@ impl AppState {
 
     pub fn cycle_theme(&mut self) {
         self.current_theme = match self.current_theme {
-            ThemeMode::Obsidian => ThemeMode::MidnightAzure,
-            ThemeMode::MidnightAzure => ThemeMode::WarmAmber,
-            ThemeMode::WarmAmber => ThemeMode::PureAmethyst,
-            ThemeMode::PureAmethyst => ThemeMode::RubyCrimson,
-            ThemeMode::RubyCrimson => ThemeMode::NaturalPaper,
-            ThemeMode::NaturalPaper => ThemeMode::CrystalDiamond,
-            ThemeMode::CrystalDiamond => ThemeMode::EInk,
-            ThemeMode::EInk => ThemeMode::Obsidian,
+            ThemeMode::OledBlack => ThemeMode::WarmSepia,
+            ThemeMode::WarmSepia => ThemeMode::DayPaper,
+            ThemeMode::DayPaper => ThemeMode::EInkMono,
+            ThemeMode::EInkMono => ThemeMode::OledBlack,
         };
     }
 

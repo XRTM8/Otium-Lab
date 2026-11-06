@@ -1,15 +1,28 @@
 # GitHub Linguist Language Configuration
-# Mark web frontend, build artifacts, and vendor scripts as vendored/generated
-# so that Rust is correctly recognized as the primary language (100% Sovereign Engine)
+# Mark web frontend, build artifacts, android wrappers and vendor scripts as vendored/generated
+# so that Rust is recognized as the sovereign primary language (~100% Rust)
+
+*.ts linguist-vendored
+*.tsx linguist-vendored
+*.js linguist-vendored
+*.mjs linguist-vendored
+*.cjs linguist-vendored
+*.css linguist-vendored
+*.html linguist-vendored
+*.kt linguist-vendored
+*.kts linguist-vendored
+*.xml linguist-vendored
+*.json linguist-generated
+*.lock linguist-generated
 
 src/** linguist-vendored
+src-tauri/gen/** linguist-vendored
+src-tauri/icons/** linguist-vendored
 experiments/** linguist-vendored
 docs/** linguist-generated
 public/** linguist-vendored
 scripts/** linguist-vendored
 winget-manifests/** linguist-vendored
 maintenance/** linguist-vendored
-*.json linguist-generated
-*.lock linguist-generated
-*.mjs linguist-vendored
-*.js linguist-vendored
+fastlane/** linguist-documentation
+assets/** linguist-documentation
