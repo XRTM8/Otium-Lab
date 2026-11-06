@@ -51,7 +51,7 @@ impl Default for AppState {
             is_beam_open: false,
             beam_pin: None,
             is_vault_unlocked: false,
-            status_message: "محرك Rust 2.0 السيادي جاهز".into(),
+            status_message: "Otium جاهز للاستخدام".into(),
             current_tool_color: "#10b981".into(),
             current_tool_width: 3.5,
             current_ink_tool: InkTool::Pen,
@@ -198,8 +198,8 @@ impl AppState {
             }
         }
         (
-            "معمارية Rust النبوية لحوسبة الوسائط والمستندات\n\n• فك ضغط ZIP في الذاكرة عبر محرك zip-rs\n• معالجة XML فائقة السرعة عبر quick-xml\n• حفظ رسومات القلم وتصدير الشروحات لـ SVG بدون تعديل الملف الأصلي".into(),
-            "ملاحظات المحاضر: التأكيد على استقلالية التطبيق بنسبة 100% وعدم إرسال أي بيانات لخوادم سحابية.".into(),
+            "معمارية معالجة الوسائط والمستندات\n\n• فك ضغط وحفظ العروض التقديمية في الذاكرة\n• معالجة XML فائقة السرعة للمستندات\n• حفظ رسومات القلم وتصدير الشروحات لـ SVG بدون تعديل الملف الأصلي".into(),
+            "ملاحظات المحاضر: التأكيد على حماية الخصوصية واستقلالية التطبيق.".into(),
         )
     }
 
@@ -253,14 +253,13 @@ impl AppState {
     pub fn unlock_vault_with_pin(&mut self, pin: &str, storage_path: &Path) -> Result<usize, String> {
         let salt = [0x5au8; 16];
         let key = VaultCrypto::derive_key(pin, &salt)
-            .map_err(|e| format!("Failed to derive sovereign key: {e}"))?;
+            .map_err(|e| format!("Failed to derive key: {e}"))?;
 
         let mut vault = SovereignVault::open(storage_path)
             .map_err(|e| format!("Failed to open vault DB: {e}"))?;
         vault.unlock(key);
 
-        // Put a verification sentinel if empty
-        let _ = vault.put_document("system:manifest", b"Otium Sovereign Vault 2.0 - ChaCha20-Poly1305 Active");
+        let _ = vault.put_document("system:manifest", b"Otium Vault Active");
 
         let doc_count = vault.list_documents().unwrap_or_default().len();
         self.is_vault_unlocked = true;

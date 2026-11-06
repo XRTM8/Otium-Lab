@@ -73,7 +73,7 @@ pub fn main() -> Result<(), slint::PlatformError> {
             if let Some(window) = window_weak.upgrade() {
                 let picked = rfd::FileDialog::new()
                     .add_filter(
-                        "Sovereign Documents & Media",
+                        "Documents & Media",
                         &["pdf", "pptx", "ppsx", "png", "jpg", "jpeg", "webp"],
                     )
                     .pick_file();
@@ -270,7 +270,7 @@ pub fn main() -> Result<(), slint::PlatformError> {
                         window.set_vault_status(
                             format!("الخزينة مفكوكة ومؤمنة بنجاح ({count} مستندات مخزنة)").into(),
                         );
-                        window.set_status_message("تم فك تشفير الخزينة السيادية بنجاح".into());
+                        window.set_status_message("تم فك تشفير الخزينة بنجاح".into());
                     }
                 }
                 Err(err) => {
@@ -306,6 +306,6 @@ pub fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    println!("Otium Sovereign Studio (100% Pure Rust Native Slint Engine) initialized.");
+    println!("Otium Studio initialized.");
     main_window.run()
 }
