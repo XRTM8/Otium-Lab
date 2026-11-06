@@ -493,18 +493,21 @@
 }
 
 /* ==========================================================================
-   Fluid Hardware-Accelerated Theme View Transition (Silky Gradual Crossfade)
+   Fluid Hardware-Accelerated Theme View Transition
+   Radiating organically from the Otium Logo (Top Center) smoothly across the screen
    ========================================================================== */
 ::view-transition-group(root) {
-  animation-duration: 400ms;
+  animation-duration: 480ms;
 }
 
 ::view-transition-old(root) {
-  animation: 400ms cubic-bezier(0.4, 0, 0.2, 1) both themeFadeOut;
+  animation: 480ms cubic-bezier(0.4, 0, 0.2, 1) both themeFadeOut;
+  z-index: 1;
 }
 
 ::view-transition-new(root) {
-  animation: 400ms cubic-bezier(0.4, 0, 0.2, 1) both themeFadeIn;
+  animation: 480ms cubic-bezier(0.4, 0, 0.2, 1) both themeRippleReveal;
+  z-index: 2;
 }
 
 @keyframes themeFadeOut {
@@ -513,20 +516,37 @@
     transform: scale(1);
   }
   to {
-    opacity: 0;
+    opacity: 0.9;
     transform: scale(0.995);
   }
 }
 
-@keyframes themeFadeIn {
+@keyframes themeRippleReveal {
   from {
-    opacity: 0;
-    transform: scale(1.005);
+    clip-path: circle(0% at 50% 115px);
   }
   to {
-    opacity: 1;
-    transform: scale(1);
+    clip-path: circle(160% at 50% 115px);
   }
+}
+
+@keyframes logoCascadeIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -20px, 0) scale(0.94);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.logo-cascade {
+  animation: logoCascadeIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: top center;
+  will-change: transform, opacity, filter;
 }
 
 /* Fallback & smooth internal CSS color transitions */

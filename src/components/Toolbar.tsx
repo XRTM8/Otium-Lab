@@ -191,7 +191,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'paper', label: t.themes.paper, dot: '#d4c5a9' },
     { id: 'amber', label: t.themes.amber, dot: '#f59e0b' },
     { id: 'amoled', label: t.themes.amoled, dot: '#10b981' },
-    { id: 'eink', label: t.themes.eink, dot: '#a3a3a3' }
+    { id: 'eink', label: t.themes.eink, dot: '#9ca3af' },
+    { id: 'midnight', label: t.themes.midnight, dot: '#38bdf8' },
+    { id: 'pure', label: t.themes.pure, dot: '#ffffff' },
+    { id: 'parchment', label: t.themes.parchment, dot: '#d97706' },
+    { id: 'sakura', label: t.themes.sakura, dot: '#f472b6' },
+    { id: 'forest', label: t.themes.forest, dot: '#34d399' },
+    { id: 'nordic', label: t.themes.nordic, dot: '#60a5fa' }
   ];
 
   const themes = masterThemesList;
