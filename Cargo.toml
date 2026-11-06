@@ -9,6 +9,7 @@ members = [
     "crates/otium-vault",
     "crates/otium-beam",
     "crates/otium-app",
+    "src-tauri",
 ]
 
 [workspace.package]

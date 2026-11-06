@@ -1,5 +1,5 @@
 // Otium offline cache is scoped to this application, including /Otium/ on Pages.
-const CACHE_NAME = 'otium-offline-v1.9.15';
+const CACHE_NAME = 'otium-lab-offline-20261101-04';
 const APP_ROOT = self.registration.scope;
 const PRECACHE_URLS = ['./', './index.html', './manifest.webmanifest'].map(path => new URL(path, APP_ROOT).href);
 self.addEventListener('install', event => {
@@ -7,7 +7,7 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('otium-offline-') && key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('otium-lab-offline-') && key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;

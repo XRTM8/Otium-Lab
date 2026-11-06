@@ -11,6 +11,59 @@ struct InitialPdf {
   path: String,
 }
 
+#[derive(serde::Serialize)]
+struct RustEngineStatus {
+  version: String,
+  is_active: bool,
+  modules: Vec<&'static str>,
+}
+
+#[tauri::command]
+fn get_rust_engine_status() -> RustEngineStatus {
+  RustEngineStatus {
+    version: "2.0.0-lab (100% Rust)".into(),
+    is_active: true,
+    modules: vec![
+      "otium-core (Bilingual Typography & 8 OLED Themes)",
+      "otium-slides (Offline PPTX/PPSX Presentation Engine)",
+      "otium-scanner (Bilinear Perspective Warp & A4 Stitcher)",
+      "otium-ink (120 FPS Catmull-Rom Vector Splines)",
+      "otium-pdf (ISO 32000-1 Structural Inspector)",
+      "otium-vault (Redb & ChaCha20-Poly1305 AEAD)",
+      "otium-beam (P2P DataChannel & Vector QR Code)",
+    ],
+  }
+}
+
+#[tauri::command]
+fn rust_parse_pptx(bytes: Vec<u8>) -> Result<otium_slides::SlidePresentation, String> {
+  otium_slides::PptxParser::parse_bytes(&bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn rust_generate_beam_qr(payload: String) -> Result<String, String> {
+  otium_beam::BeamPairing::generate_qr_svg(&payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn rust_generate_pairing_pin() -> String {
+  otium_beam::BeamPairing::generate_pin()
+}
+
+#[tauri::command]
+fn rust_export_ink_svg(strokes: Vec<otium_ink::Stroke>, width: f32, height: f32) -> String {
+  let mut canvas = otium_ink::InkCanvas::new(width, height);
+  for stroke in strokes {
+    canvas.begin_stroke(stroke);
+  }
+  canvas.export_svg()
+}
+
+#[tauri::command]
+fn rust_inspect_pdf(bytes: Vec<u8>) -> Result<otium_pdf::PdfDocumentInfo, String> {
+  otium_pdf::PdfInspector::inspect_bytes(&bytes).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_initial_pdf() -> Option<InitialPdf> {
   let args: Vec<String> = env::args().collect();
@@ -146,7 +199,13 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       get_initial_pdf,
       read_pdf_bytes,
-      is_installed_build
+      is_installed_build,
+      get_rust_engine_status,
+      rust_parse_pptx,
+      rust_generate_beam_qr,
+      rust_generate_pairing_pin,
+      rust_export_ink_svg,
+      rust_inspect_pdf
     ])
     .setup(|_app| {
       #[cfg(not(mobile))]

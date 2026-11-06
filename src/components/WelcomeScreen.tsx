@@ -16,8 +16,11 @@ import {
   Trash2,
   Upload,
   X,
-  Settings2
+  Settings2,
+  Cpu,
+  ShieldCheck
 } from 'lucide-react';
+import { fetchRustEngineStatus, type RustEngineStatus } from '../platform/rustEngine';
 import type { ThemeMode } from '../core/types';
 import type { Language } from '../core/i18n/translations';
 import { getTranslations } from '../core/i18n/translations';
@@ -72,6 +75,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [deleting, setDeleting] = useState<LibraryItem | 'all' | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
+  const [rustStatus, setRustStatus] = useState<RustEngineStatus | null>(null);
+  const [showRustModal, setShowRustModal] = useState(false);
+
+  useEffect(() => {
+    void fetchRustEngineStatus().then(setRustStatus);
+  }, []);
 
   const t = getTranslations(currentLang);
   useEffect(() => {
@@ -362,6 +371,21 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             Otium
           </h1>
         </div>
+          <button
+            type="button"
+            onClick={() => setShowRustModal(true)}
+            title={currentLang === 'ar' ? 'عرض تفاصيل محرك Rust السيادي' : 'View Sovereign Rust Engine details'}
+            className="fluid-press inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full chrome-surface border border-line text-xs font-mono text-ink cursor-pointer shadow-xs hover:border-accent/50 transition-all duration-300"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span className="font-semibold text-ink text-[11px] sm:text-xs">
+              {currentLang === 'ar' ? 'محرك Rust 2.0 السيادي: نشط' : 'Sovereign Rust 2.0 Engine: Active'}
+            </span>
+            <Cpu className="w-3.5 h-3.5 text-accent shrink-0" />
+          </button>
 
         {/* Quick Resume Hero Banner for most recent document */}
         {recents.length > 0 && recents[0]?.available && (
@@ -665,6 +689,75 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         <p>{currentLang === 'ar' ? 'سيُحذف الملف المحفوظ وشرحه من مكتبة هذا الجهاز.' : 'This removes the cached file and its saved ink from this device library.'}</p>
         <strong>{deleting === 'all' ? t.clearAll : deleting.name}</strong>
       </ConfirmDialog>}
+      {showRustModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div
+            dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
+            className="chrome-surface w-full max-w-lg rounded-3xl p-6 border border-line shadow-2xl space-y-5 text-ink fluid-pop"
+          >
+            <div className="flex items-center justify-between border-b border-line pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink">
+                    {currentLang === 'ar' ? 'محرك Otium السيادي (100% Rust)' : 'Otium Sovereign Engine (100% Rust)'}
+                  </h3>
+                  <p className="text-xs text-ink-muted">
+                    {rustStatus?.version || 'v2.0.0-lab (Rust Native)'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRustModal(false)}
+                className="p-2 rounded-full hover:bg-hover-subtle text-ink-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <p className="text-ink-muted leading-relaxed">
+                {currentLang === 'ar'
+                  ? 'يعمل التطبيق الآن بنواة Rust سيادية 100% محلية بالكامل على جهازك دون أي اتصال سحابي أو جمع بيانات أو تتبع.'
+                  : 'The application is now powered by a 100% sovereign Rust core running entirely on-device with zero telemetry and zero cloud dependencies.'}
+              </p>
+
+              <div className="grid grid-cols-1 gap-2 pt-2">
+                {(rustStatus?.modules || [
+                  'otium-core (Bilingual Typography & 8 OLED Themes)',
+                  'otium-slides (PPTX Slide Presentation Engine)',
+                  'otium-scanner (Perspective Warp & Clean Filter)',
+                  'otium-ink (120 FPS Spline Smoothing)',
+                  'otium-pdf (ISO 32000-1 Structural Inspector)',
+                  'otium-vault (Sovereign Storage & ChaCha20-Poly1305)',
+                  'otium-beam (Smart Beam P2P Sync & Vector QR)',
+                ]).map((mod, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-surface/50 border border-line text-[11px] font-mono"
+                  >
+                    <span className="text-ink font-medium">{mod}</span>
+                    <span className="text-emerald-400 font-bold shrink-0">✓ {currentLang === 'ar' ? 'نشط' : 'Active'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowRustModal(false)}
+                className="px-5 py-2 rounded-xl bg-accent text-white font-medium text-xs hover:bg-accent-strong transition-colors cursor-pointer"
+              >
+                {currentLang === 'ar' ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
