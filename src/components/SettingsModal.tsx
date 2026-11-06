@@ -886,9 +886,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onChange={(e) => onDayThemeChange?.(e.target.value as ThemeMode)}
                         className="w-full py-1.5 px-2 rounded-lg bg-surface border border-line text-ink text-xs focus:outline-none focus:border-accent cursor-pointer"
                       >
-                        {['paper', 'pure', 'parchment', 'eink', 'sakura'].map((id) => (
+                        {(['paper', 'amber', 'amoled', 'eink', 'midnight', 'pure', 'parchment', 'sakura', 'forest', 'nordic'] as ThemeMode[]).map((id) => (
                           <option key={id} value={id}>
-                            {t.themes[id as ThemeMode]}
+                            {t.themes[id]}
                           </option>
                         ))}
                       </select>
@@ -904,9 +904,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onChange={(e) => onNightThemeChange?.(e.target.value as ThemeMode)}
                         className="w-full py-1.5 px-2 rounded-lg bg-surface border border-line text-ink text-xs focus:outline-none focus:border-accent cursor-pointer"
                       >
-                        {['amoled', 'midnight', 'forest', 'nordic', 'amber'].map((id) => (
+                        {(['paper', 'amber', 'amoled', 'eink', 'midnight', 'pure', 'parchment', 'sakura', 'forest', 'nordic'] as ThemeMode[]).map((id) => (
                           <option key={id} value={id}>
-                            {t.themes[id as ThemeMode]}
+                            {t.themes[id]}
                           </option>
                         ))}
                       </select>

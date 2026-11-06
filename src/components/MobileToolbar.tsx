@@ -60,15 +60,15 @@ interface MobileToolbarProps {
 
 const THEMES: { id: ThemeMode; dot: string }[] = [
   { id: 'paper', dot: '#d4c5a9' },
+  { id: 'amber', dot: '#f59e0b' },
   { id: 'amoled', dot: '#10b981' },
   { id: 'eink', dot: '#9ca3af' },
   { id: 'midnight', dot: '#38bdf8' },
-  { id: 'amber', dot: '#f59e0b' },
+  { id: 'pure', dot: '#ffffff' },
+  { id: 'parchment', dot: '#d97706' },
   { id: 'sakura', dot: '#f472b6' },
   { id: 'forest', dot: '#34d399' },
-  { id: 'nordic', dot: '#60a5fa' },
-  { id: 'parchment', dot: '#d97706' },
-  { id: 'pure', dot: '#f8fafc' }
+  { id: 'nordic', dot: '#60a5fa' }
 ];
 
 const VIEW_MODES: ViewMode[] = ['continuous', 'dual', 'single'];
@@ -400,11 +400,14 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({
           </div>
 
           <div className="pt-2 border-t border-line">
-            <div className="flex items-center gap-1.5 text-[10px] text-ink-muted font-mono mb-1.5">
-              <Palette className="w-3 h-3" />
-              <span>{t.readingThemesTitle}</span>
+            <div className="flex items-center justify-between text-[10px] text-ink-muted font-mono mb-1.5">
+              <div className="flex items-center gap-1.5">
+                <Palette className="w-3 h-3" />
+                <span>{t.readingThemesTitle}</span>
+              </div>
+              <span className="text-[9px] opacity-70">10</span>
             </div>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               {THEMES.map((item) => {
                 const selected = item.id === theme;
                 return (

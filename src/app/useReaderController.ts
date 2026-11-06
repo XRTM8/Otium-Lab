@@ -92,15 +92,15 @@ const EMPTY_PASSWORD_MODAL: PasswordModalState = {
 
 const THEME_ORDER: ThemeMode[] = [
   'paper',
-  'midnight',
-  'amoled',
-  'forest',
-  'nordic',
-  'parchment',
   'amber',
+  'amoled',
   'eink',
+  'midnight',
   'pure',
-  'sakura'
+  'parchment',
+  'sakura',
+  'forest',
+  'nordic'
 ];
 
 const SAMPLE_DOCUMENT_NAME = 'The Art of Vibe Reading.pdf';

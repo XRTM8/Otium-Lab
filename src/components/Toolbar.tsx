@@ -70,15 +70,15 @@ interface ToolbarProps {
 
 export const THEME_DOTS: Record<ThemeMode, string> = {
   paper: '#d4c5a9',
+  amber: '#f59e0b',
   amoled: '#10b981',
   eink: '#9ca3af',
   midnight: '#38bdf8',
-  amber: '#f59e0b',
+  pure: '#ffffff',
+  parchment: '#d97706',
   sakura: '#f472b6',
   forest: '#34d399',
-  nordic: '#60a5fa',
-  parchment: '#d97706',
-  pure: '#f8fafc'
+  nordic: '#60a5fa'
 };
 
 const VIEW_MODES: { id: ViewMode; icon: React.ReactNode; key: keyof ReturnType<typeof getTranslations> }[] = [
@@ -532,7 +532,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <div className="relative">
             <button
               type="button"
-              onClick={() => setShowThemeMenu((open) => !open)}
+              onClick={() => {
+                setShowThemeMenu((open) => !open);
+                setShowMoreMobile(false);
+              }}
               title={t.themeLabel}
               aria-label={t.themeLabel}
               aria-expanded={showThemeMenu}
@@ -542,32 +545,39 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </button>
 
             {showThemeMenu && (
-              <div className="chrome-surface absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl p-1.5 text-ink fluid-pop shadow-2xl">
-                <div className={`px-2.5 py-1 text-[10px] font-semibold uppercase text-ink-faint ${ar ? 'font-sans' : 'font-mono tracking-wider'}`}>
-                  {t.readingThemesTitle}
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-transparent"
+                  onClick={() => setShowThemeMenu(false)}
+                />
+                <div className="chrome-surface absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl p-1.5 text-ink fluid-pop shadow-2xl">
+                  <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold uppercase text-ink-faint">
+                    <span className={ar ? 'font-sans' : 'font-mono tracking-wider'}>{t.readingThemesTitle}</span>
+                    <span className="font-mono text-[9px] opacity-70">10</span>
+                  </div>
+                  {themes.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => {
+                        onThemeChange(entry.id);
+                        setShowThemeMenu(false);
+                      }}
+                      className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs transition-colors ${
+                        theme === entry.id
+                          ? 'bg-hover text-ink font-medium'
+                          : 'text-ink-muted hover:bg-hover-subtle'
+                      }`}
+                    >
+                      <span
+                        className="h-3.5 w-3.5 rounded-full border border-black/20"
+                        style={{ backgroundColor: entry.dot }}
+                      />
+                      <span className="truncate">{entry.label}</span>
+                    </button>
+                  ))}
                 </div>
-                {themes.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onClick={() => {
-                      onThemeChange(entry.id);
-                      setShowThemeMenu(false);
-                    }}
-                    className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs transition-colors ${
-                      theme === entry.id
-                        ? 'bg-hover text-ink font-medium'
-                        : 'text-ink-muted hover:bg-hover-subtle'
-                    }`}
-                  >
-                    <span
-                      className="h-3.5 w-3.5 rounded-full border border-black/20"
-                      style={{ backgroundColor: entry.dot }}
-                    />
-                    <span className="truncate">{entry.label}</span>
-                  </button>
-                ))}
-              </div>
+              </>
             )}
           </div>
 
@@ -820,22 +830,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </div>
 
             <div className="space-y-1.5 border-t border-line-subtle pt-2">
-              <div className="font-mono text-[10px] text-ink-muted">{t.readingThemesTitle}</div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                {themes.slice(0, 6).map((entry) => {
+              <div className="flex items-center justify-between font-mono text-[10px] text-ink-muted">
+                <span>{t.readingThemesTitle}</span>
+                <span className="text-[9px] opacity-70">10</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {themes.map((entry) => {
                   const selected = theme === entry.id;
                   return (
                     <button
                       key={entry.id}
                       type="button"
+                      title={entry.label}
                       onClick={() => {
                         onThemeChange(entry.id);
                         setShowMoreMobile(false);
                       }}
-                      className={`flex items-center gap-1.5 rounded-xl border px-1.5 py-1.5 text-[10px] transition-colors ${
+                      className={`flex items-center justify-center gap-1.5 rounded-xl border px-1.5 py-1.5 text-[10px] transition-colors ${
                         selected
-                          ? 'border-accent bg-accent/10 text-ink font-medium'
-                          : 'border-line-subtle bg-hover-subtle text-ink-muted'
+                          ? 'border-accent bg-accent/15 text-ink font-semibold'
+                          : 'border-line-subtle bg-hover-subtle text-ink-muted hover:bg-hover'
                       }`}
                     >
                       <span

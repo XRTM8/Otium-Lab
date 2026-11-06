@@ -75,7 +75,7 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
     } catch (cause) { setFeedback(cause instanceof Error ? cause.message : label('تعذر التصدير.', 'Export failed.')); }
     finally { setExporting(false); }
   };
-  const themes: ThemeMode[] = ['paper', 'amoled', 'eink', 'midnight', 'amber', 'sakura', 'forest', 'nordic', 'parchment', 'pure'];
+  const themes: ThemeMode[] = ['paper', 'amber', 'amoled', 'eink', 'midnight', 'pure', 'parchment', 'sakura', 'forest', 'nordic'];
   useEffect(() => { workspace.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => {
     const outside = (event: globalThis.PointerEvent) => { document.querySelectorAll<HTMLDetailsElement>('.otium-media-viewer details[open]').forEach(details => { if (!details.contains(event.target as Node)) details.open = false; }); };
