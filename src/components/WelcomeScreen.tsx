@@ -268,7 +268,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <button
               ref={themeButton}
               aria-expanded={showTopThemeMenu}
-              aria-controls="top-reading-themes"
+              aria-controls="home-reading-themes"
               onClick={() => {
                 triggerHaptic('light');
                 setShowTopThemeMenu((prev) => !prev);
@@ -300,7 +300,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   onClick={() => setShowTopThemeMenu(false)}
                 />
                 <div
-                  id="top-reading-themes"
+                  id="home-reading-themes"
                   dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
                   className="chrome-surface absolute right-0 top-full mt-2 w-48 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
                 >
