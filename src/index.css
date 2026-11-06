@@ -494,39 +494,41 @@
 
 /* ==========================================================================
    Fluid Hardware-Accelerated Theme View Transition
-   Radiating organically from the Otium Logo (Top Center) smoothly across the screen
+   Silky Waterfall Gradient Cascade (From Top to Bottom)
    ========================================================================== */
 ::view-transition-group(root) {
-  animation-duration: 480ms;
+  animation-duration: 520ms;
 }
 
 ::view-transition-old(root) {
-  animation: 480ms cubic-bezier(0.4, 0, 0.2, 1) both themeFadeOut;
+  animation: 520ms cubic-bezier(0.22, 1, 0.36, 1) both themeWaterfallOld;
   z-index: 1;
 }
 
 ::view-transition-new(root) {
-  animation: 480ms cubic-bezier(0.4, 0, 0.2, 1) both themeRippleReveal;
+  animation: 520ms cubic-bezier(0.22, 1, 0.36, 1) both themeWaterfallNew;
   z-index: 2;
 }
 
-@keyframes themeFadeOut {
-  from {
+@keyframes themeWaterfallOld {
+  0% {
     opacity: 1;
-    transform: scale(1);
+    transform: translate3d(0, 0, 0);
   }
-  to {
-    opacity: 0.9;
-    transform: scale(0.995);
+  100% {
+    opacity: 0.94;
+    transform: translate3d(0, 8px, 0);
   }
 }
 
-@keyframes themeRippleReveal {
-  from {
-    clip-path: circle(0% at 50% 115px);
+@keyframes themeWaterfallNew {
+  0% {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.92;
   }
-  to {
-    clip-path: circle(160% at 50% 115px);
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
   }
 }
 

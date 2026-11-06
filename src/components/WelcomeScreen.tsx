@@ -71,7 +71,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const [recents, setRecents] = useState<LibraryItem[]>([]);
   const [libraryError, setLibraryError] = useState('');
   const [libraryLoadFailed, setLibraryLoadFailed] = useState(false);
-  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [showTopThemeMenu, setShowTopThemeMenu] = useState(false);
+  const [showLogoThemePalette, setShowLogoThemePalette] = useState(false);
   const [deleting, setDeleting] = useState<LibraryItem | 'all' | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
@@ -79,9 +80,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const t = getTranslations(currentLang);
 
   useEffect(() => {
-    if (!showThemeMenu) return;
+    if (!showTopThemeMenu && !showLogoThemePalette) return;
     const close = () => {
-      setShowThemeMenu(false);
+      setShowTopThemeMenu(false);
+      setShowLogoThemePalette(false);
       themeButton.current?.focus();
       return true;
     };
@@ -97,7 +99,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       unregister();
       document.removeEventListener('keydown', escape);
     };
-  }, [showThemeMenu]);
+  }, [showTopThemeMenu, showLogoThemePalette]);
 
   const loadRecents = async () => {
     const [docs, media] = await Promise.allSettled([getRecentDocumentsList(), listMedia()]);
@@ -260,52 +262,106 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           )}
         </div>
 
-        {/* Right: Theme Picker Capsule Button with Smooth Cascade Trigger */}
+        {/* Right: Theme Picker Capsule Button with Direct Dropdown Beneath It */}
         <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            ref={themeButton}
-            aria-expanded={showThemeMenu}
-            aria-controls="home-reading-themes"
-            onClick={() => {
-              triggerHaptic('light');
-              setShowThemeMenu((prev) => !prev);
-            }}
-            title={t.themeLabel}
-            className="fluid-press group flex items-center gap-2 px-3.5 py-1.5 rounded-full chrome-surface text-xs cursor-pointer hover:border-line-strong hover:-translate-y-0.5 hover:shadow-md transition-all duration-200"
-          >
-            <span
-              className="w-2.5 h-2.5 rounded-full ring-2 ring-line-strong transition-all duration-300 group-hover:scale-110"
-              style={{ backgroundColor: activeThemeMeta.dot }}
-            />
-            <span className="font-semibold text-[11px] text-ink">
-              {activeThemeMeta.label}
-            </span>
-            <Palette className="w-3.5 h-3.5 text-ink-muted group-hover:text-ink transition-colors" />
-            <ChevronDown
-              className={`w-3 h-3 text-ink-muted transition-transform duration-300 ${
-                showThemeMenu ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
+          <div className="relative">
+            <button
+              ref={themeButton}
+              aria-expanded={showTopThemeMenu}
+              aria-controls="top-reading-themes"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowTopThemeMenu((prev) => !prev);
+                setShowLogoThemePalette(false);
+              }}
+              title={t.themeLabel}
+              className="fluid-press group flex items-center gap-2 px-3.5 py-1.5 rounded-full chrome-surface text-xs cursor-pointer hover:border-line-strong hover:-translate-y-0.5 hover:shadow-md transition-all duration-200"
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full ring-2 ring-line-strong transition-all duration-300 group-hover:scale-110"
+                style={{ backgroundColor: activeThemeMeta.dot }}
+              />
+              <span className="font-semibold text-[11px] text-ink">
+                {activeThemeMeta.label}
+              </span>
+              <Palette className="w-3.5 h-3.5 text-ink-muted group-hover:text-ink transition-colors" />
+              <ChevronDown
+                className={`w-3 h-3 text-ink-muted transition-transform duration-300 ${
+                  showTopThemeMenu ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {/* Compact Dropdown Menu directly under the top button like before */}
+            {showTopThemeMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowTopThemeMenu(false)}
+                />
+                <div
+                  id="top-reading-themes"
+                  dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
+                  className="chrome-surface absolute right-0 top-full mt-2 w-48 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
+                >
+                  <div className={`text-[10px] uppercase px-2.5 py-1 text-ink-faint font-semibold tracking-wider ${currentLang === 'ar' ? 'font-sans' : 'font-mono'}`}>
+                    {t.readingThemesTitle}
+                  </div>
+                  <div className="space-y-0.5 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-line-strong scrollbar-track-transparent p-0.5">
+                    {allThemes.map((th) => {
+                      const isSelected = currentTheme === th.id;
+                      return (
+                        <button
+                          key={th.id}
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            onThemeChange(th.id);
+                            setShowTopThemeMenu(false);
+                          }}
+                          className={`fluid-press w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-colors duration-150 cursor-pointer ${
+                            isSelected
+                              ? 'bg-hover-strong text-ink font-semibold border border-line'
+                              : 'hover:bg-hover-subtle text-ink-muted hover:text-ink border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-3 h-3 rounded-full border border-black/25 shadow-xs shrink-0"
+                              style={{ backgroundColor: th.dot }}
+                            />
+                            <span className="text-xs font-medium">{th.label}</span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-accent shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Main Content Stage */}
       <div className="relative max-w-xl w-full flex flex-col items-center text-center space-y-5 z-10 pt-2 sm:pt-4">
 
-        {/* Brand Header: Interactive Otium Logo (Clicking opens theme cascade directly from logo) */}
+        {/* Brand Header: Interactive Otium Logo (Clicking opens central 10-theme showcase tray) */}
         <div className="flex flex-col items-center space-y-3">
           <div
             role="button"
             tabIndex={0}
             onClick={() => {
               triggerHaptic('light');
-              setShowThemeMenu((prev) => !prev);
+              setShowLogoThemePalette((prev) => !prev);
+              setShowTopThemeMenu(false);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                setShowThemeMenu((prev) => !prev);
+                setShowLogoThemePalette((prev) => !prev);
+                setShowTopThemeMenu(false);
               }
             }}
             title={t.themeLabel}
@@ -313,7 +369,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             className="p-4 rounded-3xl bg-surface/50 border border-line/50 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer group relative"
           >
             <OtiumLogo theme={currentTheme} size={46} />
-            <span className="absolute -bottom-2.5 inset-x-0 mx-auto w-max px-2 py-0.5 rounded-full bg-surface/90 border border-line text-[10px] text-ink-muted font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none shadow-sm flex items-center gap-1">
+            <span className="absolute -bottom-2.5 inset-x-0 mx-auto w-max px-2.5 py-0.5 rounded-full bg-surface border border-line text-[10px] text-ink-muted font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none shadow-sm flex items-center gap-1">
               <Palette className="w-2.5 h-2.5 text-accent" />
               <span>{t.themeLabel}</span>
             </span>
@@ -331,15 +387,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </div>
         </div>
 
-        {/* Animated 10-Theme Palette Cascading Directly Downward from Otium Logo */}
-        {showThemeMenu && (
+        {/* Central 10-Theme Showcase Tray: Cascades Downward from the Logo */}
+        {showLogoThemePalette && (
           <>
             <div
               className="fixed inset-0 z-30 transition-opacity duration-300"
-              onClick={() => setShowThemeMenu(false)}
+              onClick={() => setShowLogoThemePalette(false)}
             />
             <div
-              id="home-reading-themes"
+              id="logo-reading-themes"
               dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
               className="w-full max-w-lg p-3.5 rounded-3xl chrome-surface shadow-2xl backdrop-blur-3xl border border-line logo-cascade flex flex-col gap-2.5 z-40 relative"
             >
@@ -353,14 +409,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setShowThemeMenu(false)}
+                  onClick={() => setShowLogoThemePalette(false)}
                   className="fluid-press p-1 rounded-xl hover:bg-hover text-ink-muted hover:text-ink cursor-pointer transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {/* Responsive Grid displaying all 10 themes with tactile feedback */}
+              {/* Responsive 5x2 Grid displaying all 10 themes with tactile feedback */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1">
                 {allThemes.map((th) => {
                   const isSelected = currentTheme === th.id;
@@ -371,7 +427,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                       onClick={() => {
                         triggerHaptic('light');
                         onThemeChange(th.id);
-                        setShowThemeMenu(false);
+                        setShowLogoThemePalette(false);
                       }}
                       className={`fluid-press group flex items-center sm:flex-col justify-between sm:justify-center gap-2 p-2.5 rounded-2xl text-xs transition-all duration-200 cursor-pointer ${
                         isSelected
