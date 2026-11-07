@@ -1,23 +1,21 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { labVersion } from './lab-version.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
-
-const version = packageJson.version;
-const labMatch = version.match(/lab\.?(\d+)/i);
-const buildNum = labMatch ? String(labMatch[1]).padStart(2, '0') : '07';
-const labTag = `lab-${buildNum}`;
+const info = labVersion();
+const labTag = `lab-${info.label}`;
+const version = info.android;
 
 const latestData = {
   version,
   tag_name: labTag,
-  notes: `Otium Lab ${labTag} — Instant zero-flash startup, razor-sharp PDF zoom, and automatic in-app updates.`,
+  notes: `Otium Lab ${labTag} — Butter-smooth pinch-to-zoom, rock-solid motion stability, razor-sharp rendering, and instant zero-flash startup.`,
   pub_date: new Date().toISOString(),
   assets: {
     androidApk: {
-      url: `https://github.com/XRTM8/Otium-Lab/releases/download/${labTag}/Otium-Lab-${buildNum}-arm64-v8a.apk`
+      url: `https://github.com/XRTM8/Otium-Lab/releases/download/${labTag}/Otium-Lab-${info.label}-arm64-v8a.apk`
     }
   }
 };

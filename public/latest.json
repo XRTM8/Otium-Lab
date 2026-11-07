@@ -1,11 +1,11 @@
 {
-  "version": "1.9.16",
-  "tag_name": "lab-07",
-  "notes": "Otium Lab lab-07 — Instant zero-flash startup, razor-sharp PDF zoom, and automatic in-app updates.",
-  "pub_date": "2026-11-07T10:35:36.441Z",
+  "version": "1.9.16-lab.8",
+  "tag_name": "lab-08",
+  "notes": "Otium Lab lab-08 — Butter-smooth pinch-to-zoom, rock-solid motion stability, razor-sharp rendering, and instant zero-flash startup.",
+  "pub_date": "2026-11-07T12:11:44.328Z",
   "assets": {
     "androidApk": {
-      "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-07/Otium-Lab-07-arm64-v8a.apk"
+      "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-08/Otium-Lab-08-arm64-v8a.apk"
     }
   }
 }

@@ -232,8 +232,8 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   // The PDF page's unscaled size is fixed; scaling it synchronously keeps
   // gesture zoom anchored to the fingers instead of waiting for a render.
   const [pageSize, setPageSize] = useState<{ width: number; height: number }>(() => ({
-    width: 600,
-    height: 600 / (baseAspectRatio || 0.707)
+    width: 595,
+    height: Math.round(595 / (baseAspectRatio || 0.707))
   }));
 
   useEffect(() => {
@@ -349,11 +349,11 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         if (cancelled || !canvasRef.current) return;
 
         const dpr = getCanvasPixelRatio();
-        // Generous bitmap ceiling (10M pixels) keeps text razor-sharp when zooming in to 250%+ on Retina displays
-        const MAX_CANVAS_PIXELS = 10_000_000;
+        // Generous bitmap ceiling (8M pixels = 4K UHD) keeps text razor-sharp without memory exhaustion
+        const MAX_CANVAS_PIXELS = 8_000_000;
         const rawPixels = (pageSize.width * scale * dpr) * (pageSize.height * scale * dpr);
         const dprAdjustment = rawPixels > MAX_CANVAS_PIXELS ? Math.sqrt(MAX_CANVAS_PIXELS / rawPixels) : 1;
-        const effectiveDpr = Math.max(1.5, dpr * dprAdjustment);
+        const effectiveDpr = Math.max(1.5, Math.min(dpr, 2.5 * dprAdjustment));
 
         const viewport = page.getViewport({ scale: scale * effectiveDpr });
         const cssViewport = page.getViewport({ scale });

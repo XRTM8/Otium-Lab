@@ -12,6 +12,7 @@ import { triggerHaptic } from '../core/utils/haptics';
 import { useDocumentInteraction } from './DocumentInk';
 import { useTeaching } from './TeachingContext';
 import { useChromeTap } from '../core/reader/useChromeTap';
+import { pinchScale } from '../core/reader/pinch';
 
 interface PageSlotProps {
   pageNum: number;
@@ -57,8 +58,6 @@ const PageSlotView: React.FC<PageSlotProps> = ({
       style={{
         width: `${standardWidth}px`,
         height: `${standardHeight}px`,
-        contentVisibility: 'auto',
-        containIntrinsicSize: `${standardWidth}px ${standardHeight}px`,
         contain: 'layout paint'
       }}
       className="pdf-page-frame my-4 sm:my-5 mx-auto flex items-center justify-center"
@@ -171,6 +170,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
   // Interactive precision scrubber state
   const [scrubState, setScrubState] = useState<{ page: number; x: number } | null>(null);
   const isScrubbingRef = useRef(false);
+  const isPinchingRef = useRef(false);
 
   const calculateScrubPage = (clientX: number) => {
     if (typeof window === 'undefined') return { page: 1, x: clientX };
@@ -241,7 +241,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
 
     const measure = () => {
       scrollFrameRef.current = null;
-      if (numPages === 0) return;
+      if (numPages === 0 || isPinchingRef.current) return;
 
       const approxSlotHeight = Math.max(100, (basePageSize?.height || 842) * zoom + 32);
       const estimatedPage = Math.max(
@@ -339,15 +339,84 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     const container = scrollContainerRef.current;
     if (!container) return;
     container.style.touchAction = 'pan-x pan-y';
-    // Prevent browser native viewport pinch zoom on any 2-finger gesture to eliminate jitter/conflict with custom zoom
-    const pinch = (event: TouchEvent) => {
-      if (event.touches.length > 1) {
-        event.preventDefault();
+
+    let startDist = 0;
+    let startZoom = zoom;
+    let rafId: number | null = null;
+    let targetZoom = zoom;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        if (dist > 10) {
+          startDist = dist;
+          startZoom = zoom;
+          isPinchingRef.current = true;
+          const focusX = (t0.clientX + t1.clientX) / 2;
+          const focusY = (t0.clientY + t1.clientY) / 2;
+          reader.captureZoomAnchor(focusX, focusY);
+        }
       }
     };
-    container.addEventListener('touchmove', pinch, { passive: false });
-    return () => container.removeEventListener('touchmove', pinch);
-  }, [doc, scrollContainerRef]);
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && isPinchingRef.current && startDist > 0) {
+        e.preventDefault();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        const focusX = (t0.clientX + t1.clientX) / 2;
+        const focusY = (t0.clientY + t1.clientY) / 2;
+        reader.captureZoomAnchor(focusX, focusY);
+
+        const minZ = reader.minZoom ?? 0.2;
+        const maxZ = reader.maxZoom ?? 4.0;
+        const newZoom = pinchScale(startZoom, startDist, dist, minZ, maxZ);
+        if (Number.isFinite(newZoom) && newZoom > 0 && Math.abs(newZoom - targetZoom) >= 0.006) {
+          targetZoom = newZoom;
+          if (rafId === null) {
+            rafId = requestAnimationFrame(() => {
+              rafId = null;
+              reader.setZoom(targetZoom);
+            });
+          }
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (isPinchingRef.current && e.touches.length < 2) {
+        isPinchingRef.current = false;
+        startDist = 0;
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        if (targetZoom > 0 && Math.abs(targetZoom - zoom) >= 0.006) {
+          reader.setZoom(targetZoom);
+        }
+        window.setTimeout(() => {
+          reader.clearZoomAnchor();
+        }, 200);
+      }
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: false });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: false });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [doc, zoom, reader]);
 
   const continuousPages = useMemo(
     () => Array.from({ length: numPages }, (_, index) => index + 1),

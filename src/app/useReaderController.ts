@@ -182,7 +182,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   const [docId, setDocId] = useState('');
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [zoom, setZoom] = useState(1.15);
+  const [zoom, setZoomInternal] = useState(1.15);
   const pinchFrameRef = useRef<number | null>(null);
   const pendingPinchZoom = useRef<number | null>(null);
   useEffect(() => () => { if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current); }, []);
@@ -408,25 +408,35 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     [viewMode]
   );
 
-  /** Remembers which point of which page sits under the user's fingers. */
+  /** Remembers which point sits under the user's fingers or viewport center. */
   const captureZoomAnchor = useCallback((clientX: number, clientY: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
     const target = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
     const page = target?.closest<HTMLElement>('[data-pdf-page]');
-    if (!page) {
-      zoomAnchorRef.current = null;
-      zoomFocusRef.current = null;
-      return;
+
+    if (page && page.isConnected) {
+      const rect = page.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        zoomAnchorRef.current = {
+          element: page,
+          fractionX: (clientX - rect.left) / rect.width,
+          fractionY: (clientY - rect.top) / rect.height
+        };
+        zoomFocusRef.current = { x: clientX, y: clientY };
+        return;
+      }
     }
-    const rect = page.getBoundingClientRect();
-    if (!rect.width || !rect.height) {
-      zoomAnchorRef.current = null;
-      zoomFocusRef.current = null;
-      return;
-    }
+
+    // Container content-based fallback for margins and between-page pinch
+    const containerRect = container.getBoundingClientRect();
+    const focusX = clientX - containerRect.left;
+    const focusY = clientY - containerRect.top;
     zoomAnchorRef.current = {
-      element: page,
-      fractionX: (clientX - rect.left) / rect.width,
-      fractionY: (clientY - rect.top) / rect.height
+      element: container,
+      fractionX: (container.scrollLeft + focusX) / Math.max(1, container.scrollWidth),
+      fractionY: (container.scrollTop + focusY) / Math.max(1, container.scrollHeight)
     };
     zoomFocusRef.current = { x: clientX, y: clientY };
   }, []);
@@ -443,25 +453,51 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     captureZoomAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }, [captureZoomAnchor]);
 
+  const setZoom = useCallback(
+    (value: number | ((current: number) => number)) => {
+      if (!zoomAnchorRef.current) {
+        captureViewportCenterAnchor();
+      }
+      setZoomInternal(value);
+    },
+    [captureViewportCenterAnchor]
+  );
+
   // Zooming changes page geometry. Keep the anchored page point under the
   // gesture focus so pinch and double-tap feel spatial instead of jumping.
   useLayoutEffect(() => {
     const anchor = zoomAnchorRef.current;
     const focus = zoomFocusRef.current;
     const container = scrollContainerRef.current;
-    if (!anchor || !focus || !container || !anchor.element.isConnected) return;
+    if (!anchor || !focus || !container) return;
 
-    const rect = anchor.element.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+    if (anchor.element !== container && anchor.element.isConnected) {
+      const rect = anchor.element.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const targetX = rect.left + anchor.fractionX * rect.width;
+        const targetY = rect.top + anchor.fractionY * rect.height;
+        const deltaX = targetX - focus.x;
+        const deltaY = targetY - focus.y;
 
-    const targetX = rect.left + anchor.fractionX * rect.width;
-    const targetY = rect.top + anchor.fractionY * rect.height;
-    const deltaX = targetX - focus.x;
-    const deltaY = targetY - focus.y;
+        if (Math.abs(deltaX) > 0.5) container.scrollLeft += deltaX;
+        if (Math.abs(deltaY) > 0.5) container.scrollTop += deltaY;
+        return;
+      }
+    }
 
-    // Guard against erratic jumps by bounding deltas within reasonable screen limits
-    if (Math.abs(deltaX) > 1 && Math.abs(deltaX) < 1000) container.scrollLeft += deltaX;
-    if (Math.abs(deltaY) > 1 && Math.abs(deltaY) < 1000) container.scrollTop += deltaY;
+    // Container fallback anchoring
+    const containerRect = container.getBoundingClientRect();
+    const focusX = focus.x - containerRect.left;
+    const focusY = focus.y - containerRect.top;
+    const targetScrollLeft = anchor.fractionX * container.scrollWidth - focusX;
+    const targetScrollTop = anchor.fractionY * container.scrollHeight - focusY;
+
+    if (Math.abs(container.scrollLeft - targetScrollLeft) > 0.5) {
+      container.scrollLeft = targetScrollLeft;
+    }
+    if (Math.abs(container.scrollTop - targetScrollTop) > 0.5) {
+      container.scrollTop = targetScrollTop;
+    }
   }, [zoom]);
 
   useEffect(() => {
@@ -1833,7 +1869,9 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     pinchStartDistRef.current = null;
 
     const anchor = zoomAnchorRef.current;
-    requestAnimationFrame(() => { if (zoomAnchorRef.current === anchor) clearZoomAnchor(); });
+    window.setTimeout(() => {
+      if (zoomAnchorRef.current === anchor) clearZoomAnchor();
+    }, 200);
   };
 
   const handleTouchCancel = () => {
@@ -2168,6 +2206,8 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     minZoom: getMinZoom(),
     maxZoom: getMaxZoom(),
     setZoom,
+    captureZoomAnchor,
+    clearZoomAnchor,
     theme,
     themeSchedule,
     dayTheme,
