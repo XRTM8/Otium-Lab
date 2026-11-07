@@ -496,9 +496,16 @@
 
 /* ==========================================================================
    Otium Sovereign Theme Waterfall (View Transitions API)
-   Silky top-to-bottom live page transformation using polygon clip-path.
+   Silky top-to-bottom live page transformation using polygon / inset clip-path.
    Zero content occlusion, zero blank cheap block, 60/120 FPS compositor.
    ========================================================================== */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: none !important;
+}
+
 ::view-transition-image-pair(root) {
   isolation: isolate;
 }
@@ -514,16 +521,16 @@
 }
 
 ::view-transition-new(root) {
-  animation: 420ms cubic-bezier(0.16, 1, 0.3, 1) both otiumThemeWaterfall;
+  animation: 480ms cubic-bezier(0.16, 1, 0.3, 1) both otiumThemeWaterfall;
   z-index: 2;
 }
 
 @keyframes otiumThemeWaterfall {
   0% {
-    clip-path: polygon(0% 0%, 100% 0%, 100% 0%, 0% 0%);
+    clip-path: polygon(0 0, 100% 0, 100% 0.1%, 0 0.1%);
   }
   100% {
-    clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
   }
 }
 

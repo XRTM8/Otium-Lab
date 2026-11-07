@@ -67,17 +67,53 @@ export function triggerThemeTransition(_theme: ThemeMode, updateThemeCallback: (
   }
 
   const doc = document as Document & {
-    startViewTransition?: (cb: () => void | Promise<void>) => unknown;
+    startViewTransition?: (cb: () => void | Promise<void>) => {
+      ready?: Promise<void>;
+      finished?: Promise<void>;
+    };
   };
 
   if (typeof doc.startViewTransition === 'function') {
     try {
-      doc.startViewTransition(() => {
+      // Instantly freeze background transitions so the new DOM snapshot captures 100% final colors
+      document.documentElement.classList.add('theme-transitioning');
+
+      const transition = doc.startViewTransition(() => {
         updateThemeCallback();
       });
+
+      if (transition && typeof transition.ready?.then === 'function') {
+        transition.ready.then(() => {
+          try {
+            document.documentElement.animate(
+              {
+                clipPath: [
+                  'inset(0% 0% 100% 0%)',
+                  'inset(0% 0% 0% 0%)'
+                ]
+              },
+              {
+                duration: 480,
+                easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                pseudoElement: '::view-transition-new(root)'
+              }
+            );
+          } catch {
+            // CSS otiumThemeWaterfall fallback is active
+          }
+        });
+
+        transition.finished?.finally(() => {
+          document.documentElement.classList.remove('theme-transitioning');
+        });
+      } else {
+        window.setTimeout(() => {
+          document.documentElement.classList.remove('theme-transitioning');
+        }, 500);
+      }
       return;
     } catch {
-      // Fallback if view transition rejected
+      document.documentElement.classList.remove('theme-transitioning');
     }
   }
 
