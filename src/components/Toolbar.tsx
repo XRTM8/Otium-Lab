@@ -550,32 +550,34 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                   className="fixed inset-0 z-40 bg-transparent"
                   onClick={() => setShowThemeMenu(false)}
                 />
-                <div className="chrome-surface absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl p-1.5 text-ink fluid-pop shadow-2xl">
-                  <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold uppercase text-ink-faint">
+                <div className="chrome-surface absolute end-0 top-full z-50 mt-2 w-64 rounded-2xl p-2.5 text-ink fluid-pop shadow-2xl border border-line">
+                  <div className="flex items-center justify-between px-1.5 pb-2 text-[10px] font-semibold uppercase text-ink-faint border-b border-line-subtle mb-2">
                     <span className={ar ? 'font-sans' : 'font-mono tracking-wider'}>{t.readingThemesTitle}</span>
                     <span className="font-mono text-[9px] opacity-70">10</span>
                   </div>
-                  {themes.map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      onClick={() => {
-                        onThemeChange(entry.id);
-                        setShowThemeMenu(false);
-                      }}
-                      className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs transition-colors ${
-                        theme === entry.id
-                          ? 'bg-hover text-ink font-medium'
-                          : 'text-ink-muted hover:bg-hover-subtle'
-                      }`}
-                    >
-                      <span
-                        className="h-3.5 w-3.5 rounded-full border border-black/20"
-                        style={{ backgroundColor: entry.dot }}
-                      />
-                      <span className="truncate">{entry.label}</span>
-                    </button>
-                  ))}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {themes.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => {
+                          onThemeChange(entry.id);
+                          setShowThemeMenu(false);
+                        }}
+                        className={`flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs transition-colors ${
+                          theme === entry.id
+                            ? 'bg-hover text-ink font-medium border border-line shadow-xs'
+                            : 'text-ink-muted hover:bg-hover-subtle hover:text-ink border border-transparent'
+                        }`}
+                      >
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full border border-black/20"
+                          style={{ backgroundColor: entry.dot }}
+                        />
+                        <span className="truncate text-[11px]">{entry.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </>
             )}

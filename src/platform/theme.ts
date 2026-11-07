@@ -50,24 +50,20 @@ export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void)
     return;
   }
 
-  // In test environments, execute immediately without animation
-  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
-    onMidpoint?.();
-    return;
-  }
+  // In test environments (Vitest / Happy-DOM), execute synchronously
+  const isTestEnv =
+    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') ||
+    Boolean(typeof window !== 'undefined' && (window as unknown as { __VITEST__?: boolean }).__VITEST__) ||
+    !document.body;
 
-  const prefersReduced =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-
-  if (prefersReduced) {
+  if (isTestEnv) {
     onMidpoint?.();
     return;
   }
 
   const bg = getThemeBackground(toTheme);
 
-  // Remove any previous curtain
+  // Cleanly remove any existing curtain instance
   const old = document.getElementById('otium-theme-curtain');
   if (old) old.remove();
 
@@ -86,25 +82,18 @@ export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void)
   curtain.appendChild(sheet);
   document.body.appendChild(curtain);
 
-  // Force reflow so initial -100% position is committed
-  void sheet.offsetHeight;
-
-  requestAnimationFrame(() => {
-    sheet.classList.add('otium-curtain-drop');
-  });
-
-  // Switch underlying theme halfway through descent (~160ms)
+  // Switch underlying theme halfway through descent (~220ms)
   window.setTimeout(() => {
     onMidpoint?.();
-  }, 160);
+  }, 220);
 
-  // Fade out curtain once it covers viewport (~440ms)
+  // Fade out curtain once it completely covers viewport (~460ms)
   window.setTimeout(() => {
     curtain.classList.add('otium-curtain-fade');
     window.setTimeout(() => {
       curtain.remove();
     }, 240);
-  }, 440);
+  }, 460);
 }
 
 // Backward compatibility alias

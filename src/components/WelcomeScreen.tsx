@@ -72,7 +72,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const [libraryError, setLibraryError] = useState('');
   const [libraryLoadFailed, setLibraryLoadFailed] = useState(false);
   const [showTopThemeMenu, setShowTopThemeMenu] = useState(false);
-  const [showLogoThemePalette, setShowLogoThemePalette] = useState(false);
   const [deleting, setDeleting] = useState<LibraryItem | 'all' | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
@@ -80,10 +79,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const t = getTranslations(currentLang);
 
   useEffect(() => {
-    if (!showTopThemeMenu && !showLogoThemePalette) return;
+    if (!showTopThemeMenu) return;
     const close = () => {
       setShowTopThemeMenu(false);
-      setShowLogoThemePalette(false);
       themeButton.current?.focus();
       return true;
     };
@@ -99,7 +97,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       unregister();
       document.removeEventListener('keydown', escape);
     };
-  }, [showTopThemeMenu, showLogoThemePalette]);
+  }, [showTopThemeMenu]);
 
   const loadRecents = async () => {
     const [docs, media] = await Promise.allSettled([getRecentDocumentsList(), listMedia()]);
@@ -272,7 +270,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               onClick={() => {
                 triggerHaptic('light');
                 setShowTopThemeMenu((prev) => !prev);
-                setShowLogoThemePalette(false);
               }}
               title={t.themeLabel}
               className="fluid-press group flex items-center gap-2 px-3.5 py-1.5 rounded-full chrome-surface text-xs cursor-pointer hover:border-line-strong hover:-translate-y-0.5 hover:shadow-md transition-all duration-200"
@@ -302,7 +299,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <div
                   id="home-reading-themes"
                   dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
-                  className="chrome-surface absolute right-0 top-full mt-2 w-48 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
+                  className="chrome-surface absolute end-0 top-full mt-2 w-48 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
                 >
                   <div className={`text-[10px] uppercase px-2.5 py-1 text-ink-faint font-semibold tracking-wider ${currentLang === 'ar' ? 'font-sans' : 'font-mono'}`}>
                     {t.readingThemesTitle}
@@ -347,32 +344,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       {/* Main Content Stage */}
       <div className="relative max-w-xl w-full flex flex-col items-center text-center space-y-5 z-10 pt-2 sm:pt-4">
 
-        {/* Brand Header: Interactive Otium Logo (Clicking opens central 10-theme showcase tray) */}
+        {/* Brand Header: Sovereign Otium Emblem */}
         <div className="flex flex-col items-center space-y-3">
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => {
-              triggerHaptic('light');
-              setShowLogoThemePalette((prev) => !prev);
-              setShowTopThemeMenu(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setShowLogoThemePalette((prev) => !prev);
-                setShowTopThemeMenu(false);
-              }
-            }}
-            title={t.themeLabel}
-            aria-label={t.themeLabel}
-            className="p-4 rounded-3xl bg-surface/50 border border-line/50 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer group relative"
-          >
+          <div className="p-4 rounded-3xl bg-surface/50 border border-line/50 shadow-xl backdrop-blur-2xl transition-all duration-300 hover:scale-105 pointer-events-none select-none">
             <OtiumLogo theme={currentTheme} size={46} />
-            <span className="absolute -bottom-2.5 inset-x-0 mx-auto w-max px-2.5 py-0.5 rounded-full bg-surface border border-line text-[10px] text-ink-muted font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none shadow-sm flex items-center gap-1">
-              <Palette className="w-2.5 h-2.5 text-accent" />
-              <span>{t.themeLabel}</span>
-            </span>
           </div>
 
           <div className="space-y-1">
@@ -381,75 +356,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </h1>
             <p className="text-xs sm:text-sm font-medium text-ink-muted">
               {currentLang === 'ar'
-                ? 'قارئ هادئ ومختبر مستقل للوسائط والمستندات'
+                ? 'قارئ هادئ ومستقل للوسائط والمستندات'
                 : 'A calm sovereign reader and media workspace'}
             </p>
           </div>
         </div>
-
-        {/* Central 10-Theme Showcase Tray: Cascades Downward from the Logo */}
-        {showLogoThemePalette && (
-          <>
-            <div
-              className="fixed inset-0 z-30 transition-opacity duration-300"
-              onClick={() => setShowLogoThemePalette(false)}
-            />
-            <div
-              id="logo-reading-themes"
-              dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
-              className="w-full max-w-lg p-3.5 rounded-3xl chrome-surface shadow-2xl backdrop-blur-3xl border border-line logo-cascade flex flex-col gap-2.5 z-40 relative"
-            >
-              <div className="flex items-center justify-between px-2.5 py-1 text-xs border-b border-line/40 text-ink-muted">
-                <span className="font-bold text-ink flex items-center gap-1.5">
-                  <Palette className="w-3.5 h-3.5 text-accent" />
-                  <span>{t.readingThemesTitle}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface border border-line font-mono text-ink-muted">
-                    {allThemes.length}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowLogoThemePalette(false)}
-                  className="fluid-press p-1 rounded-xl hover:bg-hover text-ink-muted hover:text-ink cursor-pointer transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Responsive 5x2 Grid displaying all 10 themes with tactile feedback */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1">
-                {allThemes.map((th) => {
-                  const isSelected = currentTheme === th.id;
-                  return (
-                    <button
-                      key={th.id}
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        onThemeChange(th.id);
-                        setShowLogoThemePalette(false);
-                      }}
-                      className={`fluid-press group flex items-center sm:flex-col justify-between sm:justify-center gap-2 p-2.5 rounded-2xl text-xs transition-all duration-200 cursor-pointer ${
-                        isSelected
-                          ? 'bg-hover-strong text-ink font-bold border border-accent/60 shadow-xs ring-1 ring-accent/30'
-                          : 'hover:bg-hover-subtle text-ink-muted hover:text-ink border border-transparent hover:border-line'
-                      }`}
-                    >
-                      <span
-                        className="w-4 h-4 rounded-full border border-black/25 shadow-xs shrink-0 transition-transform duration-200 group-hover:scale-115"
-                        style={{ backgroundColor: th.dot }}
-                      />
-                      <span className="text-[11px] truncate">{th.label}</span>
-                      {isSelected && (
-                        <Check className="w-3 h-3 text-accent shrink-0 sm:hidden" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
 
         {/* Quick Resume Hero: Frosted Glass Banner with interactive elevation */}
         {recents.length > 0 && recents[0]?.available && (
