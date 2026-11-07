@@ -41,37 +41,74 @@ export function applyDomTheme(theme: ThemeMode): void {
 }
 
 /**
- * Triggers a hardware-accelerated top-to-bottom waterfall curtain
- * when View Transitions API is unavailable or disabled.
+ * Physical Sovereign Curtain Transition (بردة الثيمات الملكية)
+ * Hardware-accelerated top-to-bottom descending sheet with glowing edge.
  */
-export function triggerThemeWaterfall(theme: ThemeMode): void {
-  if (typeof document === 'undefined') return;
-  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void): void {
+  if (typeof document === 'undefined') {
+    onMidpoint?.();
+    return;
+  }
 
-  const bg = getThemeBackground(theme);
+  // In test environments, execute immediately without animation
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+    onMidpoint?.();
+    return;
+  }
 
-  const existing = document.getElementById('otium-waterfall-fallback');
-  if (existing) existing.remove();
+  const prefersReduced =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+
+  if (prefersReduced) {
+    onMidpoint?.();
+    return;
+  }
+
+  const bg = getThemeBackground(toTheme);
+
+  // Remove any previous curtain
+  const old = document.getElementById('otium-theme-curtain');
+  if (old) old.remove();
 
   const curtain = document.createElement('div');
-  curtain.id = 'otium-waterfall-fallback';
-  curtain.className = 'otium-theme-waterfall-fallback';
-  curtain.style.backgroundColor = bg;
+  curtain.id = 'otium-theme-curtain';
+  curtain.className = 'otium-curtain-wrap';
+
+  const sheet = document.createElement('div');
+  sheet.className = 'otium-curtain-sheet';
+  sheet.style.backgroundColor = bg;
+
+  const edge = document.createElement('div');
+  edge.className = 'otium-curtain-edge';
+  sheet.appendChild(edge);
+
+  curtain.appendChild(sheet);
   document.body.appendChild(curtain);
 
+  // Force reflow so initial -100% position is committed
+  void sheet.offsetHeight;
+
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      curtain.classList.add('otium-waterfall-running');
-    });
+    sheet.classList.add('otium-curtain-drop');
   });
 
+  // Switch underlying theme halfway through descent (~160ms)
   window.setTimeout(() => {
-    curtain.classList.add('otium-waterfall-exit');
+    onMidpoint?.();
+  }, 160);
+
+  // Fade out curtain once it covers viewport (~440ms)
+  window.setTimeout(() => {
+    curtain.classList.add('otium-curtain-fade');
     window.setTimeout(() => {
       curtain.remove();
-    }, 220);
-  }, 500);
+    }, 240);
+  }, 440);
 }
+
+// Backward compatibility alias
+export const triggerThemeWaterfall = triggerThemeCurtain;
 
 /**
  * Keeps the native chrome in step with the in-app theme:

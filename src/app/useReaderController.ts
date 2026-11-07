@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import type { TouchEvent as ReactTouchEvent } from 'react';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import type {
@@ -65,7 +64,7 @@ import {
 } from '../core/settings/preferences';
 import { computeOptimalPageScale, measureRefreshRate } from '../core/reader/device';
 import { clearSearchTextCache } from '../core/search/documentSearch';
-import { applyDomTheme, syncNativeTheme, triggerThemeWaterfall } from '../platform/theme';
+import { applyDomTheme, syncNativeTheme, triggerThemeCurtain } from '../platform/theme';
 import { syncNativeImmersive } from '../platform/ui';
 import { stopTts } from '../platform/tts';
 import { base64ToArrayBuffer, beamService } from '../board/beam/beamService';
@@ -748,38 +747,10 @@ export function useReaderController(capabilities: ReaderCapabilities) {
       saveDocumentTheme(docIdRef.current, nextTheme);
     }
 
-    const doc = (typeof document !== 'undefined' ? document : null) as unknown as {
-      startViewTransition?: (callback: () => void | Promise<void>) => {
-        finished: Promise<void>;
-        ready: Promise<void>;
-        updateCallbackDone: Promise<void>;
-      };
-    } | null;
-
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-
-    if (doc && typeof doc.startViewTransition === 'function' && !prefersReducedMotion) {
-      try {
-        doc.startViewTransition(() => {
-          flushSync(() => {
-            setTheme(nextTheme);
-          });
-          applyDomTheme(nextTheme);
-        });
-      } catch {
-        setTheme(nextTheme);
-        applyDomTheme(nextTheme);
-        triggerThemeWaterfall(nextTheme);
-      }
-    } else {
+    triggerThemeCurtain(nextTheme, () => {
       setTheme(nextTheme);
       applyDomTheme(nextTheme);
-      if (!prefersReducedMotion) {
-        triggerThemeWaterfall(nextTheme);
-      }
-    }
+    });
   }, []);
 
   const changeThemeSchedule = useCallback((mode: ThemeScheduleMode) => {
