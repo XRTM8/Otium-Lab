@@ -344,9 +344,13 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     let startZoom = zoom;
     let rafId: number | null = null;
     let targetZoom = zoom;
+    let lastTapInfo: { time: number; x: number; y: number } | null = null;
+    let singleTouchStart: { x: number; y: number } | null = null;
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        lastTapInfo = null;
+        singleTouchStart = null;
         e.preventDefault();
         const t0 = e.touches[0];
         const t1 = e.touches[1];
@@ -359,6 +363,8 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
           const focusY = (t0.clientY + t1.clientY) / 2;
           reader.captureZoomAnchor(focusX, focusY);
         }
+      } else if (e.touches.length === 1) {
+        singleTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       }
     };
 
@@ -384,6 +390,11 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
             });
           }
         }
+      } else if (singleTouchStart && e.touches.length === 1) {
+        if (Math.hypot(e.touches[0].clientX - singleTouchStart.x, e.touches[0].clientY - singleTouchStart.y) > 10) {
+          lastTapInfo = null;
+          singleTouchStart = null;
+        }
       }
     };
 
@@ -391,6 +402,8 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
       if (isPinchingRef.current && e.touches.length < 2) {
         isPinchingRef.current = false;
         startDist = 0;
+        lastTapInfo = null;
+        singleTouchStart = null;
         if (rafId !== null) {
           cancelAnimationFrame(rafId);
           rafId = null;
@@ -401,6 +414,40 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
         window.setTimeout(() => {
           reader.clearZoomAnchor();
         }, 200);
+        return;
+      }
+
+      if (!isPinchingRef.current && e.touches.length === 0 && e.changedTouches.length === 1 && singleTouchStart) {
+        const touch = e.changedTouches[0];
+        const target = e.target;
+        const isInteractive =
+          target instanceof Element &&
+          Boolean(target.closest('button, a, input, textarea, select, [role="button"]'));
+        if (!isInteractive && Math.hypot(touch.clientX - singleTouchStart.x, touch.clientY - singleTouchStart.y) <= 10) {
+          const now = performance.now();
+          if (
+            lastTapInfo &&
+            now - lastTapInfo.time < 300 &&
+            Math.hypot(touch.clientX - lastTapInfo.x, touch.clientY - lastTapInfo.y) < 25
+          ) {
+            lastTapInfo = null;
+            singleTouchStart = null;
+            const focusX = touch.clientX;
+            const focusY = touch.clientY;
+            reader.captureZoomAnchor(focusX, focusY);
+            const fitScale = reader.getFitScale();
+            const maxZ = reader.maxZoom ?? 4.0;
+            const isZoomedIn = zoom > fitScale * 1.25;
+            const targetZ = isZoomedIn ? fitScale : Math.min(maxZ, Math.max(fitScale * 1.8, 1.8));
+            reader.setZoom(targetZ);
+            window.setTimeout(() => {
+              reader.clearZoomAnchor();
+            }, 250);
+          } else {
+            lastTapInfo = { time: now, x: touch.clientX, y: touch.clientY };
+          }
+        }
+        singleTouchStart = null;
       }
     };
 
@@ -416,7 +463,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
       container.removeEventListener('touchcancel', onTouchEnd);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, [doc, zoom, reader]);
+  }, [doc, zoom, reader, scrollContainerRef]);
 
   const continuousPages = useMemo(
     () => Array.from({ length: numPages }, (_, index) => index + 1),

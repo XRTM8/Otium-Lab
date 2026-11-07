@@ -153,17 +153,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   // Auto-hide the chrome after inactivity so the page owns the screen.
   // Close floating popups on Escape key
   useEffect(() => {
-    if (!showThemeMenu && !showMoreMobile) return;
+    if (!showThemeMenu && !showMoreMobile && !showInspector) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault();
         setShowThemeMenu(false);
         setShowMoreMobile(false);
+        setShowInspector(false);
       }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [showThemeMenu, showMoreMobile]);
+  }, [showThemeMenu, showMoreMobile, showInspector]);
 
   useEffect(() => {
     let timeout: number | undefined;
@@ -188,7 +189,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       window.removeEventListener('scroll', handleActivity);
       window.clearTimeout(timeout);
     };
-  }, [showThemeMenu, showMoreMobile]);
+  }, [showThemeMenu, showMoreMobile, showInspector]);
 
   const handlePageSubmit = (event: React.FormEvent) => {
     event.preventDefault();

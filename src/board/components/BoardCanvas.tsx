@@ -643,7 +643,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       setReady(true); setStatus('saved');
     }).catch(() => { if (alive) { setStatus('error'); setError(lang === 'ar' ? 'تعذر تحميل السبورة المحفوظة. أعد فتح الملف.' : 'Saved board could not be loaded. Reopen the document.'); } });
     return () => { alive = false; };
-  }, [documentId, onRestoreSnippets]);
+  }, [documentId, onRestoreSnippets, lang]);
   useEffect(() => {
     if (!ready || isDrawingRef.current || draggingSnippetId) return;
     let alive = true;

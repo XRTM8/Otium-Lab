@@ -57,7 +57,7 @@ const DesktopReader: React.FC = () => {
   const handleAddSnippet = useCallback((snippet: BoardSnippet) => {
     setSnippets((prev) => [...prev, snippet]);
     setIsBoardOpen(true);
-  }, []);
+  }, [setIsBoardOpen]);
 
   const handleRemoveSnippet = useCallback((id: string) => {
     setSnippets((prev) => prev.filter((s) => s.id !== id));
@@ -170,7 +170,7 @@ const DesktopReader: React.FC = () => {
       window.removeEventListener('drop', handleDrop);
       if (tauriUnlisten) tauriUnlisten();
     };
-  }, [media.open, reader.loadDocumentBytes]);
+  }, [media.open, reader.loadDocumentBytes, reader.setDocumentError, reader.lang]);
 
   // Global keyboard shortcuts: Ctrl+B / Cmd+B for Board toggle
   useEffect(() => {

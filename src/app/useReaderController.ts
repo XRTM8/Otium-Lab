@@ -898,7 +898,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
         setZoom(fit);
       }
     },
-    [basePageSize, chromeInset, currentPage]
+    [basePageSize, chromeInset, currentPage, setZoom]
   );
 
   // Orientation changes and window resizes keep a fit-to-page zoom, but never
@@ -983,7 +983,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [doc, basePageSize, chromeInset, viewMode, scrollToRenderedPage]);
+  }, [doc, basePageSize, chromeInset, viewMode, scrollToRenderedPage, setZoom]);
 
   // React registers wheel listeners as passive, so preventDefault inside
   // onWheel is ignored. This native listener owns paged wheel physics: a
@@ -1014,7 +1014,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
         return;
       }
 
-      if (viewMode === 'continuous' || Math.abs(event.deltaY) >= Math.abs(event.deltaX)) return;
+      if (viewMode === 'continuous') return;
       if (container.scrollWidth > container.clientWidth + 2 || container.scrollHeight > container.clientHeight + 2) return;
 
       const multiplier =
@@ -1084,8 +1084,11 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     captureZoomAnchor,
     clearZoomAnchor,
     doc,
+    getMaxZoom,
+    getMinZoom,
     goToNextPage,
     goToPrevPage,
+    setZoom,
     viewMode
   ]);
 
@@ -1479,8 +1482,8 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   }, [lang]);
 
   const loadDocumentBytes = useCallback(async (data: ArrayBuffer, name: string) => {
-    return await loadPdfData(data, name);
-  }, [loadPdfData]);
+    return await loadDocumentRef.current(data, name);
+  }, []);
 
   const openRecent = useCallback(async (recent: RecentDocItem) => {
     if (recent.name === SAMPLE_DOCUMENT_NAME) {
@@ -2126,16 +2129,21 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     capabilities.keyboard,
+    captureViewportCenterAnchor,
     changeTheme,
     changeViewMode,
     currentPage,
+    docIsRtl,
+    getFitScale,
+    getMaxZoom,
+    getMinZoom,
     goToNextPage,
     goToPrevPage,
     handleToggleFullscreen,
-    docIsRtl,
     lang,
     numPages,
     scrollToPage,
+    setZoom,
     theme,
     toggleBookmark,
     viewMode
@@ -2205,6 +2213,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     zoom,
     minZoom: getMinZoom(),
     maxZoom: getMaxZoom(),
+    getFitScale,
     setZoom,
     captureZoomAnchor,
     clearZoomAnchor,

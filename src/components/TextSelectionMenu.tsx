@@ -488,7 +488,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
 
       if (performance.now() - startedAt > 5000) stopSelectionWatchdog();
     }, 110);
-  }, [mobile, scheduleCapture, stopSelectionWatchdog]);
+  }, [scheduleCapture, stopSelectionWatchdog]);
 
   useEffect(() => {
     if (mode !== 'select') return;

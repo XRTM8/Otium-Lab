@@ -638,7 +638,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <Download className="w-3.5 h-3.5 text-accent" />
               <span>
-                {currentLang === 'ar' ? 'Otium Lab 08 · نسخة تجريبية' : 'Otium Lab 08 · Experimental'}
+                {currentLang === 'ar' ? 'Otium Lab 09 · نسخة تجريبية' : 'Otium Lab 09 · Experimental'}
               </span>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-semibold">
                 v{getCurrentVersion()}

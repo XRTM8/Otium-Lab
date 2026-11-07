@@ -453,7 +453,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         currentRenderTaskRef.current = null;
       }
     };
-  }, [doc, pageNumber, scale, theme, isVisible, retryKey]);
+  }, [doc, pageNumber, scale, theme, isVisible, retryKey, pageSize.width, pageSize.height]);
 
   // The text layer is laid out once at the page's natural size and scaled with
   // a CSS transform. Rebuilding it on every zoom step destroyed any selection

@@ -13,7 +13,7 @@ val tauriProperties = Properties().apply {
         propFile.inputStream().use { load(it) }
     }
 }
-val labBuild = 8
+val labBuild = 9
 
 val keystorePropertiesFile = file("keystore.properties")
 val keystoreProperties = Properties().apply {

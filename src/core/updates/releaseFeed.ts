@@ -136,19 +136,22 @@ async function fetchFromGitHubApi(signal?: AbortSignal): Promise<ReleaseInfo> {
   if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
   const data = await res.json();
   const apkAsset = Array.isArray(data.assets)
-    ? data.assets.find((a: any) => typeof a.name === 'string' && a.name.endsWith('.apk'))
+    ? (data.assets as Array<{ name?: unknown; browser_download_url?: string; size?: number }>).find(
+        (a) => typeof a?.name === 'string' && a.name.endsWith('.apk')
+      )
     : undefined;
   return {
     version: normalizeVersion(data.tag_name || data.name || ''),
     notes: typeof data.body === 'string' ? data.body : '',
     pubDate: typeof data.published_at === 'string' ? data.published_at : '',
     assets: {
-      androidApk: apkAsset
-        ? {
-            url: apkAsset.browser_download_url,
-            size: apkAsset.size
-          }
-        : undefined
+      androidApk:
+        apkAsset && typeof apkAsset.browser_download_url === 'string'
+          ? {
+              url: apkAsset.browser_download_url,
+              size: apkAsset.size
+            }
+          : undefined
     }
   };
 }
@@ -173,7 +176,7 @@ export async function fetchReleaseInfo(
       if (response.ok) {
         return parseReleaseInfo(await response.json());
       }
-    } catch (_) {}
+    } catch {}
 
     // 2. Secondary: GitHub Release latest.json asset
     try {
@@ -185,7 +188,7 @@ export async function fetchReleaseInfo(
       if (fallbackRes.ok) {
         return parseReleaseInfo(await fallbackRes.json());
       }
-    } catch (_) {}
+    } catch {}
 
     // 3. Fallback: Direct GitHub API releases/latest
     return await fetchFromGitHubApi(controller.signal);

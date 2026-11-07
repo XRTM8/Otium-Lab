@@ -332,7 +332,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       window.removeEventListener('otium:back', handleBack);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, isLibraryOpen, isSettingsOpen, showCloseConfirmModal, step, pages.length]);
+  }, [isOpen, isLibraryOpen, isSettingsOpen, showCloseConfirmModal, step, pages.length, handleCropCancel, handleRequestClose]);
 
   if (!isOpen) return null;
 
