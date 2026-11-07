@@ -7,11 +7,20 @@ const packageJson = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8')
 ) as { version: string };
 
+const gradle = readFileSync(
+  new URL('./src-tauri/gen/android/app/build.gradle.kts', import.meta.url),
+  'utf8'
+);
+const labBuild = Number(/val labBuild = (\d+)/.exec(gradle)?.[1]);
+const appVersion = Number.isSafeInteger(labBuild)
+  ? `${packageJson.version}-lab.${labBuild}`
+  : packageJson.version;
+
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
   define: {
-    __APP_VERSION__: JSON.stringify(packageJson.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
     {

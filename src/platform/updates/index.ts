@@ -1,10 +1,19 @@
 import type { UpdateAdapter } from '../../core/updates/types';
+import * as runtime from '../runtime';
+import { androidUpdateAdapter } from './android';
+import { desktopUpdateAdapter } from './desktop';
 
 /**
- * Returns the update transport for the current platform. Browser previews have
- * no installer, so the UI reports that updates belong to the installed app.
+ * Returns the update transport for the current platform.
  */
 export function getUpdateAdapter(): UpdateAdapter | null {
-  // Lab builds must never install the stable application's update feed.
-  return null;
+  const getPlatform = typeof runtime.getPlatformId === 'function' ? runtime.getPlatformId : () => 'android';
+  switch (getPlatform()) {
+    case 'android':
+      return androidUpdateAdapter;
+    case 'windows':
+      return desktopUpdateAdapter;
+    default:
+      return androidUpdateAdapter;
+  }
 }

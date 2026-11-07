@@ -8,7 +8,8 @@ const checks = [
   [read('public/sw.js').includes(`-${info.label}'`), 'Offline cache build number differs from Android'],
   [info.gradle.includes('applicationIdSuffix = ".lab"'), 'Android release must use the separate Lab application ID'],
   [read('src/lab/storage.ts').includes("'otium-lab:'"), 'Lab storage isolation is missing'],
-  [!read('src/platform/updates/index.ts').includes('androidUpdateAdapter'), 'Lab must not install stable updates'],
+  [read('src/core/updates/releaseFeed.ts').includes('XRTM8/Otium-Lab'), 'Lab must point to Otium-Lab update feed'],
+  [read('src-tauri/gen/android/app/src/main/java/com/otium/reader/AndroidUpdateBridge.kt').includes('Otium-Lab'), 'Android update bridge must point to Otium-Lab feed'],
   [!process.env.GITHUB_REPOSITORY || process.env.GITHUB_REPOSITORY === 'XRTM8/Otium-Lab', 'Refusing to build a Lab deployment for another repository']
 ];
 for (const [passed, message] of checks) if (!passed) throw new Error(message);
