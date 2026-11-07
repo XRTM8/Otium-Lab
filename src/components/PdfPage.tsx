@@ -426,10 +426,6 @@ const PdfPageView: React.FC<PdfPageProps> = ({
           setRenderError((error as Error)?.message || 'Render failed');
         }
       } finally {
-        if (staging) {
-          staging.width = 1;
-          staging.height = 1;
-        }
         try {
           page?.cleanup();
         } catch {

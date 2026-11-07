@@ -28,7 +28,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "connect-src": "'self' ipc: http://ipc.localhost https://github.com https://*.githubusercontent.com https://cdn.jsdelivr.net https://ntfy.sh https://*.ntfy.sh https://ntfy.tedomum.fr https://api.github.com",
+        "connect-src": "'self' ipc: http://ipc.localhost https://github.com https://*.githubusercontent.com https://cdn.jsdelivr.net https://ntfy.sh https://*.ntfy.sh https://ntfy.tedomum.fr https://api.github.com https://*.github.io",
         "font-src": "'self' data:",
         "img-src": "'self' data: blob:",
         "media-src": "'self' blob: data: mediastream:",
@@ -43,7 +43,7 @@
       },
       "devCsp": {
         "default-src": "'self'",
-        "connect-src": "'self' ipc: http://ipc.localhost https://github.com https://*.githubusercontent.com https://cdn.jsdelivr.net https://ntfy.sh https://*.ntfy.sh http://localhost:5173 ws://localhost:5173 https://ntfy.tedomum.fr https://api.github.com",
+        "connect-src": "'self' ipc: http://ipc.localhost https://github.com https://*.githubusercontent.com https://cdn.jsdelivr.net https://ntfy.sh https://*.ntfy.sh http://localhost:5173 ws://localhost:5173 https://ntfy.tedomum.fr https://api.github.com https://*.github.io",
         "font-src": "'self' data:",
         "img-src": "'self' data: blob:",
         "media-src": "'self' blob: data: mediastream:",

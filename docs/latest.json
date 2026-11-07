@@ -1,11 +1,11 @@
 {
-  "version": "1.9.16-lab.9",
-  "tag_name": "lab-09",
-  "notes": "Otium Lab lab-09 — Butter-smooth pinch-to-zoom, rock-solid motion stability, razor-sharp rendering, and instant zero-flash startup.",
-  "pub_date": "2026-11-07T12:33:19.918Z",
+  "version": "1.9.16-lab.10",
+  "tag_name": "lab-10",
+  "notes": "Otium Lab lab-10 — Butter-smooth pinch-to-zoom, rock-solid motion stability, razor-sharp rendering, and instant zero-flash startup.",
+  "pub_date": "2026-11-07T14:29:38.855Z",
   "assets": {
     "androidApk": {
-      "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-09/Otium-Lab-09-arm64-v8a.apk"
+      "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-10/Otium-Lab-10-arm64-v8a.apk"
     }
   }
 }

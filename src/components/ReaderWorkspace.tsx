@@ -294,7 +294,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
 
     const onScroll = () => {
       markScrollActivity();
-      setShowScrubberPill(true);
+      setShowScrubberPill((prev) => (prev ? prev : true));
       if (scrubberTimeoutRef.current !== null) {
         window.clearTimeout(scrubberTimeoutRef.current);
       }
