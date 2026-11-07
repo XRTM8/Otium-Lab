@@ -48,17 +48,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     onQueryChangeRef.current = onQueryChange;
   }, [onQueryChange]);
 
+  const wasOpenRef = useRef(isOpen);
   useEffect(() => {
-    if (!isOpen) {
+    if (wasOpenRef.current && !isOpen) {
       setQuery('');
       setResults([]);
       setCurrentIndex(0);
       setIsSearching(false);
-      return;
     }
+    wasOpenRef.current = isOpen;
 
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 50);
-    return () => window.clearTimeout(timer);
+    if (isOpen) {
+      const timer = window.setTimeout(() => inputRef.current?.focus(), 50);
+      return () => window.clearTimeout(timer);
+    }
   }, [isOpen]);
 
   // Selecting text and choosing "Search" opens this bar with the quote already

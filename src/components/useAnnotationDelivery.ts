@@ -5,13 +5,13 @@ import { beamService } from '../board/beam/beamService';
 
 /** Delivery is confirmed by the other reader, never inferred from a successful send. */
 export function useAnnotationDelivery(reader: ReaderController) {
-  const [delivery, setDelivery] = useState<'local' | 'sending' | 'received' | 'waiting'>('local');
+  const [delivery, setDelivery] = useState<'local' | 'sending' | 'received' | 'waiting'>(() => reader.beamRoom ? 'waiting' : 'local');
   const pending = useRef(new Set<string>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     pending.current.clear();
     if (timer.current) clearTimeout(timer.current);
-    setDelivery(reader.beamRoom ? 'waiting' : 'local');
+    setDelivery((prev) => { const next = reader.beamRoom ? 'waiting' : 'local'; return prev === next ? prev : next; });
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [reader.docId, reader.beamRoom, reader.beamPeerConnected]);
   useEffect(() => beamService.subscribe(message => {

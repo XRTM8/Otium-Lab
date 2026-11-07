@@ -117,8 +117,16 @@ export function triggerThemeTransition(_theme: ThemeMode, updateThemeCallback: (
     }
   }
 
-  // Smooth fallback for browsers without View Transitions: instant state update + root CSS color transition
-  updateThemeCallback();
+  // Smooth fallback for browsers without View Transitions: scoped CSS color transition
+  try {
+    document.documentElement.classList.add('theme-fallback-transition');
+    updateThemeCallback();
+    window.setTimeout(() => {
+      document.documentElement.classList.remove('theme-fallback-transition');
+    }, 400);
+  } catch {
+    updateThemeCallback();
+  }
 }
 
 export const triggerThemeCurtain = (theme: ThemeMode, onMidpoint?: () => void) => {

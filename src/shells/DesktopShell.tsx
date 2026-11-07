@@ -40,20 +40,18 @@ const DesktopReader: React.FC = () => {
       teaching.setReaderTools(true);
     }
   }, [teaching.layout, teaching.setLayout, teaching.setTarget, teaching.setReaderTools, teaching.prefs.boardEnabled]);
-  const [isBeamOpen, setIsBeamOpen] = useState(false);
-  const [snippets, setSnippets] = useState<BoardSnippet[]>([]);
-  const [isDraggingOverWindow, setIsDraggingOverWindow] = useState(false);
-
-  // Automatically open Smart Beam if launched via QR room link (e.g. /#beam?room=OTM-XXXX)
-  useEffect(() => {
+  const [isBeamOpen, setIsBeamOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
     try {
       const hash = window.location.hash || '';
       const search = window.location.search || '';
-      if (hash.includes('room=') || hash.includes('beam') || search.includes('room=') || search.includes('beam')) {
-        setIsBeamOpen(true);
-      }
-    } catch {}
-  }, []);
+      return hash.includes('room=') || hash.includes('beam') || search.includes('room=') || search.includes('beam');
+    } catch {
+      return false;
+    }
+  });
+  const [snippets, setSnippets] = useState<BoardSnippet[]>([]);
+  const [isDraggingOverWindow, setIsDraggingOverWindow] = useState(false);
 
   // Snippet management for Otium Whiteboard
   const handleAddSnippet = useCallback((snippet: BoardSnippet) => {

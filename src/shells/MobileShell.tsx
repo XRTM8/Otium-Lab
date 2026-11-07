@@ -43,7 +43,16 @@ const MobileReader: React.FC = () => {
     setReaderTools(!isImmersive);
   }, [isImmersive, setPresentation, setReaderTools]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [isBeamOpen, setIsBeamOpen] = useState(false);
+  const [isBeamOpen, setIsBeamOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      return hash.includes('room=') || hash.includes('beam') || search.includes('room=') || search.includes('beam');
+    } catch {
+      return false;
+    }
+  });
   const [snippets, setSnippets] = useState<BoardSnippet[]>([]);
   const isBoardOpen = teaching.prefs.boardEnabled && teaching.layout !== 'document';
   const setBoardOpen = React.useCallback((open: boolean) => {
@@ -77,17 +86,6 @@ const MobileReader: React.FC = () => {
       return true;
     });
   }, [isBeamOpen]);
-
-  // Automatically open Smart Beam if launched via QR room link (e.g. /#beam?room=OTM-XXXX)
-  React.useEffect(() => {
-    try {
-      const hash = window.location.hash || '';
-      const search = window.location.search || '';
-      if (hash.includes('room=') || hash.includes('beam') || search.includes('room=') || search.includes('beam')) {
-        setIsBeamOpen(true);
-      }
-    } catch {}
-  }, []);
 
   // Preload scanner chunk during idle moments so opening is 100% instant and lag-free
   React.useEffect(() => {

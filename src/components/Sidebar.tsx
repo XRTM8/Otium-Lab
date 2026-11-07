@@ -78,11 +78,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const closeTimerRef = useRef<number | null>(null);
   const settleTimerRef = useRef<number | null>(null);
 
+  const wasOpenRef = useRef(isOpen);
   useEffect(() => {
-    if (isOpen) return;
-    setEditingNoteId(null);
-    setNoteDraft('');
-    setDisplayedPageLimit(60);
+    if (wasOpenRef.current && !isOpen) {
+      setEditingNoteId(null);
+      setNoteDraft('');
+      setDisplayedPageLimit(60);
+    }
+    wasOpenRef.current = isOpen;
   }, [isOpen]);
 
   const handleContentScroll = (e: React.UIEvent<HTMLDivElement>) => {

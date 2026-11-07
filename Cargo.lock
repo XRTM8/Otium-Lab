@@ -5111,7 +5111,6 @@ dependencies = [
  "otium-pdf",
  "otium-scanner",
  "otium-slides",
- "otium-vault",
  "serde",
  "serde_json",
  "tauri",

@@ -130,7 +130,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   const isDarkBg = appearance.dark;
   const paintState = useRef({ strokes, isDarkBg });
   useLayoutEffect(() => { paintState.current = { strokes, isDarkBg }; }, [strokes, isDarkBg]);
-  useEffect(() => { setSelectedColor(prefs.color); setSelectedWidth(prefs.width); }, [prefs.color, prefs.width]);
+  useEffect(() => {
+    setSelectedColor((prev) => (prev !== prefs.color ? prefs.color : prev));
+    setSelectedWidth((prev) => (prev !== prefs.width ? prefs.width : prev));
+  }, [prefs.color, prefs.width]);
 
 
   // Auto-tune selected color when switching between light and dark backgrounds

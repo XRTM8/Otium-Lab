@@ -11,14 +11,16 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ value, classNa
   const [direction, setDirection] = useState<'up' | 'down'>('up');
   const timerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (value !== current) {
-      const numCurrent = typeof current === 'number' ? current : Number.parseInt(String(current), 10);
-      const numNext = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
-      setDirection(!Number.isNaN(numCurrent) && !Number.isNaN(numNext) && numNext < numCurrent ? 'down' : 'up');
-      setPrev(current);
-      setCurrent(value);
+  if (value !== current) {
+    const numCurrent = typeof current === 'number' ? current : Number.parseInt(String(current), 10);
+    const numNext = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+    setDirection(!Number.isNaN(numCurrent) && !Number.isNaN(numNext) && numNext < numCurrent ? 'down' : 'up');
+    setPrev(current);
+    setCurrent(value);
+  }
 
+  useEffect(() => {
+    if (prev !== null) {
       if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);
       }
@@ -27,7 +29,7 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ value, classNa
         timerRef.current = null;
       }, 240);
     }
-  }, [value, current]);
+  }, [prev]);
 
   useEffect(() => {
     return () => {

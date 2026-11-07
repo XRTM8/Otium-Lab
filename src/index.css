@@ -573,16 +573,12 @@ html.theme-transitioning *::after {
   will-change: transform, opacity, filter;
 }
 
-/* Fallback & smooth internal CSS color transitions */
-html,
-body,
-#root,
-.chrome-surface,
-.otium-panel,
-[data-theme] {
-  transition: background-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
-              color 400ms cubic-bezier(0.4, 0, 0.2, 1),
-              border-color 400ms cubic-bezier(0.4, 0, 0.2, 1);
+/* Scoped fallback transitions when View Transitions is not supported */
+html.theme-fallback-transition,
+html.theme-fallback-transition body,
+html.theme-fallback-transition #root {
+  transition: background-color 350ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 350ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Ambient glow breathing animations */
@@ -727,15 +723,15 @@ body,
   will-change: transform, opacity;
 }
 
-/* Mobile frosted glass: hardware-accelerated 16px blur with specular borders */
+/* Mobile chrome surface: high-performance alpha surface with lightweight 8px blur */
 @media (max-width: 640px) {
   .chrome-surface {
-  transition: background-color 450ms cubic-bezier(0.16, 1, 0.3, 1), border-color 450ms ease, color 300ms ease, box-shadow 300ms ease;
-    background: color-mix(in srgb, var(--surface-2) 88%, transparent);
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+    background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border: 1px solid var(--line-subtle);
-    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.14);
   }
 
   .animate-glow-amber,

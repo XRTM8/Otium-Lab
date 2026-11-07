@@ -351,7 +351,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
         {/* Brand Header: Sovereign Otium Emblem */}
         <div className="flex flex-col items-center space-y-3">
-          <div className="p-4 rounded-3xl bg-surface/50 border border-line/50 shadow-xl backdrop-blur-2xl transition-all duration-300 hover:scale-105 pointer-events-none select-none">
+          <div className="p-4 rounded-3xl bg-surface/80 border border-line/50 shadow-xl backdrop-blur-xs transition-all duration-300 hover:scale-105 pointer-events-none select-none">
             <OtiumLogo theme={currentTheme} size={46} />
           </div>
 
@@ -424,13 +424,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             triggerHaptic('light');
             fileInputRef.current?.click();
           }}
-          className={`w-full p-8 sm:p-10 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col items-center justify-center gap-3.5 backdrop-blur-3xl shadow-xl group relative overflow-hidden ${
+          className={`w-full p-8 sm:p-10 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col items-center justify-center gap-3.5 backdrop-blur-xs shadow-xl group relative overflow-hidden ${
             isDragging
               ? 'border-accent bg-surface/75 scale-[1.01] shadow-2xl'
-              : 'border-line/40 bg-surface/35 hover:bg-surface/60 hover:border-accent/60 hover:-translate-y-1 hover:shadow-2xl'
+              : 'border-line/40 bg-surface/65 hover:bg-surface/85 hover:border-accent/60 hover:-translate-y-1 hover:shadow-2xl'
           }`}
         >
-          <div className="w-14 h-14 rounded-2xl bg-surface/60 border border-line flex items-center justify-center text-accent shadow-md backdrop-blur-xl group-hover:scale-110 group-hover:rotate-[-6deg] group-hover:border-accent/50 transition-all duration-300">
+          <div className="w-14 h-14 rounded-2xl bg-surface/80 border border-line flex items-center justify-center text-accent shadow-md backdrop-blur-xs group-hover:scale-110 group-hover:rotate-[-6deg] group-hover:border-accent/50 transition-all duration-300">
             <Upload className="w-6 h-6 group-hover:translate-y-[-2px] transition-transform" />
           </div>
 
@@ -544,7 +544,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     }
                     onOpenRecent(r);
                   }}
-                  className={`fluid-press relative overflow-hidden flex items-center justify-between p-3.5 ps-4 rounded-2xl bg-surface/35 hover:bg-surface/65 backdrop-blur-2xl cursor-pointer border border-line/35 hover:border-line-strong hover:-translate-y-1 shadow-xs hover:shadow-xl group transition-all duration-200 ${
+                  className={`fluid-press relative overflow-hidden flex items-center justify-between p-3.5 ps-4 rounded-2xl bg-surface/75 hover:bg-surface/95 backdrop-blur-xs cursor-pointer border border-line/45 hover:border-line-strong hover:-translate-y-1 shadow-xs hover:shadow-xl group transition-all duration-200 ${
                     r.available ? '' : 'border-dashed'
                   }`}
                 >
