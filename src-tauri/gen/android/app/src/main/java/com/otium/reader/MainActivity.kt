@@ -94,6 +94,8 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     appWebView = webView
+    // Dark initial background eliminates any white flash while web content loads
+    webView.setBackgroundColor(android.graphics.Color.parseColor("#15181e"))
     // The document scanner renders a live camera stream into a <video> element.
     // Without this the WebView can refuse to start playback until another tap.
     webView.settings.mediaPlaybackRequiresUserGesture = false

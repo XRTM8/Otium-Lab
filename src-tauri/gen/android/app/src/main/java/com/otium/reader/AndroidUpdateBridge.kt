@@ -32,7 +32,12 @@ class AndroidUpdateBridge(
   fun fetchReleaseFeed(requestId: String) {
     Thread {
       try {
-        val body = httpGet(FEED_URL)
+        var body: String
+        try {
+          body = httpGet(FEED_URL)
+        } catch (_: Exception) {
+          body = httpGet(FALLBACK_FEED_URL)
+        }
         emit(
           "window.__OTIUM_UPDATE_FEED__ && window.__OTIUM_UPDATE_FEED__(" +
             "${quote(requestId)}, ${quote(body)}, null)"
@@ -224,6 +229,8 @@ class AndroidUpdateBridge(
 
   companion object {
     private const val FEED_URL =
-      "https://github.com/XRTM8/Otium/releases/latest/download/latest.json"
+      "https://xrtm8.github.io/Otium-Lab/latest.json"
+    private const val FALLBACK_FEED_URL =
+      "https://github.com/XRTM8/Otium-Lab/releases/latest/download/latest.json"
   }
 }

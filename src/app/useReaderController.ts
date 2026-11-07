@@ -436,6 +436,13 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     zoomFocusRef.current = null;
   }, []);
 
+  const captureViewportCenterAnchor = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    captureZoomAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [captureZoomAnchor]);
+
   // Zooming changes page geometry. Keep the anchored page point under the
   // gesture focus so pinch and double-tap feel spatial instead of jumping.
   useLayoutEffect(() => {
@@ -452,8 +459,9 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     const deltaX = targetX - focus.x;
     const deltaY = targetY - focus.y;
 
-    if (Math.abs(deltaX) > 1) container.scrollLeft += deltaX;
-    if (Math.abs(deltaY) > 1) container.scrollTop += deltaY;
+    // Guard against erratic jumps by bounding deltas within reasonable screen limits
+    if (Math.abs(deltaX) > 1 && Math.abs(deltaX) < 1000) container.scrollLeft += deltaX;
+    if (Math.abs(deltaY) > 1 && Math.abs(deltaY) < 1000) container.scrollTop += deltaY;
   }, [zoom]);
 
   useEffect(() => {
@@ -1930,6 +1938,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
 
       if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')) {
         event.preventDefault();
+        captureViewportCenterAnchor();
         const maxZ = getMaxZoom();
         const step = Math.max(0.02, Math.min(0.15, Number(((lastFitScaleRef.current || 1.0) * 0.15).toFixed(2))));
         setZoom((current) => Math.min(maxZ, Number((current + step).toFixed(2))));
@@ -1938,6 +1947,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
 
       if ((event.ctrlKey || event.metaKey) && (event.key === '-' || event.key === '_')) {
         event.preventDefault();
+        captureViewportCenterAnchor();
         const minZ = getMinZoom();
         const step = Math.max(0.02, Math.min(0.15, Number(((lastFitScaleRef.current || 1.0) * 0.15).toFixed(2))));
         setZoom((current) => Math.max(minZ, Number((current - step).toFixed(2))));
@@ -2028,6 +2038,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
         case '+':
         case '=': {
           event.preventDefault();
+          captureViewportCenterAnchor();
           const maxZ = getMaxZoom();
           const step = Math.max(0.02, Math.min(0.15, Number(((lastFitScaleRef.current || 1.0) * 0.15).toFixed(2))));
           setZoom((current) => Math.min(maxZ, Number((current + step).toFixed(2))));
@@ -2036,6 +2047,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
         case '-':
         case '_': {
           event.preventDefault();
+          captureViewportCenterAnchor();
           const minZ = getMinZoom();
           const step = Math.max(0.02, Math.min(0.15, Number(((lastFitScaleRef.current || 1.0) * 0.15).toFixed(2))));
           setZoom((current) => Math.max(minZ, Number((current - step).toFixed(2))));

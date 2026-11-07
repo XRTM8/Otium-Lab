@@ -18,13 +18,16 @@ interface BoardSplitWorkspaceProps {
 export const BoardSplitWorkspace: React.FC<BoardSplitWorkspaceProps> = ({ reader, snippets, onAddSnippet, onRemoveSnippet, onUpdateSnippetPosition, onRestoreSnippets }) => {
   const teaching = useTeaching();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [splitPercent, setSplitPercent] = useState(100);
+  const { layout, setLayout, setTarget } = teaching;
+  const [splitPercent, setSplitPercent] = useState(() => layout === 'document' ? 100 : layout === 'board' ? 0 : 50);
   const [isDragging, setIsDragging] = useState(false);
   const [isAreaClipOpen, setIsAreaClipOpen] = useState(false);
   const requestAreaClip = useCallback(() => setIsAreaClipOpen(true), []);
-  const { layout, setLayout, setTarget } = teaching;
   useEffect(() => {
-    setSplitPercent(previous => layout === 'document' ? 100 : layout === 'board' ? 0 : previous > 0 && previous < 100 ? previous : 50);
+    setSplitPercent(previous => {
+      const next = layout === 'document' ? 100 : layout === 'board' ? 0 : previous > 0 && previous < 100 ? previous : 50;
+      return previous === next ? previous : next;
+    });
   }, [layout]);
   useEffect(() => { setLayout('document'); }, [reader.docId, setLayout]);
   const { doc, scrollContainerRef, setZoom, basePageSize, viewMode } = reader;

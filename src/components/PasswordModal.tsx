@@ -29,15 +29,17 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const t = getTranslations(lang);
 
+  const wasOpenRef = useRef(isOpen);
   useEffect(() => {
-    if (!isOpen) {
+    if (wasOpenRef.current && !isOpen) {
       setPassword('');
       if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === 'function') {
         previousActiveElementRef.current.focus();
         previousActiveElementRef.current = null;
       }
-      return;
     }
+    wasOpenRef.current = isOpen;
+    if (!isOpen) return;
 
     previousActiveElementRef.current = document.activeElement as HTMLElement | null;
     const timer = window.setTimeout(() => inputRef.current?.focus(), 50);

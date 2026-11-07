@@ -10,7 +10,6 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { AnimatedCounter } from './AnimatedCounter';
 import { triggerHaptic } from '../core/utils/haptics';
 import { useDocumentInteraction } from './DocumentInk';
-import { computeOptimalPageScale } from '../core/reader/device';
 import { useTeaching } from './TeachingContext';
 import { useChromeTap } from '../core/reader/useChromeTap';
 
@@ -136,7 +135,6 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     numPages,
     currentPage,
     zoom,
-    setZoom,
     theme,
     viewMode,
     lang,
@@ -341,28 +339,15 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     const container = scrollContainerRef.current;
     if (!container) return;
     container.style.touchAction = 'pan-x pan-y';
-    const pinch = (event: TouchEvent) => { if (interactionMode === 'hand' && event.touches.length > 1) event.preventDefault(); };
+    // Prevent browser native viewport pinch zoom on any 2-finger gesture to eliminate jitter/conflict with custom zoom
+    const pinch = (event: TouchEvent) => {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    };
     container.addEventListener('touchmove', pinch, { passive: false });
     return () => container.removeEventListener('touchmove', pinch);
-  }, [interactionMode, doc, scrollContainerRef]);
-
-  useLayoutEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !doc || typeof ResizeObserver === 'undefined') return;
-    let previousWidth = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const observer = new ResizeObserver(() => {
-      if (container.closest('[data-board-resizing="true"]')) return;
-      const width = container.clientWidth;
-      if (!width || Math.abs(width - previousWidth) < 24) return;
-      previousWidth = width;
-      clearTimeout(timer);
-      timer = setTimeout(() => setZoom(computeOptimalPageScale(basePageSize.width, basePageSize.height,
-        container.clientWidth, container.clientHeight, viewMode)), 80);
-    });
-    observer.observe(container);
-    return () => { observer.disconnect(); clearTimeout(timer); };
-  }, [doc, viewMode, basePageSize.width, basePageSize.height, scrollContainerRef, setZoom]);
+  }, [doc, scrollContainerRef]);
 
   const continuousPages = useMemo(
     () => Array.from({ length: numPages }, (_, index) => index + 1),

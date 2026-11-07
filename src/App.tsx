@@ -5,6 +5,7 @@ import { requestStoragePersistence } from './core/storage/persistence';
 import { DesktopShell } from './shells/DesktopShell';
 import { MobileShell } from './shells/MobileShell';
 import { useDisplayNavigation } from './platform/useDisplayNavigation';
+import { AutoUpdateBanner } from './components/AutoUpdateBanner';
 
 /**
  * Selects the platform shell. Everything below this line is shared: document
@@ -23,7 +24,12 @@ const App: React.FC = () => {
     // orientation changes must never unmount the reader and discard its state.
   }, []);
 
-  return formFactor === 'mobile' ? <MobileShell /> : <DesktopShell />;
+  return (
+    <>
+      <AutoUpdateBanner />
+      {formFactor === 'mobile' ? <MobileShell /> : <DesktopShell />}
+    </>
+  );
 };
 
 export default App;
