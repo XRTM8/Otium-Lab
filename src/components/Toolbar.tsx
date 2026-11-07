@@ -579,17 +579,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                           onThemeChange(entry.id);
                           setShowThemeMenu(false);
                         }}
-                        className={`flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs transition-colors ${
+                        className={`group flex items-center justify-between rounded-xl px-2 py-1.5 text-xs transition-all duration-150 cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
                           theme === entry.id
                             ? 'bg-hover text-ink font-medium border border-line shadow-xs'
                             : 'text-ink-muted hover:bg-hover-subtle hover:text-ink border border-transparent'
                         }`}
                       >
-                        <span
-                          className="h-3 w-3 shrink-0 rounded-full border border-black/20"
-                          style={{ backgroundColor: entry.dot }}
-                        />
-                        <span className="truncate text-[11px]">{entry.label}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`h-3 w-3 shrink-0 rounded-full border border-black/20 transition-transform duration-200 group-hover:scale-115 ${
+                              theme === entry.id ? 'ring-2 ring-accent ring-offset-1 ring-offset-[var(--surface-1)]' : ''
+                            }`}
+                            style={{ backgroundColor: entry.dot }}
+                          />
+                          <span className="truncate text-[11px] group-hover:text-ink">{entry.label}</span>
+                        </div>
+                        {theme === entry.id && <Check className="w-3.5 h-3.5 text-accent shrink-0 animate-in zoom-in-75 duration-150" />}
                       </button>
                     ))}
                   </div>

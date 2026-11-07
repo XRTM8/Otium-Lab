@@ -88,12 +88,12 @@ export function triggerThemeTransition(_theme: ThemeMode, updateThemeCallback: (
             document.documentElement.animate(
               {
                 clipPath: [
-                  'inset(0% 0% 100% 0%)',
-                  'inset(0% 0% 0% 0%)'
+                  'ellipse(135% 0% at 50% -10%)',
+                  'ellipse(135% 150% at 50% -10%)'
                 ]
               },
               {
-                duration: 480,
+                duration: 500,
                 easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
                 pseudoElement: '::view-transition-new(root)'
               }
