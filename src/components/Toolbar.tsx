@@ -565,7 +565,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                   className="fixed inset-0 z-40 bg-transparent"
                   onClick={() => setShowThemeMenu(false)}
                 />
-                <div className="chrome-surface absolute end-0 top-full z-50 mt-2 w-64 rounded-2xl p-2.5 text-ink fluid-pop shadow-2xl border border-line">
+                <div className="chrome-surface absolute right-0 top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-2.5 text-ink fluid-pop shadow-2xl border border-line">
                   <div className="flex items-center justify-between px-1.5 pb-2 text-[10px] font-semibold uppercase text-ink-faint border-b border-line-subtle mb-2">
                     <span className={ar ? 'font-sans' : 'font-mono tracking-wider'}>{t.readingThemesTitle}</span>
                     <span className="font-mono text-[9px] opacity-70">10</span>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { TouchEvent as ReactTouchEvent } from 'react';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import type {
@@ -748,7 +749,9 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     }
 
     triggerThemeCurtain(nextTheme, () => {
-      setTheme(nextTheme);
+      flushSync(() => {
+        setTheme(nextTheme);
+      });
       applyDomTheme(nextTheme);
     });
   }, []);

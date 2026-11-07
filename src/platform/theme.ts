@@ -44,73 +44,52 @@ export function applyDomTheme(theme: ThemeMode): void {
  * Physical Sovereign Curtain Transition (بردة الثيمات الملكية)
  * Hardware-accelerated top-to-bottom descending sheet with glowing edge.
  */
-let activeCurtainMidpointTimer: number | null = null;
-let activeCurtainFadeTimer: number | null = null;
-let activeCurtainCleanupTimer: number | null = null;
-
-export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void): void {
+/**
+ * Silky Top-to-Bottom Sovereign Theme Waterfall
+ * Uses the browser-native View Transitions API with polygon clip-path wipe.
+ * Content remains 100% visible — no cheap blank colored curtain blocking the page!
+ */
+export function triggerThemeTransition(_theme: ThemeMode, updateThemeCallback: () => void): void {
   if (typeof document === 'undefined') {
-    onMidpoint?.();
+    updateThemeCallback();
     return;
   }
 
-  // In test environments (Vitest / Happy-DOM), execute synchronously
+  // Unit test environments (Vitest / Happy-DOM) execute synchronously
   const isTestEnv =
     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') ||
     Boolean(typeof window !== 'undefined' && (window as unknown as { __VITEST__?: boolean }).__VITEST__) ||
     !document.body;
 
   if (isTestEnv) {
-    onMidpoint?.();
+    updateThemeCallback();
     return;
   }
 
-  const bg = getThemeBackground(toTheme);
+  const doc = document as Document & {
+    startViewTransition?: (cb: () => void | Promise<void>) => unknown;
+  };
 
-  // Clean up any pending curtain timers from rapid switches
-  if (typeof window !== 'undefined') {
-    if (activeCurtainMidpointTimer !== null) window.clearTimeout(activeCurtainMidpointTimer);
-    if (activeCurtainFadeTimer !== null) window.clearTimeout(activeCurtainFadeTimer);
-    if (activeCurtainCleanupTimer !== null) window.clearTimeout(activeCurtainCleanupTimer);
+  if (typeof doc.startViewTransition === 'function') {
+    try {
+      doc.startViewTransition(() => {
+        updateThemeCallback();
+      });
+      return;
+    } catch {
+      // Fallback if view transition rejected
+    }
   }
 
-  // Cleanly remove any existing curtain instance
-  const old = document.getElementById('otium-theme-curtain');
-  if (old) old.remove();
-
-  const curtain = document.createElement('div');
-  curtain.id = 'otium-theme-curtain';
-  curtain.className = 'otium-curtain-wrap';
-
-  const sheet = document.createElement('div');
-  sheet.className = 'otium-curtain-sheet';
-  sheet.style.backgroundColor = bg;
-
-  const edge = document.createElement('div');
-  edge.className = 'otium-curtain-edge';
-  sheet.appendChild(edge);
-
-  curtain.appendChild(sheet);
-  document.body.appendChild(curtain);
-
-  // Switch underlying theme halfway through descent (~220ms)
-  activeCurtainMidpointTimer = window.setTimeout(() => {
-    activeCurtainMidpointTimer = null;
-    onMidpoint?.();
-  }, 220);
-
-  // Fade out curtain once it completely covers viewport (~460ms)
-  activeCurtainFadeTimer = window.setTimeout(() => {
-    activeCurtainFadeTimer = null;
-    curtain.classList.add('otium-curtain-fade');
-    activeCurtainCleanupTimer = window.setTimeout(() => {
-      activeCurtainCleanupTimer = null;
-      curtain.remove();
-    }, 240);
-  }, 460);
+  // Smooth fallback for browsers without View Transitions: instant state update + root CSS color transition
+  updateThemeCallback();
 }
 
-// Backward compatibility alias
+export const triggerThemeCurtain = (theme: ThemeMode, onMidpoint?: () => void) => {
+  triggerThemeTransition(theme, () => {
+    onMidpoint?.();
+  });
+};
 export const triggerThemeWaterfall = triggerThemeCurtain;
 
 /**

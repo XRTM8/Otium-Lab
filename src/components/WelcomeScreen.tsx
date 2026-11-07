@@ -299,12 +299,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <div
                   id="home-reading-themes"
                   dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
-                  className="chrome-surface absolute end-0 top-full mt-2 w-48 rounded-2xl p-1.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
+                  className="chrome-surface absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-2.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
                 >
-                  <div className={`text-[10px] uppercase px-2.5 py-1 text-ink-faint font-semibold tracking-wider ${currentLang === 'ar' ? 'font-sans' : 'font-mono'}`}>
-                    {t.readingThemesTitle}
+                  <div className="flex items-center justify-between px-1.5 pb-2 text-[10px] font-semibold uppercase text-ink-faint border-b border-line-subtle mb-1.5">
+                    <span className={currentLang === 'ar' ? 'font-sans' : 'font-mono tracking-wider'}>{t.readingThemesTitle}</span>
+                    <span className="font-mono text-[9px] opacity-70">10</span>
                   </div>
-                  <div className="space-y-0.5 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-line-strong scrollbar-track-transparent p-0.5">
+                  <div className="grid grid-cols-2 gap-1.5">
                     {allThemes.map((th) => {
                       const isSelected = currentTheme === th.id;
                       return (
@@ -316,20 +317,20 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                             onThemeChange(th.id);
                             setShowTopThemeMenu(false);
                           }}
-                          className={`fluid-press w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-colors duration-150 cursor-pointer ${
+                          className={`fluid-press flex items-center justify-between px-2 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
                             isSelected
-                              ? 'bg-hover-strong text-ink font-semibold border border-line'
+                              ? 'bg-hover-strong text-ink font-semibold border border-line shadow-xs'
                               : 'hover:bg-hover-subtle text-ink-muted hover:text-ink border border-transparent'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-2 min-w-0">
                             <span
                               className="w-3 h-3 rounded-full border border-black/25 shadow-xs shrink-0"
                               style={{ backgroundColor: th.dot }}
                             />
-                            <span className="text-xs font-medium">{th.label}</span>
+                            <span className="text-[11px] font-medium truncate">{th.label}</span>
                           </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-accent shrink-0" />}
+                          {isSelected && <Check className="w-3 h-3 text-accent shrink-0" />}
                         </button>
                       );
                     })}
