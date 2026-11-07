@@ -325,6 +325,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   const wheelIdleTimerRef = useRef<number | null>(null);
   const ctrlWheelIdleTimerRef = useRef<number | null>(null);
   const lastFitScaleRef = useRef(0);
+  const lastZoomTimeRef = useRef(0);
   const pageSaveTimerRef = useRef<number | null>(null);
   const lastSavedPageRef = useRef<{ title: string; page: number } | null>(null);
   const currentPageRef = useRef(currentPage);
@@ -414,15 +415,19 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     if (!container) return;
 
     const target = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    const page = target?.closest<HTMLElement>('[data-pdf-page]');
+    let page = target?.closest<HTMLElement>('[data-pdf-page], [data-page-slot]');
+
+    if (!page && currentPage) {
+      page = (document.getElementById(`pdf-page-${currentPage}`) as HTMLElement | null) ?? undefined;
+    }
 
     if (page && page.isConnected) {
       const rect = page.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         zoomAnchorRef.current = {
           element: page,
-          fractionX: (clientX - rect.left) / rect.width,
-          fractionY: (clientY - rect.top) / rect.height
+          fractionX: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+          fractionY: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
         };
         zoomFocusRef.current = { x: clientX, y: clientY };
         return;
@@ -439,7 +444,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
       fractionY: (container.scrollTop + focusY) / Math.max(1, container.scrollHeight)
     };
     zoomFocusRef.current = { x: clientX, y: clientY };
-  }, []);
+  }, [currentPage]);
 
   const clearZoomAnchor = useCallback(() => {
     zoomAnchorRef.current = null;
@@ -455,6 +460,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
 
   const setZoom = useCallback(
     (value: number | ((current: number) => number)) => {
+      lastZoomTimeRef.current = performance.now();
       if (!zoomAnchorRef.current) {
         captureViewportCenterAnchor();
       }
@@ -996,6 +1002,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     const handleNativeWheel = (event: WheelEvent) => {
       if (event.ctrlKey) {
         event.preventDefault();
+        lastZoomTimeRef.current = performance.now();
         captureZoomAnchor(event.clientX, event.clientY);
         const minZ = getMinZoom();
         const maxZ = getMaxZoom();
@@ -1017,9 +1024,25 @@ export function useReaderController(capabilities: ReaderCapabilities) {
       if (viewMode === 'continuous') return;
       if (container.scrollWidth > container.clientWidth + 2 || container.scrollHeight > container.clientHeight + 2) return;
 
+      const now = performance.now();
+      // Block page flipping during or immediately after zooming (inertia, pinch, trackpad momentum)
+      if (now - lastZoomTimeRef.current < 600) {
+        wheelAccumRef.current = 0;
+        wheelDirectionRef.current = 0;
+        return;
+      }
+
       const multiplier =
         event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
-      const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+      const absX = Math.abs(event.deltaX);
+      const absY = Math.abs(event.deltaY);
+
+      // Require clear axis intent to avoid diagonal trackpad drift
+      if (absX > 0 && absY > 0 && Math.max(absX, absY) / Math.min(absX, absY) < 1.35) {
+        return;
+      }
+
+      const horizontal = absX > absY;
       const rawDelta = horizontal ? event.deltaX : event.deltaY;
       const delta = rawDelta * multiplier;
       if (Math.abs(delta) < 1) return;
@@ -1038,7 +1061,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
       // The page fits: no vertical drift is allowed before the turn.
       event.preventDefault();
 
-      const now = performance.now();
       if (now - lastWheelTimeRef.current < WHEEL_TURN_COOLDOWN_MS) return;
 
       if (wheelDirectionRef.current !== direction) {
@@ -2215,6 +2237,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     maxZoom: getMaxZoom(),
     getFitScale,
     setZoom,
+    lastZoomTimeRef,
     captureZoomAnchor,
     clearZoomAnchor,
     theme,

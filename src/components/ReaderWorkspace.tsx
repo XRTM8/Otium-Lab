@@ -149,10 +149,6 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     goToNextPage,
     goToPrevPage,
     scrollContainerRef,
-    handleTouchStart,
-    handleTouchMove,
-    handleTouchEnd,
-    handleTouchCancel,
     dualFlipKey,
     numberJumpDisplay,
     scrollToPage
@@ -171,6 +167,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
   const [scrubState, setScrubState] = useState<{ page: number; x: number } | null>(null);
   const isScrubbingRef = useRef(false);
   const isPinchingRef = useRef(false);
+  const pinchLiftEndTimeRef = useRef(0);
 
   const calculateScrubPage = (clientX: number) => {
     if (typeof window === 'undefined') return { page: 1, x: clientX };
@@ -241,7 +238,9 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
 
     const measure = () => {
       scrollFrameRef.current = null;
-      if (numPages === 0 || isPinchingRef.current) return;
+      const now = performance.now();
+      const lastZoomTime = reader.lastZoomTimeRef?.current ?? 0;
+      if (numPages === 0 || isPinchingRef.current || now - lastZoomTime < 450) return;
 
       const approxSlotHeight = Math.max(100, (basePageSize?.height || 842) * zoom + 32);
       const estimatedPage = Math.max(
@@ -359,18 +358,28 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
           startDist = dist;
           startZoom = zoom;
           isPinchingRef.current = true;
+          if (reader.lastZoomTimeRef) {
+            reader.lastZoomTimeRef.current = performance.now();
+          }
           const focusX = (t0.clientX + t1.clientX) / 2;
           const focusY = (t0.clientY + t1.clientY) / 2;
           reader.captureZoomAnchor(focusX, focusY);
         }
       } else if (e.touches.length === 1) {
-        singleTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        if (performance.now() - pinchLiftEndTimeRef.current < 350) {
+          singleTouchStart = null;
+        } else {
+          singleTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && isPinchingRef.current && startDist > 0) {
         e.preventDefault();
+        if (reader.lastZoomTimeRef) {
+          reader.lastZoomTimeRef.current = performance.now();
+        }
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
@@ -391,7 +400,10 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
           }
         }
       } else if (singleTouchStart && e.touches.length === 1) {
-        if (Math.hypot(e.touches[0].clientX - singleTouchStart.x, e.touches[0].clientY - singleTouchStart.y) > 10) {
+        if (performance.now() - pinchLiftEndTimeRef.current < 350) {
+          lastTapInfo = null;
+          singleTouchStart = null;
+        } else if (Math.hypot(e.touches[0].clientX - singleTouchStart.x, e.touches[0].clientY - singleTouchStart.y) > 10) {
           lastTapInfo = null;
           singleTouchStart = null;
         }
@@ -401,6 +413,10 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     const onTouchEnd = (e: TouchEvent) => {
       if (isPinchingRef.current && e.touches.length < 2) {
         isPinchingRef.current = false;
+        pinchLiftEndTimeRef.current = performance.now();
+        if (reader.lastZoomTimeRef) {
+          reader.lastZoomTimeRef.current = performance.now();
+        }
         startDist = 0;
         lastTapInfo = null;
         singleTouchStart = null;
@@ -414,6 +430,12 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
         window.setTimeout(() => {
           reader.clearZoomAnchor();
         }, 200);
+        return;
+      }
+
+      if (performance.now() - pinchLiftEndTimeRef.current < 350) {
+        singleTouchStart = null;
+        lastTapInfo = null;
         return;
       }
 
@@ -648,10 +670,6 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
         }}
         onPointerCancel={() => { mousePan.current = null; }}
         onLostPointerCapture={() => { mousePan.current = null; }}
-        onTouchStart={interactionMode === 'hand' ? handleTouchStart : undefined}
-        onTouchMove={interactionMode === 'hand' ? handleTouchMove : undefined}
-        onTouchEnd={interactionMode === 'hand' ? handleTouchEnd : undefined}
-        onTouchCancel={interactionMode === 'hand' ? handleTouchCancel : undefined}
         style={{
           cursor: interactionMode === 'hand' ? 'grab' : undefined,
           paddingTop: effectiveTopInset,
