@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 /**
  * Picks the reading language for text-to-speech from the text itself.
  *

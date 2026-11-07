@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import { labIndexedDB } from '../../../lab/storage';
 /**
  * Persistent Document Library Store for Otium Scan.

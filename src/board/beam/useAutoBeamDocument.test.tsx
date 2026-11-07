@@ -10,14 +10,10 @@ const service = vi.hoisted(() => ({
   onTransferProgress: vi.fn(() => () => {}), sendDocument: vi.fn(), sendViewMode: vi.fn(), broadcastPageChange: vi.fn()
 }));
 vi.mock('./beamService', () => ({ beamService: service }));
-let root: Root, host: HTMLDivElement, result: ReturnType<typeof useAutoBeamDocument>;
+let root: Root, host: HTMLDivElement, result!: ReturnType<typeof useAutoBeamDocument>;
 const pdf = () => ({ getData: vi.fn(async () => new Uint8Array([37, 80, 68, 70])) }) as unknown as PDFDocumentProxy;
 let options: Parameters<typeof useAutoBeamDocument>[0];
-function Probe() {
-  const current = useAutoBeamDocument(options);
-  result = current;
-  return null;
-}
+function Probe() { result = useAutoBeamDocument(options); return null; }
 const render = async () => { await act(async () => root.render(<Probe />)); };
 const tick = async () => { await act(async () => { vi.advanceTimersByTime(130); await Promise.resolve(); }); };
 beforeEach(() => {

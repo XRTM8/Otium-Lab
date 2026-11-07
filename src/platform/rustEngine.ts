@@ -73,7 +73,7 @@ export async function generatePinWithRust(): Promise<string | null> {
   if (!isTauriRuntime()) return null;
   try {
     return await invoke<string>('rust_generate_pairing_pin');
-  } catch (error) {
+  } catch {
     return null;
   }
 }

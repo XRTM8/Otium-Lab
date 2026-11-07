@@ -15,7 +15,12 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
   const [draft, setDraft] = useState<InkStroke | null>(null);
   const strokes = controlled ?? internal;
   const pointer = useRef<number | null>(null), live = useRef<InkStroke | null>(null);
-  useEffect(() => { if (!enabled) { pointer.current = null; live.current = null; setDraft(null); } }, [enabled]);
+  useEffect(() => {
+    if (!enabled) {
+      pointer.current = null;
+      live.current = null;
+    }
+  }, [enabled]);
   const point = (event: Pick<PointerEvent<SVGSVGElement>, 'clientX' | 'clientY'>, rect: DOMRect): InkPoint => ({
     x: Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))),
     y: Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)))
@@ -45,6 +50,6 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
       cancel();
       if (finished) { const next = [...strokes, finished]; if (onChange) onChange(next); else setInternal(next); }
     }} onPointerCancel={cancel} onLostPointerCapture={cancel}>
-    {[...strokes, ...(draft ? [draft] : [])].map((stroke, index) => <StrokeShape key={index} stroke={stroke} width={width} height={height} />)}
+    {[...strokes, ...(enabled && draft ? [draft] : [])].map((stroke, index) => <StrokeShape key={index} stroke={stroke} width={width} height={height} />)}
   </svg>;
 }

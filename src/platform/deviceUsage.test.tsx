@@ -1,5 +1,6 @@
-import { localStorage } from '../lab/storage';
 // @vitest-environment happy-dom
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+import { localStorage } from '../lab/storage';
 import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -34,7 +35,7 @@ it('changes roles without remounting children, losing the active board, or chang
   vi.stubGlobal('navigator', { userAgent: 'Android Mobile', maxTouchPoints: 5 });
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);
-  let mounts = 0, current: ReturnType<typeof useTeaching>, profile: ReturnType<typeof useDeviceUsage>;
+  let mounts = 0, current!: ReturnType<typeof useTeaching>, profile!: ReturnType<typeof useDeviceUsage>;
   function Child() { current = useTeaching(); useEffect(() => { mounts++; }, []); return null; }
   function Harness() { profile = useDeviceUsage(); return <TeachingProvider mobile={profile.compact}><Child /></TeachingProvider>; }
   try {

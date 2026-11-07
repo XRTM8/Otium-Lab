@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import type { BookmarkItem, FontFamilyId, TextAnnotation, ThemeMode, ViewMode } from '../types';
 import type { Language } from '../i18n/translations';
 import { normalizeAnnotation } from './annotations';

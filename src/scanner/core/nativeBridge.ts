@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 /**
  * Otium Native Bridge
  * Connects the web frontend to native Android capabilities in MainActivity.kt

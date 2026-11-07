@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 export interface OcrWordToken {
   text: string;
   x: number; // percentage (0 to 1) or natural px
