@@ -313,7 +313,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
         scrollFrameRef.current = null;
       }
     };
-  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef]);
+  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef, reader.lastZoomTimeRef]);
 
   useEffect(() => {
     if (isImmersive) return;

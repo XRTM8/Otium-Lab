@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CameraView } from './components/CameraView';
 import { CropView } from './components/CropView';
 import { EnhanceView } from './components/EnhanceView';
@@ -174,12 +174,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     }
   };
 
-  const handleCropCancel = () => {
+  const handleCropCancel = useCallback(() => {
     setCurrentRawImage('');
     setCurrentInitialQuad(null);
     setRetakeTargetIndex(null);
     setStep(pages.length > 0 ? 'review' : 'camera');
-  };
+  }, [pages.length]);
 
   const handleAddMorePages = () => {
     setRetakeTargetIndex(null);
@@ -256,7 +256,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   };
 
   // Safe Close Request: check if unsaved pages exist
-  const handleRequestClose = () => {
+  const handleRequestClose = useCallback(() => {
     if (pages.length === 0) {
       clearScanSession();
       clearActiveSessionPages();
@@ -264,7 +264,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     } else {
       setShowCloseConfirmModal(true);
     }
-  };
+  }, [pages.length, onClose]);
 
   const handleSaveDraftAndClose = () => {
     saveActiveSessionPages(pages);

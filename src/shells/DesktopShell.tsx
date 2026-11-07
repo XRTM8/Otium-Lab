@@ -27,19 +27,28 @@ const DesktopReader: React.FC = () => {
   const { role, receiver } = useDeviceUsage();
   const reader = useReaderController({ keyboard: true, dragDrop: false });
   const media = useAppMedia(reader);
+  const mediaRef = React.useRef(media);
+  mediaRef.current = media;
+  const readerRef = React.useRef(reader);
+  readerRef.current = reader;
+
   const teaching = useTeaching();
+  const teachingRef = React.useRef(teaching);
+  teachingRef.current = teaching;
+
   const isBoardOpen = teaching.prefs.boardEnabled && teaching.layout !== 'document';
   const setIsBoardOpen = useCallback((value: boolean | ((previous: boolean) => boolean)) => {
-    if (!teaching.prefs.boardEnabled) return;
-    const next = typeof value === 'function' ? value(teaching.layout !== 'document') : value;
+    const t = teachingRef.current;
+    if (!t.prefs.boardEnabled) return;
+    const next = typeof value === 'function' ? value(t.layout !== 'document') : value;
     if (next) {
-      teaching.setLayout('split');
-      teaching.setTarget('board');
+      t.setLayout('split');
+      t.setTarget('board');
     } else {
-      teaching.setLayout('document');
-      teaching.setReaderTools(true);
+      t.setLayout('document');
+      t.setReaderTools(true);
     }
-  }, [teaching.layout, teaching.setLayout, teaching.setTarget, teaching.setReaderTools, teaching.prefs.boardEnabled]);
+  }, []);
   const [isBeamOpen, setIsBeamOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -119,7 +128,7 @@ const DesktopReader: React.FC = () => {
       if (alreadyHandled) return;
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
-      void media.open(file);
+      void mediaRef.current.open(file);
     };
 
     window.addEventListener('dragenter', handleDragEnter);
@@ -141,19 +150,20 @@ const DesktopReader: React.FC = () => {
             setIsDraggingOverWindow(false);
             const filePath = payload.paths?.[0];
             if (filePath) {
+              const currentReader = readerRef.current;
               if (filePath.toLowerCase().endsWith('.pdf') || !filePath.includes('.')) {
                 void invoke<ArrayBuffer | number[]>('read_pdf_bytes', { path: filePath })
                   .then((bytes) => {
                     const data = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes as number[]).buffer;
                     const name = filePath.split(/[/\\]/).pop() || 'document.pdf';
-                    void reader.loadDocumentBytes(data, name);
+                    void currentReader.loadDocumentBytes(data, name);
                   })
                   .catch((err) => {
                     console.error('Failed to read dropped file in Tauri:', err);
-                    reader.setDocumentError(reader.lang === 'ar' ? 'تعذر فتح الملف المسحوب.' : 'Could not open dropped file.');
+                    currentReader.setDocumentError(currentReader.lang === 'ar' ? 'تعذر فتح الملف المسحوب.' : 'Could not open dropped file.');
                   });
               } else {
-                reader.setDocumentError(reader.lang === 'ar' ? 'يرجى اختيار ملف PDF صالح.' : 'Please select a valid PDF file.');
+                currentReader.setDocumentError(currentReader.lang === 'ar' ? 'يرجى اختيار ملف PDF صالح.' : 'Please select a valid PDF file.');
               }
             }
           }
@@ -170,7 +180,7 @@ const DesktopReader: React.FC = () => {
       window.removeEventListener('drop', handleDrop);
       if (tauriUnlisten) tauriUnlisten();
     };
-  }, [media.open, reader.loadDocumentBytes, reader.setDocumentError, reader.lang]);
+  }, []);
 
   // Global keyboard shortcuts: Ctrl+B / Cmd+B for Board toggle
   useEffect(() => {
