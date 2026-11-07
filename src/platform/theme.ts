@@ -44,6 +44,10 @@ export function applyDomTheme(theme: ThemeMode): void {
  * Physical Sovereign Curtain Transition (بردة الثيمات الملكية)
  * Hardware-accelerated top-to-bottom descending sheet with glowing edge.
  */
+let activeCurtainMidpointTimer: number | null = null;
+let activeCurtainFadeTimer: number | null = null;
+let activeCurtainCleanupTimer: number | null = null;
+
 export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void): void {
   if (typeof document === 'undefined') {
     onMidpoint?.();
@@ -62,6 +66,13 @@ export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void)
   }
 
   const bg = getThemeBackground(toTheme);
+
+  // Clean up any pending curtain timers from rapid switches
+  if (typeof window !== 'undefined') {
+    if (activeCurtainMidpointTimer !== null) window.clearTimeout(activeCurtainMidpointTimer);
+    if (activeCurtainFadeTimer !== null) window.clearTimeout(activeCurtainFadeTimer);
+    if (activeCurtainCleanupTimer !== null) window.clearTimeout(activeCurtainCleanupTimer);
+  }
 
   // Cleanly remove any existing curtain instance
   const old = document.getElementById('otium-theme-curtain');
@@ -83,14 +94,17 @@ export function triggerThemeCurtain(toTheme: ThemeMode, onMidpoint?: () => void)
   document.body.appendChild(curtain);
 
   // Switch underlying theme halfway through descent (~220ms)
-  window.setTimeout(() => {
+  activeCurtainMidpointTimer = window.setTimeout(() => {
+    activeCurtainMidpointTimer = null;
     onMidpoint?.();
   }, 220);
 
   // Fade out curtain once it completely covers viewport (~460ms)
-  window.setTimeout(() => {
+  activeCurtainFadeTimer = window.setTimeout(() => {
+    activeCurtainFadeTimer = null;
     curtain.classList.add('otium-curtain-fade');
-    window.setTimeout(() => {
+    activeCurtainCleanupTimer = window.setTimeout(() => {
+      activeCurtainCleanupTimer = null;
       curtain.remove();
     }, 240);
   }, 460);

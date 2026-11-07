@@ -20,6 +20,7 @@ import {
 import type { ThemeMode, ViewMode } from '../core/types';
 import type { Language } from '../core/i18n/translations';
 import { getTranslations } from '../core/i18n/translations';
+import { normalizeDigits } from '../core/search/arabic';
 import { triggerHaptic } from '../core/utils/haptics';
 import { OtiumLogo } from './OtiumLogo';
 
@@ -161,7 +162,7 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({
   }, [showJump]);
 
   const submitPageJump = () => {
-    const parsed = Number.parseInt(jumpValue.replace(/[^\d]/g, ''), 10);
+    const parsed = Number.parseInt(normalizeDigits(jumpValue).replace(/[^\d]/g, ''), 10);
     if (!Number.isFinite(parsed)) return;
     onPageChange(Math.min(totalPages, Math.max(1, parsed)));
     setShowJump(false);

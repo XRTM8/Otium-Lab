@@ -1,3 +1,4 @@
+import { normalizeDigits } from '../core/search/arabic';
 import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
@@ -150,6 +151,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   }, [currentPage]);
 
   // Auto-hide the chrome after inactivity so the page owns the screen.
+  // Close floating popups on Escape key
+  useEffect(() => {
+    if (!showThemeMenu && !showMoreMobile) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        e.preventDefault();
+        setShowThemeMenu(false);
+        setShowMoreMobile(false);
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [showThemeMenu, showMoreMobile]);
+
   useEffect(() => {
     let timeout: number | undefined;
     const handleActivity = () => {
@@ -177,7 +192,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const handlePageSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    const pageNum = Number.parseInt(inputPage.replace(/[^\d]/g, ''), 10);
+    const pageNum = Number.parseInt(normalizeDigits(inputPage).replace(/[^\d]/g, ''), 10);
     if (!Number.isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
       onPageChange(pageNum);
       (document.activeElement as HTMLElement)?.blur();

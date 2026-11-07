@@ -316,14 +316,16 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   // finishing a render must never cancel the pending text-layer job again.
   // Immediate GPU texture release on unmount prevents VRAM accumulation in mobile WebViews.
   useEffect(() => {
+    const canvas = canvasRef.current;
+    const annotationCanvas = annotationCanvasRef.current;
     return () => {
-      if (canvasRef.current) {
-        canvasRef.current.width = 1;
-        canvasRef.current.height = 1;
+      if (canvas) {
+        canvas.width = 1;
+        canvas.height = 1;
       }
-      if (annotationCanvasRef.current) {
-        annotationCanvasRef.current.width = 1;
-        annotationCanvasRef.current.height = 1;
+      if (annotationCanvas) {
+        annotationCanvas.width = 1;
+        annotationCanvas.height = 1;
       }
     };
   }, []);
