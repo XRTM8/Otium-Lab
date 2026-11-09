@@ -12,7 +12,7 @@ import { triggerHaptic } from '../core/utils/haptics';
 import { useDocumentInteraction } from './DocumentInk';
 import { useTeaching } from './TeachingContext';
 import { useChromeTap } from '../core/reader/useChromeTap';
-import { pinchScale } from '../core/reader/pinch';
+import { computeOptimalPageScale } from '../core/reader/device';
 
 interface PageSlotProps {
   pageNum: number;
@@ -134,6 +134,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     numPages,
     currentPage,
     zoom,
+    setZoom,
     theme,
     viewMode,
     lang,
@@ -149,6 +150,10 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     goToNextPage,
     goToPrevPage,
     scrollContainerRef,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    handleTouchCancel,
     dualFlipKey,
     numberJumpDisplay,
     scrollToPage
@@ -166,8 +171,6 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
   // Interactive precision scrubber state
   const [scrubState, setScrubState] = useState<{ page: number; x: number } | null>(null);
   const isScrubbingRef = useRef(false);
-  const isPinchingRef = useRef(false);
-  const pinchLiftEndTimeRef = useRef(0);
 
   const calculateScrubPage = (clientX: number) => {
     if (typeof window === 'undefined') return { page: 1, x: clientX };
@@ -238,9 +241,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
 
     const measure = () => {
       scrollFrameRef.current = null;
-      const now = performance.now();
-      const lastZoomTime = reader.lastZoomTimeRef?.current ?? 0;
-      if (numPages === 0 || isPinchingRef.current || now - lastZoomTime < 450) return;
+      if (numPages === 0) return;
 
       const approxSlotHeight = Math.max(100, (basePageSize?.height || 842) * zoom + 32);
       const estimatedPage = Math.max(
@@ -313,7 +314,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
         scrollFrameRef.current = null;
       }
     };
-  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef, reader.lastZoomTimeRef]);
+  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef]);
 
   useEffect(() => {
     if (isImmersive) return;
@@ -334,158 +335,48 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     };
   }, []);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
     container.style.touchAction = 'pan-x pan-y';
-
-    let startDist = 0;
-    let startZoom = zoom;
-    let rafId: number | null = null;
-    let targetZoom = zoom;
-    let lastTapInfo: { time: number; x: number; y: number } | null = null;
-    let singleTouchStart: { x: number; y: number } | null = null;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        lastTapInfo = null;
-        singleTouchStart = null;
-        e.preventDefault();
-        const t0 = e.touches[0];
-        const t1 = e.touches[1];
-        const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
-        if (dist > 10) {
-          startDist = dist;
-          startZoom = zoom;
-          isPinchingRef.current = true;
-          if (reader.lastZoomTimeRef) {
-            reader.lastZoomTimeRef.current = performance.now();
-          }
-          const focusX = (t0.clientX + t1.clientX) / 2;
-          const focusY = (t0.clientY + t1.clientY) / 2;
-          reader.captureZoomAnchor(focusX, focusY);
-        }
-      } else if (e.touches.length === 1) {
-        if (performance.now() - pinchLiftEndTimeRef.current < 350) {
-          singleTouchStart = null;
-        } else {
-          singleTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        }
+    const pinch = (event: TouchEvent) => {
+      if (interactionMode === 'hand' && event.touches.length > 1) {
+        event.preventDefault();
       }
     };
+    container.addEventListener('touchmove', pinch, { passive: false });
+    return () => container.removeEventListener('touchmove', pinch);
+  }, [interactionMode, doc, scrollContainerRef]);
 
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && isPinchingRef.current && startDist > 0) {
-        e.preventDefault();
-        if (reader.lastZoomTimeRef) {
-          reader.lastZoomTimeRef.current = performance.now();
-        }
-        const t0 = e.touches[0];
-        const t1 = e.touches[1];
-        const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
-        const focusX = (t0.clientX + t1.clientX) / 2;
-        const focusY = (t0.clientY + t1.clientY) / 2;
-        reader.captureZoomAnchor(focusX, focusY);
-
-        const minZ = reader.minZoom ?? 0.2;
-        const maxZ = reader.maxZoom ?? 4.0;
-        const newZoom = pinchScale(startZoom, startDist, dist, minZ, maxZ);
-        if (Number.isFinite(newZoom) && newZoom > 0 && Math.abs(newZoom - targetZoom) >= 0.006) {
-          targetZoom = newZoom;
-          if (rafId === null) {
-            rafId = requestAnimationFrame(() => {
-              rafId = null;
-              reader.setZoom(targetZoom);
-            });
-          }
-        }
-      } else if (singleTouchStart && e.touches.length === 1) {
-        if (performance.now() - pinchLiftEndTimeRef.current < 350) {
-          lastTapInfo = null;
-          singleTouchStart = null;
-        } else if (Math.hypot(e.touches[0].clientX - singleTouchStart.x, e.touches[0].clientY - singleTouchStart.y) > 10) {
-          lastTapInfo = null;
-          singleTouchStart = null;
-        }
-      }
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (isPinchingRef.current && e.touches.length < 2) {
-        isPinchingRef.current = false;
-        pinchLiftEndTimeRef.current = performance.now();
-        if (reader.lastZoomTimeRef) {
-          reader.lastZoomTimeRef.current = performance.now();
-        }
-        startDist = 0;
-        lastTapInfo = null;
-        singleTouchStart = null;
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId);
-          rafId = null;
-        }
-        if (targetZoom > 0 && Math.abs(targetZoom - zoom) >= 0.006) {
-          reader.setZoom(targetZoom);
-        }
-        window.setTimeout(() => {
-          reader.clearZoomAnchor();
-        }, 200);
-        return;
-      }
-
-      if (performance.now() - pinchLiftEndTimeRef.current < 350) {
-        singleTouchStart = null;
-        lastTapInfo = null;
-        return;
-      }
-
-      if (!isPinchingRef.current && e.touches.length === 0 && e.changedTouches.length === 1 && singleTouchStart) {
-        const touch = e.changedTouches[0];
-        const target = e.target;
-        const isInteractive =
-          target instanceof Element &&
-          Boolean(target.closest('button, a, input, textarea, select, [role="button"]'));
-        if (!isInteractive && Math.hypot(touch.clientX - singleTouchStart.x, touch.clientY - singleTouchStart.y) <= 10) {
-          const now = performance.now();
-          if (
-            lastTapInfo &&
-            now - lastTapInfo.time < 300 &&
-            Math.hypot(touch.clientX - lastTapInfo.x, touch.clientY - lastTapInfo.y) < 25
-          ) {
-            lastTapInfo = null;
-            singleTouchStart = null;
-            const focusX = touch.clientX;
-            const focusY = touch.clientY;
-            reader.captureZoomAnchor(focusX, focusY);
-            const fitScale = reader.getFitScale();
-            const maxZ = reader.maxZoom ?? 4.0;
-            const isZoomedIn = zoom > fitScale * 1.25;
-            const targetZ = isZoomedIn ? fitScale : Math.min(maxZ, Math.max(fitScale * 1.8, 1.8));
-            reader.setZoom(targetZ);
-            window.setTimeout(() => {
-              reader.clearZoomAnchor();
-            }, 250);
-          } else {
-            lastTapInfo = { time: now, x: touch.clientX, y: touch.clientY };
-          }
-        }
-        singleTouchStart = null;
-      }
-    };
-
-    container.addEventListener('touchstart', onTouchStart, { passive: false });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: false });
-    container.addEventListener('touchcancel', onTouchEnd, { passive: false });
-
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !doc || typeof ResizeObserver === 'undefined') return;
+    let previousWidth = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver(() => {
+      if (container.closest('[data-board-resizing="true"]')) return;
+      const width = container.clientWidth;
+      if (!width || Math.abs(width - previousWidth) < 24) return;
+      previousWidth = width;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setZoom(
+          computeOptimalPageScale(
+            basePageSize.width,
+            basePageSize.height,
+            container.clientWidth,
+            container.clientHeight,
+            viewMode
+          )
+        );
+      }, 80);
+    });
+    observer.observe(container);
     return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('touchcancel', onTouchEnd);
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      observer.disconnect();
+      clearTimeout(timer);
     };
-  }, [doc, zoom, reader, scrollContainerRef]);
+  }, [doc, viewMode, basePageSize.width, basePageSize.height, scrollContainerRef, setZoom]);
 
   const continuousPages = useMemo(
     () => Array.from({ length: numPages }, (_, index) => index + 1),
@@ -670,6 +561,10 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
         }}
         onPointerCancel={() => { mousePan.current = null; }}
         onLostPointerCapture={() => { mousePan.current = null; }}
+        onTouchStart={interactionMode === 'hand' ? handleTouchStart : undefined}
+        onTouchMove={interactionMode === 'hand' ? handleTouchMove : undefined}
+        onTouchEnd={interactionMode === 'hand' ? handleTouchEnd : undefined}
+        onTouchCancel={interactionMode === 'hand' ? handleTouchCancel : undefined}
         style={{
           cursor: interactionMode === 'hand' ? 'grab' : undefined,
           paddingTop: effectiveTopInset,

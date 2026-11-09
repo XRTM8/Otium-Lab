@@ -97,17 +97,6 @@ function supportsCanvasFilter(): boolean {
   return canvasFilterSupport;
 }
 
-// Reusable staging canvas to eliminate GC pauses and achieve silky 60/120 FPS
-let sharedStagingCanvas: HTMLCanvasElement | null = null;
-function getSharedStagingCanvas(width: number, height: number): HTMLCanvasElement {
-  if (typeof document === 'undefined') return {} as HTMLCanvasElement;
-  if (!sharedStagingCanvas) {
-    sharedStagingCanvas = document.createElement('canvas');
-  }
-  if (sharedStagingCanvas.width !== width) sharedStagingCanvas.width = width;
-  if (sharedStagingCanvas.height !== height) sharedStagingCanvas.height = height;
-  return sharedStagingCanvas;
-}
 
 function hexToRgb(hex: string): [number, number, number] {
   const value = hex.replace('#', '').trim();
@@ -358,10 +347,11 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         const viewport = page.getViewport({ scale: scale * effectiveDpr });
         const cssViewport = page.getViewport({ scale });
 
-        // Reusable pooled staging canvas: zero GC pauses and silky frame pacing
-        const targetW = Math.max(1, Math.floor(viewport.width));
-        const targetH = Math.max(1, Math.floor(viewport.height));
-        staging = getSharedStagingCanvas(targetW, targetH);
+        // Render into a staging canvas first. The visible canvas is updated in
+        // one synchronous copy, so zooming never flashes a blank page.
+        staging = document.createElement('canvas');
+        staging.width = Math.max(1, Math.floor(viewport.width));
+        staging.height = Math.max(1, Math.floor(viewport.height));
         const stagingContext = staging.getContext('2d', {
           alpha: false,
           willReadFrequently: false
@@ -404,11 +394,23 @@ const PdfPageView: React.FC<PdfPageProps> = ({
           const filter = themeFilter(theme);
           const canFilter = Boolean(filter && supportsCanvasFilter());
           if (canFilter && filter) context.filter = filter;
-          context.drawImage(staging, 0, 0);
+          context.drawImage(
+            staging,
+            0,
+            0,
+            staging.width,
+            staging.height,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
           if (canFilter) context.filter = 'none';
         }
 
-        // Keep pooled staging canvas hot for next frame with zero re-allocations
+        // Release backing GPU memory for staging canvas immediately
+        staging.width = 1;
+        staging.height = 1;
 
         currentRenderTaskRef.current = null;
         renderedKeyRef.current = renderKey;
@@ -426,6 +428,10 @@ const PdfPageView: React.FC<PdfPageProps> = ({
           setRenderError((error as Error)?.message || 'Render failed');
         }
       } finally {
+        if (staging) {
+          staging.width = 1;
+          staging.height = 1;
+        }
         try {
           page?.cleanup();
         } catch {
@@ -645,10 +651,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
       style={{
         width: `${dimensions.width}px`,
         height: `${dimensions.height}px`,
-        backgroundColor: PAGE_BACKGROUND[theme],
-        contain: 'paint layout',
-        transform: 'translateZ(0)',
-        willChange: 'transform'
+        backgroundColor: PAGE_BACKGROUND[theme]
       }}
     >
       {(isVisible || hasRenderedOnce) && (
