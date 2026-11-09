@@ -7,7 +7,7 @@ describe('rustEngine platform integration', () => {
     const status = await fetchRustEngineStatus();
     expect(status.isActive).toBe(true);
     expect(status.version).toContain('Rust WASM / Web Mode');
-    expect(status.modules).toContain('otium-core (Bilingual Typography & 8 OLED Themes)');
+    expect(status.modules).toContain('otium-core (Bilingual Typography, Search Normalization & 8 OLED Themes)');
   });
 
   it('safely returns null for native calls when not running in Tauri', async () => {
