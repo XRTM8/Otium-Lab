@@ -19,6 +19,88 @@ pub enum ThemeMode {
     EInkMono,
 }
 
+/// AOT Pre-Baked Static Theme Palette in `.rdata` (0.00ns initialization, 0 heap allocations)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StaticThemePalette {
+    pub id: ThemeMode,
+    pub name: &'static str,
+    pub name_ar: &'static str,
+    pub bg_canvas: &'static str,
+    pub bg_surface: &'static str,
+    pub bg_card: &'static str,
+    pub text_primary: &'static str,
+    pub text_secondary: &'static str,
+    pub text_muted: &'static str,
+    pub border: &'static str,
+    pub accent: &'static str,
+    pub spine_divider: &'static str,
+    pub is_dark: bool,
+}
+
+pub const PALETTE_OLED_BLACK: StaticThemePalette = StaticThemePalette {
+    id: ThemeMode::OledBlack,
+    name: "Black",
+    name_ar: "أسود",
+    bg_canvas: "#000000",
+    bg_surface: "#0A0A0C",
+    bg_card: "#141418",
+    text_primary: "#EDEDED",
+    text_secondary: "#A1A1A1",
+    text_muted: "#666666",
+    border: "#202026",
+    accent: "#10B981",
+    spine_divider: "#121216",
+    is_dark: true,
+};
+
+pub const PALETTE_WARM_SEPIA: StaticThemePalette = StaticThemePalette {
+    id: ThemeMode::WarmSepia,
+    name: "Amber",
+    name_ar: "كهرماني",
+    bg_canvas: "#18130E",
+    bg_surface: "#221B14",
+    bg_card: "#2E241B",
+    text_primary: "#FDE68A",
+    text_secondary: "#D97706",
+    text_muted: "#92400E",
+    border: "#3D3024",
+    accent: "#F59E0B",
+    spine_divider: "#261D15",
+    is_dark: true,
+};
+
+pub const PALETTE_DAY_PAPER: StaticThemePalette = StaticThemePalette {
+    id: ThemeMode::DayPaper,
+    name: "Paper",
+    name_ar: "ورقي",
+    bg_canvas: "#F7F4EE",
+    bg_surface: "#EFEAE0",
+    bg_card: "#E5DFD3",
+    text_primary: "#1E1C19",
+    text_secondary: "#4D463E",
+    text_muted: "#786E63",
+    border: "#DAD2C3",
+    accent: "#D97706",
+    spine_divider: "#D2C9B8",
+    is_dark: false,
+};
+
+pub const PALETTE_EINK_MONO: StaticThemePalette = StaticThemePalette {
+    id: ThemeMode::EInkMono,
+    name: "Gray",
+    name_ar: "رمادي",
+    bg_canvas: "#ECECEC",
+    bg_surface: "#E0E0E0",
+    bg_card: "#D4D4D4",
+    text_primary: "#0F0F0F",
+    text_secondary: "#383838",
+    text_muted: "#616161",
+    border: "#BFBFBF",
+    accent: "#404040",
+    spine_divider: "#B0B0B0",
+    is_dark: false,
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ThemePalette {
     pub id: ThemeMode,
@@ -37,68 +119,34 @@ pub struct ThemePalette {
 }
 
 impl ThemeMode {
-    pub fn palette(&self) -> ThemePalette {
+    /// Zero-allocation, compile-time baked palette in `.rdata`
+    #[inline(always)]
+    pub const fn static_palette(&self) -> &'static StaticThemePalette {
         match self {
-            ThemeMode::OledBlack => ThemePalette {
-                id: ThemeMode::OledBlack,
-                name: "Black".into(),
-                name_ar: "أسود".into(),
-                bg_canvas: "#000000".into(),
-                bg_surface: "#0A0A0C".into(),
-                bg_card: "#141418".into(),
-                text_primary: "#EDEDED".into(),
-                text_secondary: "#A1A1A1".into(),
-                text_muted: "#666666".into(),
-                border: "#202026".into(),
-                accent: "#10B981".into(),
-                spine_divider: "#121216".into(),
-                is_dark: true,
-            },
-            ThemeMode::WarmSepia => ThemePalette {
-                id: ThemeMode::WarmSepia,
-                name: "Amber".into(),
-                name_ar: "كهرماني".into(),
-                bg_canvas: "#18130E".into(),
-                bg_surface: "#221B14".into(),
-                bg_card: "#2E241B".into(),
-                text_primary: "#FDE68A".into(),
-                text_secondary: "#D97706".into(),
-                text_muted: "#92400E".into(),
-                border: "#3D3024".into(),
-                accent: "#F59E0B".into(),
-                spine_divider: "#261D15".into(),
-                is_dark: true,
-            },
-            ThemeMode::DayPaper => ThemePalette {
-                id: ThemeMode::DayPaper,
-                name: "Paper".into(),
-                name_ar: "ورقي".into(),
-                bg_canvas: "#F7F4EE".into(),
-                bg_surface: "#EFEAE0".into(),
-                bg_card: "#E5DFD3".into(),
-                text_primary: "#1E1C19".into(),
-                text_secondary: "#4D463E".into(),
-                text_muted: "#786E63".into(),
-                border: "#DAD2C3".into(),
-                accent: "#D97706".into(),
-                spine_divider: "#D2C9B8".into(),
-                is_dark: false,
-            },
-            ThemeMode::EInkMono => ThemePalette {
-                id: ThemeMode::EInkMono,
-                name: "Gray".into(),
-                name_ar: "رمادي".into(),
-                bg_canvas: "#ECECEC".into(),
-                bg_surface: "#E0E0E0".into(),
-                bg_card: "#D4D4D4".into(),
-                text_primary: "#0F0F0F".into(),
-                text_secondary: "#383838".into(),
-                text_muted: "#616161".into(),
-                border: "#BFBFBF".into(),
-                accent: "#404040".into(),
-                spine_divider: "#B0B0B0".into(),
-                is_dark: false,
-            },
+            ThemeMode::OledBlack => &PALETTE_OLED_BLACK,
+            ThemeMode::WarmSepia => &PALETTE_WARM_SEPIA,
+            ThemeMode::DayPaper => &PALETTE_DAY_PAPER,
+            ThemeMode::EInkMono => &PALETTE_EINK_MONO,
+        }
+    }
+
+    /// Dynamic palette copy (for Serde / GUI compatibility)
+    pub fn palette(&self) -> ThemePalette {
+        let s = self.static_palette();
+        ThemePalette {
+            id: s.id,
+            name: s.name.into(),
+            name_ar: s.name_ar.into(),
+            bg_canvas: s.bg_canvas.into(),
+            bg_surface: s.bg_surface.into(),
+            bg_card: s.bg_card.into(),
+            text_primary: s.text_primary.into(),
+            text_secondary: s.text_secondary.into(),
+            text_muted: s.text_muted.into(),
+            border: s.border.into(),
+            accent: s.accent.into(),
+            spine_divider: s.spine_divider.into(),
+            is_dark: s.is_dark,
         }
     }
 }

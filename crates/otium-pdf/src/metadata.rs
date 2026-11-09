@@ -24,6 +24,23 @@ pub struct PdfDocumentInfo {
 pub struct PdfInspector;
 
 impl PdfInspector {
+    /// High-performance file open with OS-level NVMe prefetch hints (FILE_FLAG_SEQUENTIAL_SCAN)
+    fn open_direct_file<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::fs::File> {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_SEQUENTIAL_SCAN: u32 = 0x08000000;
+            std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(FILE_FLAG_SEQUENTIAL_SCAN)
+                .open(path)
+        }
+        #[cfg(not(windows))]
+        {
+            std::fs::File::open(path)
+        }
+    }
+
     /// Validates ISO 32000-1 magic header bytes `%PDF-` before parsing.
     pub fn validate_header(bytes: &[u8]) -> Result<()> {
         if bytes.len() < 5 {
@@ -36,6 +53,15 @@ impl PdfInspector {
             ));
         }
         Ok(())
+    }
+
+    /// Zero-copy inspection of a PDF file directly from disk using OS memory mapping (mmap)
+    /// combined with Direct NVMe prefetch hints. Eliminates heap allocation for 100MB - 2GB files.
+    pub fn inspect_file<P: AsRef<std::path::Path>>(path: P) -> Result<PdfDocumentInfo> {
+        let file = Self::open_direct_file(path)?;
+        let mmap = unsafe { memmap2::Mmap::map(&file) }
+            .map_err(|e| OtiumError::Io(format!("Memory mapping failed: {e}")))?;
+        Self::inspect_bytes(&mmap)
     }
 
     /// Inspect a PDF from bytes and extract page information and metadata.

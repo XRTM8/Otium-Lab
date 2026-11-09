@@ -1,7 +1,13 @@
+pub mod arena;
 pub mod canvas;
+pub mod decimate;
+pub mod mesh;
 pub mod stroke;
 
+pub use arena::*;
 pub use canvas::*;
+pub use decimate::*;
+pub use mesh::*;
 pub use stroke::*;
 
 #[cfg(test)]
@@ -42,6 +48,38 @@ mod tests {
     }
 
     #[test]
+    fn test_erase_and_undo() {
+        let mut canvas = InkCanvas::new(500.0, 500.0);
+        let mut s1 = Stroke::new("s1".into(), InkTool::Pen, "#000000".into(), 4.0, 1.0);
+        s1.add_point(InkPoint::new(10.0, 10.0, 1.0, 100));
+        s1.add_point(InkPoint::new(20.0, 20.0, 1.0, 101));
+        canvas.begin_stroke(s1);
+
+        assert_eq!(canvas.strokes.len(), 1);
+        // Erase at (15, 15) with radius 10
+        assert!(canvas.erase_at(15.0, 15.0, 10.0));
+        assert_eq!(canvas.strokes.len(), 0);
+
+        // Undo erase restores it
+        assert!(canvas.undo());
+        assert_eq!(canvas.strokes.len(), 1);
+        assert_eq!(canvas.strokes[0].id, "s1");
+    }
+
+    #[test]
+    fn test_gpu_mesh_tessellation() {
+        let mut stroke = Stroke::new("s_gpu".into(), InkTool::Pen, "#10B981".into(), 4.0, 1.0);
+        stroke.add_point(InkPoint::new(0.0, 0.0, 1.0, 1));
+        stroke.add_point(InkPoint::new(50.0, 50.0, 1.0, 2));
+        stroke.add_point(InkPoint::new(100.0, 50.0, 1.0, 3));
+
+        let mesh = InkTessellator::tessellate_stroke(&stroke);
+        assert_eq!(mesh.vertices.len(), 6); // 3 points * 2 extruded vertices
+        assert_eq!(mesh.triangle_count(), 4); // 2 quads * 2 triangles = 4 triangles
+        assert_eq!(mesh.color_rgba, [16, 185, 129, 255]);
+    }
+
+    #[test]
     fn test_svg_export() {
         let mut canvas = InkCanvas::new(500.0, 500.0);
         let mut stroke = Stroke::new("test".into(), InkTool::Pen, "#10B981".into(), 3.0, 1.0);
@@ -53,5 +91,19 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("stroke=\"#10B981\""));
         assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn test_canvas_simplify_strokes() {
+        let mut canvas = InkCanvas::new(500.0, 500.0);
+        let mut stroke = Stroke::new("test".into(), InkTool::Pen, "#10B981".into(), 3.0, 1.0);
+        for i in 0..20 {
+            stroke.add_point(InkPoint::new(i as f32, (i * 2) as f32, 1.0, i as u64));
+        }
+        assert_eq!(stroke.points.len(), 20);
+        canvas.begin_stroke(stroke);
+        canvas.simplify_all_strokes(0.5);
+        // Linear path simplified to endpoints
+        assert_eq!(canvas.strokes[0].points.len(), 2);
     }
 }

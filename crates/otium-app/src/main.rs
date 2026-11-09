@@ -7,13 +7,16 @@ use otium_app::AppState;
 use otium_beam::BeamPairing;
 use otium_scanner::DocumentScanner;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 pub fn main() -> Result<(), slint::PlatformError> {
     let main_window = app_ui::MainWindow::new()?;
     let state = AppState::new();
 
-    // Helper to sync theme palette colors to Slint UI
+    // Helper to sync theme palette colors to Slint UI with Zero Heap Allocations
     fn update_ui_palette(window: &app_ui::MainWindow, state: &AppState) {
-        let palette = state.palette();
+        let palette = state.current_theme.static_palette();
         window.set_theme_name(format!("اللون: {}", palette.name_ar).into());
 
         // Parse hex colors for Slint
@@ -29,13 +32,13 @@ pub fn main() -> Result<(), slint::PlatformError> {
             }
         }
 
-        window.set_bg_canvas(parse_color(&palette.bg_canvas));
-        window.set_bg_surface(parse_color(&palette.bg_surface));
-        window.set_bg_card(parse_color(&palette.bg_card));
-        window.set_text_primary(parse_color(&palette.text_primary));
-        window.set_text_muted(parse_color(&palette.text_muted));
-        window.set_accent(parse_color(&palette.accent));
-        window.set_border_color(parse_color(&palette.border));
+        window.set_bg_canvas(parse_color(palette.bg_canvas));
+        window.set_bg_surface(parse_color(palette.bg_surface));
+        window.set_bg_card(parse_color(palette.bg_card));
+        window.set_text_primary(parse_color(palette.text_primary));
+        window.set_text_muted(parse_color(palette.text_muted));
+        window.set_accent(parse_color(palette.accent));
+        window.set_border_color(parse_color(palette.border));
     }
 
     update_ui_palette(&main_window, &state);
@@ -186,6 +189,8 @@ pub fn main() -> Result<(), slint::PlatformError> {
         main_window.on_record_ink_point(move |x, y, is_new| {
             let mut state = state_clone.borrow_mut();
             state.record_point(x, y, is_new);
+            // Real-time zero-copy tessellation for instant GPU pipeline vertex streaming
+            let _meshes = state.tessellate_canvas();
             if let Some(window) = window_weak.upgrade() {
                 window.set_ink_stroke_count(state.active_canvas.strokes.len() as i32);
             }

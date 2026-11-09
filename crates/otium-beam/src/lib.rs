@@ -1,8 +1,12 @@
 pub mod pairing;
 pub mod protocol;
+pub mod ring_buffer;
+pub mod state;
 
 pub use pairing::*;
 pub use protocol::*;
+pub use ring_buffer::*;
+pub use state::*;
 
 #[cfg(test)]
 mod tests {

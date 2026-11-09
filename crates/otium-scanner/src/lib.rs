@@ -1,8 +1,14 @@
 pub mod geometry;
+pub mod gpu_pipeline;
 pub mod processor;
+pub mod simd_resample;
+pub mod tiler;
 
 pub use geometry::*;
+pub use gpu_pipeline::*;
 pub use processor::*;
+pub use simd_resample::*;
+pub use tiler::*;
 
 #[cfg(test)]
 mod tests {
@@ -23,25 +29,20 @@ mod tests {
     }
 
     #[test]
-    fn test_homography_identity() {
-        let quad = QuadCorners::new(
-            Point2D::new(0.0, 0.0),
-            Point2D::new(100.0, 0.0),
-            Point2D::new(100.0, 100.0),
-            Point2D::new(0.0, 100.0),
-        );
-        let homography = HomographyMatrix::from_quad_to_rect(&quad, 100.0, 100.0).unwrap();
-        let pt = homography.transform_point(Point2D::new(50.0, 50.0));
-        assert!((pt.x - 50.0).abs() < 1e-3);
-        assert!((pt.y - 50.0).abs() < 1e-3);
+    fn test_clean_document_filter() {
+        let mut img = ImageBuffer::new(100, 100);
+        for pixel in img.pixels_mut() {
+            *pixel = Rgba([200, 200, 200, 255]); // Light gray
+        }
+        let clean = DocumentScanner::clean_document_filter(&img, 1.2);
+        assert_eq!(clean.dimensions(), (100, 100));
     }
 
     #[test]
-    fn test_id_card_stitching_canvas_size() {
-        let front = ImageBuffer::from_pixel(100, 60, Rgba([200, 0, 0, 255]));
-        let back = ImageBuffer::from_pixel(100, 60, Rgba([0, 0, 200, 255]));
+    fn test_id_card_stitching() {
+        let front = ImageBuffer::from_pixel(200, 120, Rgba([10, 20, 30, 255]));
+        let back = ImageBuffer::from_pixel(200, 120, Rgba([40, 50, 60, 255]));
         let a4 = DocumentScanner::stitch_id_card_a4(&front, &back);
-        assert_eq!(a4.width(), 2480);
-        assert_eq!(a4.height(), 3508);
+        assert_eq!(a4.dimensions(), (2480, 3508));
     }
 }

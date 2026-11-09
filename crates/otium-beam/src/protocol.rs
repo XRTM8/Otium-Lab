@@ -67,4 +67,37 @@ impl BeamPacket {
             message,
         }
     }
+
+    /// Serialize to JSON string for WebRTC / WebSocket interop
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Parse from JSON string
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json_str)
+    }
+
+    /// Fast binary frame encoding for high-speed local UDP / QUIC transport
+    /// Tag 0x01: Spotlight (10 bytes total: tag + active(1) + x(4) + y(4))
+    /// Tag 0x02: PageTurn (5 bytes total: tag + page(4))
+    pub fn encode_fast_command(&self) -> Option<Vec<u8>> {
+        match &self.message {
+            BeamMessage::Spotlight { x_ratio, y_ratio, is_active } => {
+                let mut buf = Vec::with_capacity(10);
+                buf.push(0x01);
+                buf.push(if *is_active { 1 } else { 0 });
+                buf.extend_from_slice(&x_ratio.to_le_bytes());
+                buf.extend_from_slice(&y_ratio.to_le_bytes());
+                Some(buf)
+            }
+            BeamMessage::PageTurn { target_page } => {
+                let mut buf = Vec::with_capacity(5);
+                buf.push(0x02);
+                buf.extend_from_slice(&(*target_page as u32).to_le_bytes());
+                Some(buf)
+            }
+            _ => None,
+        }
+    }
 }

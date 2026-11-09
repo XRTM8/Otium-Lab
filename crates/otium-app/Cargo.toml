@@ -23,3 +23,5 @@ thiserror.workspace = true
 log.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+memmap2.workspace = true
+mimalloc.workspace = true

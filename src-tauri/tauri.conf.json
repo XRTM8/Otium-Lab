@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Otium",
+  "productName": "Otium Lab",
   "version": "1.9.16",
-  "identifier": "com.otium.reader",
+  "identifier": "com.otium.reader.lab",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -86,7 +86,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/XRTM8/Otium/releases/latest/download/latest.json"
+        "https://xrtm8.github.io/Otium-Lab/latest.json",
+        "https://github.com/XRTM8/Otium-Lab/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkwQzk1QTM1OUU3NTk2REQKUldUZGxuV2VOVnJKa0MxSHJJZmJLY1ZyVC9aaE9ha3UxaWVpVSt3R2dTU3g4S2taWVJFVnQvdUYK",
       "windows": {

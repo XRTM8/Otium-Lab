@@ -12,46 +12,54 @@ use otium_core::{OtiumError, Result};
 pub struct PptxParser;
 
 impl PptxParser {
-    /// Parse a PowerPoint (.pptx / .ppsx) file from raw bytes.
+    /// Parse a PowerPoint (.pptx / .ppsx) file from raw bytes with zero intermediate string allocation
+    /// and single-pass zip index resolution.
     pub fn parse_bytes(bytes: &[u8]) -> Result<SlidePresentation> {
         let reader = Cursor::new(bytes);
         let mut archive = ZipArchive::new(reader)
             .map_err(|e| OtiumError::Format(format!("Failed to open PPTX zip container: {e}")))?;
 
-        // 1. Discover slide dimensions from ppt/presentation.xml
-        let (slide_width_pt, slide_height_pt) = Self::parse_presentation_dimensions(&mut archive)?;
+        let mut pres_file_index = None;
+        let mut slide_entries: Vec<(usize, usize)> = Vec::new(); // (slide_number, archive_index)
 
-        // 2. Discover and parse each slide in ppt/slides/slide{N}.xml
-        let mut slide_names = Vec::new();
+        // 1. Single-pass discovery: index slide files and presentation.xml in O(N) entries
         for i in 0..archive.len() {
             let file = archive
                 .by_index(i)
                 .map_err(|e| OtiumError::Format(e.to_string()))?;
-            let name = file.name().to_string();
-            if name.starts_with("ppt/slides/slide") && name.ends_with(".xml") {
-                slide_names.push(name);
+            let name = file.name();
+
+            if name == "ppt/presentation.xml" {
+                pres_file_index = Some(i);
+            } else if let Some(stripped) = name.strip_prefix("ppt/slides/slide") {
+                if let Some(num_str) = stripped.strip_suffix(".xml") {
+                    if let Ok(num) = num_str.parse::<usize>() {
+                        slide_entries.push((num, i));
+                    }
+                }
             }
         }
 
-        // Sort slide names numerically slide1, slide2, etc.
-        slide_names.sort_by_key(|name| {
-            name.trim_start_matches("ppt/slides/slide")
-                .trim_end_matches(".xml")
-                .parse::<usize>()
-                .unwrap_or(0)
-        });
+        // Sort slide entries strictly by slide number (1, 2, 3...)
+        slide_entries.sort_by_key(|&(num, _)| num);
 
-        let mut slides = Vec::with_capacity(slide_names.len());
-        for (idx, slide_name) in slide_names.iter().enumerate() {
-            let mut slide_xml = String::new();
-            {
-                let mut file = archive
-                    .by_name(slide_name)
-                    .map_err(|e| OtiumError::Format(format!("Failed reading {slide_name}: {e}")))?;
-                file.read_to_string(&mut slide_xml)?;
-            }
+        // 2. Discover slide dimensions from ppt/presentation.xml
+        let (slide_width_pt, slide_height_pt) = if let Some(idx) = pres_file_index {
+            let file = archive.by_index(idx)
+                .map_err(|e| OtiumError::Format(format!("Failed reading presentation.xml: {e}")))?;
+            Self::parse_presentation_dimensions_stream(file)?
+        } else {
+            (960.0, 540.0)
+        };
 
-            let slide = Self::parse_single_slide(idx + 1, &slide_xml)?;
+        // 3. Stream and parse each slide directly from the zip stream
+        let mut slides = Vec::with_capacity(slide_entries.len());
+        for (slide_num, (_, file_idx)) in slide_entries.iter().enumerate() {
+            let file = archive
+                .by_index(*file_idx)
+                .map_err(|e| OtiumError::Format(format!("Failed reading slide #{slide_num}: {e}")))?;
+
+            let slide = Self::parse_single_slide_stream(slide_num + 1, file)?;
             slides.push(slide);
         }
 
@@ -63,19 +71,12 @@ impl PptxParser {
         })
     }
 
-    fn parse_presentation_dimensions<R: Read + std::io::Seek>(
-        archive: &mut ZipArchive<R>,
-    ) -> Result<(f32, f32)> {
-        let mut xml_content = String::new();
-        if let Ok(mut file) = archive.by_name("ppt/presentation.xml") {
-            let _ = file.read_to_string(&mut xml_content);
-        }
-
+    fn parse_presentation_dimensions_stream<R: Read>(reader_source: R) -> Result<(f32, f32)> {
         // Default to standard 16:9 widescreen: 13.333 x 7.5 inches -> 960 x 540 pt
         let mut width = 960.0;
         let mut height = 540.0;
 
-        let mut reader = Reader::from_str(&xml_content);
+        let mut reader = Reader::from_reader(reader_source);
         reader.config_mut().trim_text(true);
 
         let mut buf = Vec::new();
@@ -111,8 +112,8 @@ impl PptxParser {
         Ok((width, height))
     }
 
-    fn parse_single_slide(index: usize, xml_content: &str) -> Result<Slide> {
-        let mut reader = Reader::from_str(xml_content);
+    fn parse_single_slide_stream<R: Read>(index: usize, reader_source: R) -> Result<Slide> {
+        let mut reader = Reader::from_reader(reader_source);
         reader.config_mut().trim_text(true);
 
         let mut elements = Vec::new();

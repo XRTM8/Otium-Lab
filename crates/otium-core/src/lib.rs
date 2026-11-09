@@ -1,13 +1,21 @@
 pub mod annotations;
 pub mod bidi;
+pub mod cycle_timer;
 pub mod document;
 pub mod error;
+pub mod index;
+pub mod search;
+pub mod slab;
 pub mod theme;
 pub mod view_mode;
 
 pub use annotations::*;
 pub use bidi::*;
+pub use cycle_timer::*;
 pub use document::*;
 pub use error::{OtiumError, Result};
+pub use index::*;
+pub use search::*;
+pub use slab::*;
 pub use theme::*;
 pub use view_mode::*;

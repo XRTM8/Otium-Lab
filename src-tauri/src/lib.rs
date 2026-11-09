@@ -5,6 +5,9 @@ use std::path::Path;
 
 use tauri::ipc::Response;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(serde::Serialize, Clone)]
 struct InitialPdf {
   name: String,
@@ -60,8 +63,62 @@ fn rust_export_ink_svg(strokes: Vec<otium_ink::Stroke>, width: f32, height: f32)
 }
 
 #[tauri::command]
+fn rust_erase_ink(strokes: Vec<otium_ink::Stroke>, x: f32, y: f32, radius: f32, width: f32, height: f32) -> Vec<otium_ink::Stroke> {
+  let mut canvas = otium_ink::InkCanvas::new(width, height);
+  canvas.strokes = strokes;
+  canvas.erase_at(x, y, radius);
+  canvas.strokes
+}
+
+#[tauri::command]
+fn rust_simplify_ink_strokes(strokes: Vec<otium_ink::Stroke>, tolerance: f32) -> Vec<otium_ink::Stroke> {
+  let mut canvas = otium_ink::InkCanvas::new(1000.0, 1000.0);
+  canvas.strokes = strokes;
+  canvas.simplify_all_strokes(tolerance);
+  canvas.strokes
+}
+
+#[tauri::command]
+fn rust_clean_document_image(bytes: Vec<u8>, contrast_boost: f32) -> Result<Vec<u8>, String> {
+  let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+  let rgba = img.to_rgba8();
+  let clean_gray = otium_scanner::DocumentScanner::clean_document_filter(&rgba, contrast_boost);
+  let mut out = std::io::Cursor::new(Vec::new());
+  clean_gray.write_to(&mut out, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+  Ok(out.into_inner())
+}
+
+#[tauri::command]
+fn rust_stitch_id_cards(front_bytes: Vec<u8>, back_bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+  let front = image::load_from_memory(&front_bytes).map_err(|e| e.to_string())?.to_rgba8();
+  let back = image::load_from_memory(&back_bytes).map_err(|e| e.to_string())?.to_rgba8();
+  let a4 = otium_scanner::DocumentScanner::stitch_id_card_a4(&front, &back);
+  let mut out = std::io::Cursor::new(Vec::new());
+  a4.write_to(&mut out, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+  Ok(out.into_inner())
+}
+
+#[tauri::command]
 fn rust_inspect_pdf(bytes: Vec<u8>) -> Result<otium_pdf::PdfDocumentInfo, String> {
   otium_pdf::PdfInspector::inspect_bytes(&bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn rust_search_arabic_text(haystack: String, query: String) -> Vec<otium_core::SearchMatch> {
+  otium_core::find_arabic_matches(&haystack, &query)
+}
+
+#[tauri::command]
+fn rust_index_and_search_arabic(text: String, query: String) -> Vec<otium_core::SearchMatch> {
+  let index = otium_core::ArabicTrigramIndex::build(&text);
+  index.search(&query)
+}
+
+#[tauri::command]
+fn rust_tessellate_ink_mesh(strokes: Vec<otium_ink::Stroke>, width: f32, height: f32) -> Vec<otium_ink::InkMesh> {
+  let mut canvas = otium_ink::InkCanvas::new(width, height);
+  canvas.strokes = strokes;
+  canvas.tessellate_all_meshes()
 }
 
 #[tauri::command]
@@ -117,22 +174,18 @@ fn read_pdf_bytes(path: String) -> Result<Response, String> {
     return Err("File exceeds 1.5 GB maximum supported document size".into());
   }
 
-  let mut file = fs::File::open(p).map_err(|e| e.to_string())?;
+  let file = fs::File::open(p).map_err(|e| e.to_string())?;
+
+  // Memory map the file directly with zero-copy OS paging
+  let mmap = unsafe { memmap2::Mmap::map(&file) }.map_err(|e| e.to_string())?;
 
   // ISO 32000-1: A valid PDF begins with or contains "%PDF-" in its first 1024 bytes.
-  // Validate the magic bytes before allocating memory for the full file body.
-  let mut header = [0u8; 1024];
-  let n = file.read(&mut header).map_err(|e| e.to_string())?;
-  if n < 5 || !header[..n].windows(5).any(|w| w == b"%PDF-") {
+  let check_len = mmap.len().min(1024);
+  if check_len < 5 || !mmap[..check_len].windows(5).any(|w| w == b"%PDF-") {
     return Err("File is not a valid PDF document (missing %PDF- header)".into());
   }
 
-  // Rewind to beginning and read exact bytes with pre-allocated capacity
-  file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-  let mut bytes = Vec::with_capacity(file_size as usize);
-  file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-
-  Ok(Response::new(bytes))
+  Ok(Response::new(mmap.to_vec()))
 }
 
 /// True when Windows has an Otium uninstall entry, which is written by the
@@ -205,7 +258,14 @@ pub fn run() {
       rust_generate_beam_qr,
       rust_generate_pairing_pin,
       rust_export_ink_svg,
-      rust_inspect_pdf
+      rust_erase_ink,
+      rust_clean_document_image,
+      rust_stitch_id_cards,
+      rust_inspect_pdf,
+      rust_search_arabic_text,
+      rust_index_and_search_arabic,
+      rust_tessellate_ink_mesh,
+      rust_simplify_ink_strokes
     ])
     .setup(|_app| {
       #[cfg(not(mobile))]

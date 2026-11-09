@@ -1,5 +1,6 @@
 use std::path::Path;
 use redb::{Database, ReadableTable, TableDefinition};
+use zeroize::Zeroizing;
 
 use crate::crypto::VaultCrypto;
 use otium_core::{OtiumError, Result};
@@ -10,7 +11,7 @@ const SETTINGS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("setti
 
 pub struct SovereignVault {
     db: Database,
-    key: Option<[u8; 32]>,
+    key: Option<Zeroizing<[u8; 32]>>,
 }
 
 impl SovereignVault {
@@ -35,11 +36,12 @@ impl SovereignVault {
         Ok(Self { db, key: None })
     }
 
-    /// Unlock the vault with master encryption key
+    /// Unlock the vault with master encryption key; wrapped in Zeroizing memory defense
     pub fn unlock(&mut self, key: [u8; 32]) {
-        self.key = Some(key);
+        self.key = Some(Zeroizing::new(key));
     }
 
+    /// Explicitly lock the vault and zeroize key bytes in RAM immediately
     pub fn lock(&mut self) {
         self.key = None;
     }
@@ -51,7 +53,7 @@ impl SovereignVault {
     /// Store an encrypted document payload
     pub fn put_document(&self, doc_id: &str, data: &[u8]) -> Result<()> {
         let payload = if let Some(ref key) = self.key {
-            VaultCrypto::encrypt(key, data)?
+            VaultCrypto::encrypt(key.as_ref(), data)?
         } else {
             data.to_vec()
         };
@@ -88,7 +90,7 @@ impl SovereignVault {
         if let Some(entry) = table.get(doc_id).map_err(|e| OtiumError::Vault(e.to_string()))? {
             let val = entry.value();
             let decrypted = if let Some(ref key) = self.key {
-                VaultCrypto::decrypt(key, val)?
+                VaultCrypto::decrypt(key.as_ref(), val)?
             } else {
                 val.to_vec()
             };

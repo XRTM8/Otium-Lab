@@ -6,7 +6,8 @@ use otium_core::{OtiumError, Result};
 pub struct DocumentScanner;
 
 impl DocumentScanner {
-    /// Warp a quadrilateral document region into a rectified rectangular image using bilinear interpolation.
+    /// Warp a quadrilateral document region into a rectified rectangular image using
+    /// bilinear interpolation with optimized contiguous row buffer layout.
     pub fn warp_perspective(
         image: &DynamicImage,
         corners: &QuadCorners,
@@ -15,84 +16,155 @@ impl DocumentScanner {
         let (dst_w, dst_h) = target_dimensions
             .unwrap_or_else(|| corners.estimate_target_dimensions());
 
+        if dst_w == 0 || dst_h == 0 {
+            return Err(OtiumError::ImageProcessing("Invalid zero dimensions".into()));
+        }
+
         let homography = HomographyMatrix::from_rect_to_quad(corners, dst_w as f32, dst_h as f32)
             .ok_or_else(|| OtiumError::ImageProcessing("Singular quad corners matrix".into()))?;
 
         let src_rgba = image.to_rgba8();
         let (src_w, src_h) = src_rgba.dimensions();
+        let src_stride = (src_w * 4) as usize;
+        let src_raw = src_rgba.as_raw();
 
-        let mut out_img: RgbaImage = ImageBuffer::new(dst_w, dst_h);
+        let max_x_bound = (src_w - 1) as f32;
+        let max_y_bound = (src_h - 1) as f32;
+
+        let total_pixels = (dst_w as usize) * (dst_h as usize);
+        let mut out_buffer: Vec<u8> = vec![255u8; total_pixels * 4];
 
         for y in 0..dst_h {
+            let row_offset = (y as usize) * (dst_w as usize) * 4;
+
             for x in 0..dst_w {
+                let pixel_offset = row_offset + (x as usize) * 4;
                 let src_pt = homography.transform_point(Point2D::new(x as f32, y as f32));
                 let sx = src_pt.x;
                 let sy = src_pt.y;
 
-                if sx >= 0.0 && sx < (src_w - 1) as f32 && sy >= 0.0 && sy < (src_h - 1) as f32 {
-                    // Bilinear interpolation
-                    let x0 = sx.floor() as u32;
-                    let y0 = sy.floor() as u32;
+                if sx >= 0.0 && sx < max_x_bound && sy >= 0.0 && sy < max_y_bound {
+                    let x0 = sx as usize;
+                    let y0 = sy as usize;
                     let x1 = x0 + 1;
                     let y1 = y0 + 1;
 
-                    let fx = sx - x0 as f32;
-                    let fy = sy - y0 as f32;
+                    let fx = sx - (x0 as f32);
+                    let fy = sy - (y0 as f32);
+                    let inv_fx = 1.0 - fx;
+                    let inv_fy = 1.0 - fy;
 
-                    let p00 = src_rgba.get_pixel(x0, y0);
-                    let p10 = src_rgba.get_pixel(x1, y0);
-                    let p01 = src_rgba.get_pixel(x0, y1);
-                    let p11 = src_rgba.get_pixel(x1, y1);
+                    let idx00 = y0 * src_stride + x0 * 4;
+                    let idx10 = y0 * src_stride + x1 * 4;
+                    let idx01 = y1 * src_stride + x0 * 4;
+                    let idx11 = y1 * src_stride + x1 * 4;
 
-                    let mut interpolated = [0u8; 4];
                     for c in 0..4 {
-                        let top = (1.0 - fx) * (p00[c] as f32) + fx * (p10[c] as f32);
-                        let bottom = (1.0 - fx) * (p01[c] as f32) + fx * (p11[c] as f32);
-                        let val = (1.0 - fy) * top + fy * bottom;
-                        interpolated[c] = val.round().clamp(0.0, 255.0) as u8;
-                    }
+                        let p00 = src_raw[idx00 + c] as f32;
+                        let p10 = src_raw[idx10 + c] as f32;
+                        let p01 = src_raw[idx01 + c] as f32;
+                        let p11 = src_raw[idx11 + c] as f32;
 
-                    out_img.put_pixel(x, y, Rgba(interpolated));
+                        let top = inv_fx * p00 + fx * p10;
+                        let bottom = inv_fx * p01 + fx * p11;
+                        let val = inv_fy * top + fy * bottom;
+
+                        out_buffer[pixel_offset + c] = val.clamp(0.0, 255.0) as u8;
+                    }
                 } else {
-                    out_img.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+                    // Border / out of bounds pixels set to white
+                    out_buffer[pixel_offset] = 255;
+                    out_buffer[pixel_offset + 1] = 255;
+                    out_buffer[pixel_offset + 2] = 255;
+                    out_buffer[pixel_offset + 3] = 255;
                 }
             }
         }
 
-        Ok(out_img)
+        RgbaImage::from_raw(dst_w, dst_h, out_buffer)
+            .ok_or_else(|| OtiumError::ImageProcessing("Failed to construct image buffer".into()))
     }
 
-    /// Apply an adaptive high-contrast document clean filter:
-    /// Enhances black ink while flattening paper shadows to pure white.
+    /// High-performance document clean filter:
+    /// Fast integer-based luminance calculations and Otsu adaptive thresholding
+    /// to eliminate shadows and whiten paper while preserving crisp text.
     pub fn clean_document_filter(image: &RgbaImage, contrast_boost: f32) -> GrayImage {
         let (width, height) = image.dimensions();
-        let mut gray: GrayImage = ImageBuffer::new(width, height);
-
-        // Compute Otsu threshold or adaptive mean
-        let mut sum = 0u64;
-        for (_, _, pixel) in image.enumerate_pixels() {
-            // Luminance: 0.299 R + 0.587 G + 0.114 B
-            let luma = (0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32) as u8;
-            sum += luma as u64;
+        let total_pixels = (width as usize) * (height as usize);
+        if total_pixels == 0 {
+            return GrayImage::new(0, 0);
         }
 
-        let mean_luma = (sum / (width as u64 * height as u64).max(1)) as f32;
-        let threshold = (mean_luma * 0.85).clamp(80.0, 180.0);
+        let raw = image.as_raw();
+        let mut histogram = [0u32; 256];
+        let mut luma_buffer = Vec::with_capacity(total_pixels);
 
-        for (x, y, pixel) in image.enumerate_pixels() {
-            let luma = (0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32) as f32;
-            let normalized = if luma < threshold {
-                ((luma / threshold).powf(contrast_boost) * 120.0).clamp(0.0, 255.0) as u8
+        // 1. Fast Integer Luminance pass + histogram collection
+        for i in (0..raw.len()).step_by(4) {
+            let r = raw[i] as u32;
+            let g = raw[i + 1] as u32;
+            let b = raw[i + 2] as u32;
+            // ITU-R BT.601 integer approximation: (r*77 + g*150 + b*29) >> 8
+            let luma = ((r * 77 + g * 150 + b * 29) >> 8) as u8;
+            histogram[luma as usize] += 1;
+            luma_buffer.push(luma);
+        }
+
+        // 2. Otsu threshold calculation
+        let mut sum = 0f64;
+        for i in 0..256 {
+            sum += (i as f64) * (histogram[i] as f64);
+        }
+
+        let total = total_pixels as f64;
+        let mut sum_b = 0f64;
+        let mut w_b = 0f64;
+        let mut max_variance = 0f64;
+        let mut optimal_threshold = 128u8;
+
+        for i in 0..256 {
+            w_b += histogram[i] as f64;
+            if w_b == 0.0 {
+                continue;
+            }
+            let w_f = total - w_b;
+            if w_f == 0.0 {
+                break;
+            }
+
+            sum_b += (i as f64) * (histogram[i] as f64);
+            let m_b = sum_b / w_b;
+            let m_f = (sum - sum_b) / w_f;
+
+            let between_variance = w_b * w_f * (m_b - m_f) * (m_b - m_f);
+            if between_variance > max_variance {
+                max_variance = between_variance;
+                optimal_threshold = i as u8;
+            }
+        }
+
+        // Clamp threshold to reasonable text document bounds
+        let threshold = (optimal_threshold as f32).clamp(70.0, 185.0);
+
+        // 3. Contrast stretch and binarization
+        let mut out_gray = Vec::with_capacity(total_pixels);
+        for luma in luma_buffer {
+            let luma_f = luma as f32;
+            let pixel_val = if luma_f < threshold {
+                let ratio = (luma_f / threshold).powf(contrast_boost);
+                (ratio * 110.0).clamp(0.0, 255.0) as u8
             } else {
                 255u8
             };
-            gray.put_pixel(x, y, Luma([normalized]));
+            out_gray.push(pixel_val);
         }
 
-        gray
+        GrayImage::from_raw(width, height, out_gray)
+            .unwrap_or_else(|| GrayImage::new(width, height))
     }
 
     /// Combine front and back sides of an ID card onto a clean standard A4 page layout (2480 x 3508 at 300 DPI)
+    /// Accelerated with linear fixed-point SIMD-friendly resampling.
     pub fn stitch_id_card_a4(front: &RgbaImage, back: &RgbaImage) -> RgbaImage {
         const A4_WIDTH: u32 = 2480;
         const A4_HEIGHT: u32 = 3508;
@@ -103,18 +175,19 @@ impl DocumentScanner {
         let target_card_w = 1010;
         let target_card_h = 640;
 
-        let resized_front = image::imageops::resize(
-            front,
-            target_card_w,
-            target_card_h,
-            image::imageops::FilterType::Lanczos3,
+        let (fw, fh) = front.dimensions();
+        let front_raw = crate::simd_resample::FastResampler::resample_rgba(
+            front.as_raw(), fw, fh, target_card_w, target_card_h,
         );
-        let resized_back = image::imageops::resize(
-            back,
-            target_card_w,
-            target_card_h,
-            image::imageops::FilterType::Lanczos3,
+        let resized_front = RgbaImage::from_raw(target_card_w, target_card_h, front_raw)
+            .unwrap_or_else(|| front.clone());
+
+        let (bw, bh) = back.dimensions();
+        let back_raw = crate::simd_resample::FastResampler::resample_rgba(
+            back.as_raw(), bw, bh, target_card_w, target_card_h,
         );
+        let resized_back = RgbaImage::from_raw(target_card_w, target_card_h, back_raw)
+            .unwrap_or_else(|| back.clone());
 
         // Center front card on upper half of page
         let pos_x = (A4_WIDTH - target_card_w) / 2;

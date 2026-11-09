@@ -1,6 +1,6 @@
 [package]
 name = "otium"
-version = "1.9.15"
+version = "1.9.16"
 description = "A quiet, aesthetic, high-performance PDF reader"
 authors = ["XRTM8"]
 edition = "2024"
@@ -17,6 +17,9 @@ tauri-build = { version = "2.7.4", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
+image = "0.25"
+memmap2 = "0.9"
+mimalloc = { version = "0.1", default-features = false }
 tauri = { version = "2.12.5", features = ["devtools"] }
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
@@ -25,7 +28,7 @@ otium-slides = { path = "../crates/otium-slides" }
 otium-scanner = { path = "../crates/otium-scanner" }
 otium-ink = { path = "../crates/otium-ink" }
 otium-pdf = { path = "../crates/otium-pdf" }
-# otium-vault = { path = "../crates/otium-vault" }
+otium-vault = { path = "../crates/otium-vault" }
 otium-beam = { path = "../crates/otium-beam" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -36,8 +39,9 @@ tauri-plugin-process = "2"
 winreg = "0.55"
 
 [profile.release]
-# Strip debug symbols and enable thin LTO with parallel codegen units
-strip = "symbols"
-lto = "thin"
-codegen-units = 16
-opt-level = "s"
+# Maximum performance compiler settings
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
