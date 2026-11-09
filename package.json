@@ -1,7 +1,7 @@
 {
   "name": "otium-reader",
   "private": true,
-  "version": "1.9.16",
+  "version": "1.9.17",
   "type": "module",
   "scripts": {
     "lab:app:build": "npm run lab:check && node scripts/copy-ocr-assets.mjs && tsc -b && vite build",
