@@ -1002,6 +1002,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
       // The page fits: no vertical drift is allowed before the turn.
       event.preventDefault();
 
+      const now = performance.now();
       if (now - lastWheelTimeRef.current < WHEEL_TURN_COOLDOWN_MS) return;
 
       if (wheelDirectionRef.current !== direction) {
