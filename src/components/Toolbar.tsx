@@ -1,5 +1,5 @@
 import { normalizeDigits } from '../core/search/arabic';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Bookmark,
@@ -69,19 +69,6 @@ interface ToolbarProps {
   pageDimensions?: { width: number; height: number };
 }
 
-export const THEME_DOTS: Record<ThemeMode, string> = {
-  paper: '#d4c5a9',
-  amber: '#f59e0b',
-  amoled: '#10b981',
-  eink: '#9ca3af',
-  midnight: '#38bdf8',
-  pure: '#ffffff',
-  parchment: '#d97706',
-  sakura: '#f472b6',
-  forest: '#34d399',
-  nordic: '#60a5fa'
-};
-
 const VIEW_MODES: { id: ViewMode; icon: React.ReactNode; key: keyof ReturnType<typeof getTranslations> }[] = [
   { id: 'continuous', icon: <Scroll className="w-3.5 h-3.5" />, key: 'continuousMode' },
   { id: 'dual', icon: <BookOpen className="w-3.5 h-3.5" />, key: 'dualMode' },
@@ -128,6 +115,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   pageDimensions
 }) => {
   const [isVisible, setIsVisible] = useState(true);
+  const isVisibleRef = useRef(true);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showInspector, setShowInspector] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -168,19 +156,33 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   useEffect(() => {
     let timeout: number | undefined;
-    const handleActivity = () => {
-      setIsVisible(true);
+    let lastSchedule = 0;
+    const hideMenuFree = !showThemeMenu && !showMoreMobile && !showInspector;
+    const scheduleHide = () => {
       window.clearTimeout(timeout);
+      if (!hideMenuFree) return;
       timeout = window.setTimeout(() => {
-        if (!showThemeMenu && !showMoreMobile && !showInspector) setIsVisible(false);
+        isVisibleRef.current = false;
+        setIsVisible(false);
       }, 5000);
     };
+    const handleActivity = () => {
+      if (!isVisibleRef.current) {
+        isVisibleRef.current = true;
+        setIsVisible(true);
+      }
+      const now = Date.now();
+      if (now - lastSchedule >= 200) {
+        lastSchedule = now;
+        scheduleHide();
+      }
+    };
 
-    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('mousemove', handleActivity, { passive: true });
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('touchstart', handleActivity, { passive: true });
     window.addEventListener('scroll', handleActivity, { passive: true });
-    handleActivity();
+    scheduleHide();
 
     return () => {
       window.removeEventListener('mousemove', handleActivity);

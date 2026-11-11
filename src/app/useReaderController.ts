@@ -512,8 +512,11 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   useEffect(() => {
     if (!docId || !annotationsHydratedRef.current) return;
     let alive = true;
+    let dirty = true;
     setAnnotationSaveStatus('saving');
     const save = () => {
+      if (!dirty) return;
+      dirty = false;
       void saveStoredAnnotations(docId, annotations).then(ok => {
         if (alive) setAnnotationSaveStatus(ok ? 'saved' : 'error');
       });
@@ -524,8 +527,11 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     window.addEventListener('pagehide', save);
     return () => {
       alive = false; window.clearTimeout(timer); window.removeEventListener('pagehide', save);
-      // Flush the last edit when changing documents or closing the reader.
-      void saveStoredAnnotations(docId, annotations);
+      // Flush the last edit only if the debounce timer or pagehide has not already saved it.
+      if (dirty) {
+        dirty = false;
+        void saveStoredAnnotations(docId, annotations);
+      }
     };
   }, [annotations, docId]);
 

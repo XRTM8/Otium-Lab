@@ -12,37 +12,69 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
   strokes?: InkStroke[]; onChange?: (value: InkStroke[]) => void; size?: number; highlighter?: boolean;
 }) {
   const [internal, setInternal] = useState<InkStroke[]>([]);
-  const [draft, setDraft] = useState<InkStroke | null>(null);
+  const [liveHeader, setLiveHeader] = useState<{ color: string; width: number; opacity: number; cx: number; cy: number; initialPoints: string } | null>(null);
   const strokes = controlled ?? internal;
-  const pointer = useRef<number | null>(null), live = useRef<InkStroke | null>(null);
+  const pointer = useRef<number | null>(null);
+  const live = useRef<InkStroke | null>(null);
+  const rectRef = useRef<DOMRect | null>(null);
+  const livePointsStrRef = useRef<string>('');
+  const livePolylineRef = useRef<SVGPolylineElement | null>(null);
+  const liveDotRef = useRef<SVGCircleElement | null>(null);
   useEffect(() => {
     if (!enabled) {
       pointer.current = null;
       live.current = null;
+      rectRef.current = null;
+      livePointsStrRef.current = '';
+      setLiveHeader(null);
     }
   }, [enabled]);
   const point = (event: Pick<PointerEvent<SVGSVGElement>, 'clientX' | 'clientY'>, rect: DOMRect): InkPoint => ({
     x: Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))),
     y: Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)))
   });
-  const cancel = () => { pointer.current = null; live.current = null; setDraft(null); };
+  const cancel = () => {
+    pointer.current = null;
+    live.current = null;
+    rectRef.current = null;
+    livePointsStrRef.current = '';
+    setLiveHeader(null);
+  };
   return <svg className={`ink ${enabled ? 'active' : ''}`} viewBox={`0 0 ${width} ${height}`} aria-label="طبقة الشرح"
     onPointerDown={event => {
       if (!enabled || !event.isPrimary || event.button !== 0 || pointer.current !== null || strokes.length >= 200) return;
       event.preventDefault(); pointer.current = event.pointerId;
       event.currentTarget.setPointerCapture(event.pointerId);
       const rect = event.currentTarget.getBoundingClientRect();
-      live.current = { color, width: Math.min(1, size / Math.max(1, rect.width)), opacity: highlighter ? 0.3 : 1, points: [point(event, rect)] };
-      setDraft(live.current);
+      rectRef.current = rect;
+      const first = point(event, rect);
+      const strokeWidth = Math.min(1, size / Math.max(1, rect.width));
+      const opacity = highlighter ? 0.3 : 1;
+      const initialPoints = `${first.x * width},${first.y * height}`;
+      live.current = { color, width: strokeWidth, opacity, points: [first] };
+      livePointsStrRef.current = initialPoints;
+      setLiveHeader({ color, width: strokeWidth, opacity, cx: first.x * width, cy: first.y * height, initialPoints });
     }}
     onPointerMove={event => {
       if (!enabled || event.pointerId !== pointer.current || !live.current || live.current.points.length >= 3000) return;
       const coalesced = event.nativeEvent.getCoalescedEvents?.();
       const samples = coalesced?.length ? coalesced : [event];
-      const rect = event.currentTarget.getBoundingClientRect();
+      const cachedRect = rectRef.current;
+      const rect = cachedRect && cachedRect.width > 0 && cachedRect.height > 0 ? cachedRect : event.currentTarget.getBoundingClientRect();
       const points = samples.map(sample => point(sample, rect));
-      const next = { ...live.current, points: [...live.current.points, ...points].slice(0, 3000) };
-      live.current = next; setDraft(next);
+      const remaining = 3000 - live.current.points.length;
+      const accepted = remaining >= points.length ? points : points.slice(0, remaining);
+      if (accepted.length === 0) return;
+      live.current.points.push(...accepted);
+      for (const p of accepted) {
+        livePointsStrRef.current += ` ${p.x * width},${p.y * height}`;
+      }
+      if (livePolylineRef.current) {
+        livePolylineRef.current.setAttribute('points', livePointsStrRef.current);
+      }
+      if (liveDotRef.current && live.current.points.length > 1) {
+        liveDotRef.current.style.display = 'none';
+      }
     }}
     onPointerUp={event => {
       if (event.pointerId !== pointer.current) return;
@@ -50,6 +82,12 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
       cancel();
       if (finished) { const next = [...strokes, finished]; if (onChange) onChange(next); else setInternal(next); }
     }} onPointerCancel={cancel} onLostPointerCapture={cancel}>
-    {[...strokes, ...(enabled && draft ? [draft] : [])].map((stroke, index) => <StrokeShape key={index} stroke={stroke} width={width} height={height} />)}
+    {strokes.map((stroke, index) => <StrokeShape key={index} stroke={stroke} width={width} height={height} />)}
+    {enabled && liveHeader && (
+      <g>
+        <circle ref={liveDotRef} cx={liveHeader.cx} cy={liveHeader.cy} r={liveHeader.width * width / 2} fill={liveHeader.color} opacity={liveHeader.opacity} />
+        <polyline ref={livePolylineRef} points={liveHeader.initialPoints} fill="none" stroke={liveHeader.color} opacity={liveHeader.opacity} strokeWidth={liveHeader.width * width} strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+    )}
   </svg>;
 }

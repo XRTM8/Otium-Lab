@@ -194,20 +194,28 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
 
 export function DocumentInkLayer({ page, width, height, lang }: { page: number; width: number; height: number; lang: string }) {
   const ink = useContext(InkContext);
-  const [draft, setDraft] = useState<InkMark | null>(null);
+  const [draftHeader, setDraftHeader] = useState<{ color: string; strokeWidth: number; opacity: number; cx: number; cy: number; initialPoints: string } | null>(null);
   const [note, setNote] = useState<InkMark | null>(null);
   const [movingNote, setMovingNote] = useState<InkMark | null>(null);
   const noteDrag = useRef<{ id: number; x: number; y: number; origin: InkMark; current: InkMark; moved: boolean; element: SVGTextElement } | null>(null);
   const noteFrame = useRef<number | null>(null);
   const drawing = useRef<InkMark | null>(null);
+  const draftPointsStrRef = useRef<string>('');
+  const draftPolylineRef = useRef<SVGPolylineElement | null>(null);
+  const draftDotRef = useRef<SVGCircleElement | null>(null);
+  const surfaceRectRef = useRef<DOMRect | null>(null);
   const gesture = useRef<number | null>(null);
   const surface = useRef<HTMLDivElement>(null);
   const lastPen = useRef(0);
   const ar = lang === 'ar';
   useEffect(() => {
-    setNote(null); setDraft(null); setMovingNote(null); drawing.current = null; gesture.current = null; noteDrag.current = null;
+    setNote(null); setDraftHeader(null); setMovingNote(null); drawing.current = null; gesture.current = null; noteDrag.current = null;
+    surfaceRectRef.current = null; draftPointsStrRef.current = '';
     return () => { if (noteFrame.current !== null) cancelAnimationFrame(noteFrame.current); noteFrame.current = null; };
   }, [ink?.tool, page]);
+  useEffect(() => {
+    surfaceRectRef.current = null;
+  }, [width, height]);
   if (!ink) return null;
   const closeNote = () => { setNote(null); ink.setTool('hand'); };
   const finishNoteDrag = (e: React.PointerEvent<SVGTextElement>, cancelled = false) => {
@@ -222,8 +230,9 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
     else setNote(drag.origin);
   };
   const marks = ink.marks.filter(mark => mark.page === page);
-  const point = (e: React.PointerEvent) => {
-    const box = surface.current!.getBoundingClientRect();
+  const point = (e: Pick<PointerEvent, 'clientX' | 'clientY'>, useCached = false) => {
+    const cached = useCached ? surfaceRectRef.current : null;
+    const box = cached && cached.width > 0 && cached.height > 0 ? cached : surface.current!.getBoundingClientRect();
     return clampPoint((e.clientX - box.left) / box.width, (e.clientY - box.top) / box.height);
   };
   const erase = (p: InkPoint) => {
@@ -233,7 +242,9 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
   const finish = (e: React.PointerEvent, cancelled = false) => {
     if (gesture.current !== e.pointerId) return;
     if (drawing.current && !cancelled) ink.change([...ink.marks, drawing.current]);
-    gesture.current = null; drawing.current = null; setDraft(null);
+    gesture.current = null; drawing.current = null; surfaceRectRef.current = null;
+    draftPointsStrRef.current = '';
+    setDraftHeader(null);
   };
   const renderMark = (mark: InkMark) => mark.type === 'note'
     ? <text key={mark.id} x={mark.points[0].x * width} y={mark.points[0].y * height} fill={mark.color} fontSize={mark.width * width}
@@ -265,14 +276,15 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
       ? <circle key={mark.id} cx={mark.points[0].x * width} cy={mark.points[0].y * height} r={mark.width * width / 2} fill={mark.color} opacity={mark.type === 'highlighter' ? 0.3 : 1} />
       : <polyline key={mark.id} points={mark.points.map(p => `${p.x * width},${p.y * height}`).join(' ')} fill="none" stroke={mark.color} strokeWidth={mark.width * width} strokeLinecap="round" strokeLinejoin="round" opacity={mark.type === 'highlighter' ? 0.3 : 1} />;
   return <div ref={surface} className="absolute inset-0 z-[15] select-none" style={{ pointerEvents: ink.tool === 'hand' || ink.tool === 'select' || !ink.ready ? 'none' : 'auto', touchAction: ink.stylus ? 'pan-x pan-y pinch-zoom' : ink.tool === 'hand' ? 'auto' : 'none', cursor: ink.tool === 'eraser' ? 'crosshair' : ink.tool === 'note' ? 'text' : 'crosshair' }}
-    onTouchStart={e => { if (e.touches.length > 1 && !ink.stylus) { drawing.current = null; gesture.current = null; setDraft(null); } if (!ink.stylus) e.stopPropagation(); }} onTouchMove={e => { if (!ink.stylus) e.stopPropagation(); }} onTouchEnd={e => { if (!ink.stylus) e.stopPropagation(); }}
+    onTouchStart={e => { if (e.touches.length > 1 && !ink.stylus) { drawing.current = null; gesture.current = null; surfaceRectRef.current = null; draftPointsStrRef.current = ''; setDraftHeader(null); } if (!ink.stylus) e.stopPropagation(); }} onTouchMove={e => { if (!ink.stylus) e.stopPropagation(); }} onTouchEnd={e => { if (!ink.stylus) e.stopPropagation(); }}
     onPointerDown={e => {
       if (e.pointerType === 'pen') lastPen.current = Date.now();
       if (e.pointerType === 'touch' && (e.width > 35 || e.height > 35 || Date.now() - lastPen.current < 800)) return;
       if (!ink.ready || ink.tool === 'hand' || ink.tool === 'select' || (ink.stylus && e.pointerType !== 'pen') || e.button !== 0) return;
       if (gesture.current !== null) return;
       e.preventDefault(); e.stopPropagation();
-      const p = point(e);
+      surfaceRectRef.current = surface.current!.getBoundingClientRect();
+      const p = point(e, true);
       if (ink.tool === 'note') {
         const existing = [...marks].reverse().find(mark => mark.type === 'note' && hitInk(mark, p, width, height));
         setNote(existing || { id: newMarkId(), page, type: 'note', color: ink.color, width: ink.size / 160, points: [p], text: '' });
@@ -280,19 +292,37 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
       }
       gesture.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId);
       if (ink.tool === 'eraser') { erase(p); return; }
-      drawing.current = { id: newMarkId(), page, type: ink.tool, color: ink.color, width: ink.size / (ink.tool === 'highlighter' ? 140 : 1000), points: [p] };
-      setDraft(drawing.current);
+      const markWidth = ink.size / (ink.tool === 'highlighter' ? 140 : 1000);
+      const initialPoints = `${p.x * width},${p.y * height}`;
+      drawing.current = { id: newMarkId(), page, type: ink.tool, color: ink.color, width: markWidth, points: [p] };
+      draftPointsStrRef.current = initialPoints;
+      setDraftHeader({ color: ink.color, strokeWidth: markWidth * width, opacity: ink.tool === 'highlighter' ? 0.3 : 1, cx: p.x * width, cy: p.y * height, initialPoints });
     }}
     onPointerMove={e => {
       if (gesture.current !== e.pointerId) return;
       e.preventDefault(); e.stopPropagation();
-      if (ink.tool === 'eraser') { erase(point(e)); return; }
+      if (ink.tool === 'eraser') { erase(point(e, true)); return; }
       if (!drawing.current || drawing.current.points.length >= 5000) return;
-      const p = point(e), last = drawing.current.points[drawing.current.points.length - 1];
+      const p = point(e, true), last = drawing.current.points[drawing.current.points.length - 1];
       if (Math.hypot((p.x - last.x) * width, (p.y - last.y) * height) < 1) return;
-      drawing.current = { ...drawing.current, points: [...drawing.current.points, p] }; setDraft(drawing.current);
+      drawing.current.points.push(p);
+      draftPointsStrRef.current += ` ${p.x * width},${p.y * height}`;
+      if (draftPolylineRef.current) {
+        draftPolylineRef.current.setAttribute('points', draftPointsStrRef.current);
+      }
+      if (draftDotRef.current && drawing.current.points.length > 1) {
+        draftDotRef.current.style.display = 'none';
+      }
     }} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)} onLostPointerCapture={e => finish(e, true)}>
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 pointer-events-none">{marks.map(mark => renderMark(movingNote?.id === mark.id ? movingNote : mark))}{draft && renderMark(draft)}</svg>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 pointer-events-none">
+      {marks.map(mark => renderMark(movingNote?.id === mark.id ? movingNote : mark))}
+      {draftHeader && (
+        <g>
+          <circle ref={draftDotRef} cx={draftHeader.cx} cy={draftHeader.cy} r={draftHeader.strokeWidth / 2} fill={draftHeader.color} opacity={draftHeader.opacity} />
+          <polyline ref={draftPolylineRef} points={draftHeader.initialPoints} fill="none" stroke={draftHeader.color} strokeWidth={draftHeader.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={draftHeader.opacity} />
+        </g>
+      )}
+    </svg>
     {note && createPortal(<div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-scrim pointer-events-auto" onPointerDown={e => { e.stopPropagation(); if (e.target === e.currentTarget) closeNote(); }} onTouchStart={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') closeNote(); }}>
       <div role="dialog" aria-modal="true" aria-label={ar ? 'ملاحظة على الصفحة' : 'Page note'} dir={ar ? 'rtl' : 'ltr'} className="w-80 max-w-full max-h-[85dvh] overflow-auto rounded-2xl border border-line bg-surface text-ink shadow-xl p-4" onPointerDown={e => e.stopPropagation()} onPointerMove={e => e.stopPropagation()}>
       <textarea autoFocus aria-label={ar ? 'نص الملاحظة' : 'Note text'} value={note.text} maxLength={2000} onChange={e => setNote({ ...note, text: e.target.value })} className="w-full min-h-24 rounded-xl p-2 bg-hover text-sm resize-y" />

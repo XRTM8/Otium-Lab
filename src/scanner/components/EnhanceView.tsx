@@ -7,9 +7,14 @@ import type {
   PdfPageInput,
   PdfWatermarkStyle,
 } from '../core/pdf';
-import { loadPageCanvasFromDisk, updateStoredPageFilter, storePageToDisk } from '../core/storage/pageStore';
+import {
+  loadPageCanvasFromDisk,
+  loadOriginalDataUrlFromDisk,
+  updateStoredPageFilter,
+  storePageToDisk,
+} from '../core/storage/pageStore';
 import { saveDocumentToLibrary } from '../core/storage/documentLibrary';
-import { dewarpBookCurvature } from '../core/geometry';
+import { dewarpBookCurvatureAsync } from '../core/geometry';
 import { performOcr, terminateOcrWorker, extractPageTextAndMetadata } from '../core/ocr/ocrEngine';
 import { detectBarcodesFromCanvas } from '../core/barcode';
 import type { DetectedBarcode } from '../core/barcode';
@@ -62,6 +67,7 @@ interface EnhanceViewProps {
   onRotatePage: (index: number) => Promise<void>;
   onEditCrop?: (index: number) => void;
   onDuplicatePage?: (index: number) => void;
+  onUpdatePageThumbnail?: (pageId: string, thumbnailDataUrl: string) => void;
   onResetAll: () => void;
   onOpenPdfInReader?: (file: File) => void;
 }
@@ -76,6 +82,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   onRotatePage,
   onEditCrop,
   onDuplicatePage,
+  onUpdatePageThumbnail,
   onResetAll,
   onOpenPdfInReader,
 }) => {
@@ -90,7 +97,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const [compressionPreset, setCompressionPreset] = useState<PdfCompressionPreset>('balanced');
   const [pageFormat, setPageFormat] = useState<PdfPageFormat>('a4');
   const [isSignatureOpen, setIsSignatureOpen] = useState(false);
-  const [signatures, setSignatures] = useState<Record<number, { dataUrl: string; x: number; y: number }>>({});
+  const [signatures, setSignatures] = useState<Record<string, { dataUrl: string; x: number; y: number }>>({});
   const [isGridView, setIsGridView] = useState(false);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [watermarkText, setWatermarkText] = useState<string>('');
@@ -99,7 +106,11 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [isRedacting, setIsRedacting] = useState<boolean>(false);
   const [redactionStrokes, setRedactionStrokes] = useState<{ x: number; y: number }[][]>([]);
-  const [currentStroke, setCurrentStroke] = useState<{ x: number; y: number }[]>([]);
+  const [redactionDraftInit, setRedactionDraftInit] = useState<string | null>(null);
+  const redactionPointsRef = useRef<{ x: number; y: number }[]>([]);
+  const redactionLiveStrRef = useRef<string>('');
+  const redactionSvgRectRef = useRef<DOMRect | null>(null);
+  const redactionPolylineRef = useRef<SVGPolylineElement | null>(null);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
   const [toastMsg, setToastMsg] = useState<string>('');
   const [pdfGenerating, setPdfGenerating] = useState(false);
@@ -121,8 +132,12 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   // 120Hz Gestures & Touch State
   const [zoomScale, setZoomScale] = useState<number>(1);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [swipeTranslateX, setSwipeTranslateX] = useState<number>(0);
-  const [isSwiping, setIsSwiping] = useState<boolean>(false);
+  const stageContainerRef = useRef<HTMLDivElement | null>(null);
+  const liveZoomRef = useRef<number>(1);
+  const livePanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const liveSwipeXRef = useRef<number>(0);
+  const liveSwipingRef = useRef<boolean>(false);
+  const gestureRafRef = useRef<number | null>(null);
 
   const lastTapTimeRef = useRef<number>(0);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -133,13 +148,54 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const safeIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
   const currentPage = pages[safeIndex];
 
-  // Auto-reset zoom and pan when changing page
-  useEffect(() => {
+  const applyStageTransform = (transitionCss = 'none') => {
+    const el = stageContainerRef.current;
+    if (!el) return;
+    el.style.transition = transitionCss;
+    el.style.transform = `translateX(${liveSwipeXRef.current}px) translate(${livePanRef.current.x}px, ${livePanRef.current.y}px) scale(${liveZoomRef.current})`;
+  };
+
+  const scheduleStageTransform = () => {
+    if (gestureRafRef.current !== null) return;
+    gestureRafRef.current = requestAnimationFrame(() => {
+      gestureRafRef.current = null;
+      applyStageTransform('none');
+    });
+  };
+
+  const resetZoomAndPan = () => {
+    if (gestureRafRef.current !== null) {
+      cancelAnimationFrame(gestureRafRef.current);
+      gestureRafRef.current = null;
+    }
+    liveZoomRef.current = 1;
+    livePanRef.current = { x: 0, y: 0 };
+    liveSwipeXRef.current = 0;
+    liveSwipingRef.current = false;
     setZoomScale(1);
     setPanOffset({ x: 0, y: 0 });
-    setSwipeTranslateX(0);
-    setIsSwiping(false);
+    applyStageTransform('transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)');
+  };
+
+  // Auto-reset zoom, pan, and unsaved redaction state when changing page
+  useEffect(() => {
+    resetZoomAndPan();
+    redactionPointsRef.current = [];
+    redactionLiveStrRef.current = '';
+    redactionSvgRectRef.current = null;
+    setRedactionStrokes([]);
+    setRedactionDraftInit(null);
+    setIsRedacting(false);
   }, [safeIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (gestureRafRef.current !== null) {
+        cancelAnimationFrame(gestureRafRef.current);
+        gestureRafRef.current = null;
+      }
+    };
+  }, []);
 
   // Cleanup preview object URLs on change or unmount
   useEffect(() => {
@@ -165,9 +221,11 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     setFullResPreviewUrl(currentPage.thumbnailDataUrl);
 
     loadPageCanvasFromDisk(currentPage.id)
-      .then((canvas) => {
+      .then(async (canvas) => {
         if (!active) return;
-        const finalCanvas = curvature > 0 ? dewarpBookCurvature(canvas, curvature, spinePos) : canvas;
+        const finalCanvas =
+          curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
+        if (!active) return;
         setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
 
         // Background Barcode & QR Code Intelligence
@@ -205,7 +263,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
         e.touches[0].clientY - e.touches[1].clientY
       );
       touchDistanceStartRef.current = dist;
-      initialZoomRef.current = zoomScale;
+      initialZoomRef.current = liveZoomRef.current;
       return;
     }
 
@@ -217,18 +275,19 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
       if (now - lastTapTimeRef.current < 280) {
         lastTapTimeRef.current = 0;
         triggerHaptic(15);
-        if (zoomScale > 1.05) {
-          setZoomScale(1);
-          setPanOffset({ x: 0, y: 0 });
+        if (liveZoomRef.current > 1.05) {
+          resetZoomAndPan();
         } else {
+          liveZoomRef.current = 2.5;
           setZoomScale(2.5);
+          applyStageTransform('transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)');
         }
         return;
       }
       lastTapTimeRef.current = now;
 
       touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: now };
-      panStartRef.current = { ...panOffset };
+      panStartRef.current = { ...livePanRef.current };
     }
   };
 
@@ -242,10 +301,11 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
       );
       const scaleFactor = dist / touchDistanceStartRef.current;
       const newScale = Math.min(4.0, Math.max(1.0, initialZoomRef.current * scaleFactor));
-      setZoomScale(newScale);
+      liveZoomRef.current = newScale;
       if (newScale === 1.0) {
-        setPanOffset({ x: 0, y: 0 });
+        livePanRef.current = { x: 0, y: 0 };
       }
+      scheduleStageTransform();
       return;
     }
 
@@ -254,21 +314,23 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
       const dx = touch.clientX - touchStartRef.current.x;
       const dy = touch.clientY - touchStartRef.current.y;
 
-      if (zoomScale > 1.05) {
+      if (liveZoomRef.current > 1.05) {
         // Pan image when zoomed in
         if (panStartRef.current) {
-          const maxPanX = (zoomScale - 1) * 160;
-          const maxPanY = (zoomScale - 1) * 220;
+          const maxPanX = (liveZoomRef.current - 1) * 160;
+          const maxPanY = (liveZoomRef.current - 1) * 220;
           const nextX = Math.min(maxPanX, Math.max(-maxPanX, panStartRef.current.x + dx));
           const nextY = Math.min(maxPanY, Math.max(-maxPanY, panStartRef.current.y + dy));
-          setPanOffset({ x: nextX, y: nextY });
+          livePanRef.current = { x: nextX, y: nextY };
+          scheduleStageTransform();
         }
       } else if (pages.length > 1) {
         // Butter-smooth horizontal swipe between pages
         if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-          setIsSwiping(true);
+          liveSwipingRef.current = true;
           const isAtBoundary = (safeIndex === 0 && dx > 0) || (safeIndex === pages.length - 1 && dx < 0);
-          setSwipeTranslateX(isAtBoundary ? dx * 0.3 : dx);
+          liveSwipeXRef.current = isAtBoundary ? dx * 0.3 : dx;
+          scheduleStageTransform();
         }
       }
     }
@@ -277,24 +339,32 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const handleStageTouchEnd = () => {
     if (isRedacting) return;
     touchDistanceStartRef.current = null;
+    if (gestureRafRef.current !== null) {
+      cancelAnimationFrame(gestureRafRef.current);
+      gestureRafRef.current = null;
+    }
 
-    if (isSwiping && touchStartRef.current) {
+    const swipeDx = liveSwipeXRef.current;
+    if (liveSwipingRef.current && touchStartRef.current) {
       const dt = Date.now() - touchStartRef.current.time;
-      const velocity = Math.abs(swipeTranslateX) / Math.max(1, dt);
+      const velocity = Math.abs(swipeDx) / Math.max(1, dt);
 
-      if (Math.abs(swipeTranslateX) > 60 || velocity > 0.4) {
-        if (swipeTranslateX < 0 && safeIndex < pages.length - 1) {
+      if (Math.abs(swipeDx) > 60 || velocity > 0.4) {
+        if (swipeDx < 0 && safeIndex < pages.length - 1) {
           triggerHaptic(20);
           setCurrentPageIndex(safeIndex + 1);
-        } else if (swipeTranslateX > 0 && safeIndex > 0) {
+        } else if (swipeDx > 0 && safeIndex > 0) {
           triggerHaptic(20);
           setCurrentPageIndex(safeIndex - 1);
         }
       }
-      setSwipeTranslateX(0);
-      setIsSwiping(false);
     }
+    liveSwipeXRef.current = 0;
+    liveSwipingRef.current = false;
     touchStartRef.current = null;
+    setZoomScale(liveZoomRef.current);
+    setPanOffset({ ...livePanRef.current });
+    applyStageTransform(liveZoomRef.current > 1.05 ? 'none' : 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)');
   };
 
   const handleFilterSelect = async (newFilter: FilterType) => {
@@ -303,7 +373,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     try {
       await updateStoredPageFilter(currentPage.id, newFilter);
       const canvas = await loadPageCanvasFromDisk(currentPage.id);
-      const finalCanvas = curvature > 0 ? dewarpBookCurvature(canvas, curvature, spinePos) : canvas;
+      const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
       setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
     } catch (e) {
       console.warn('Filter update failed:', e);
@@ -317,7 +387,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
       await updateStoredPageFilter(p.id, activeFilter);
     }
     const canvas = await loadPageCanvasFromDisk(currentPage.id);
-    const finalCanvas = curvature > 0 ? dewarpBookCurvature(canvas, curvature, spinePos) : canvas;
+    const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
     setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
     setToastMsg(`Applied ${activeFilter} to all pages`);
     setTimeout(() => setToastMsg(''), 2200);
@@ -347,7 +417,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     triggerHaptic(20);
     try {
       const rawCanvas = await loadPageCanvasFromDisk(currentPage.id);
-      const processed = curvature > 0 ? dewarpBookCurvature(rawCanvas, curvature, spinePos) : rawCanvas;
+      const processed = curvature > 0 ? await dewarpBookCurvatureAsync(rawCanvas, curvature, spinePos) : rawCanvas;
       const filename = `${docTitle.trim() || 'Otium_Scan'}_Page_${safeIndex + 1}.jpg`;
       const blob = await new Promise<Blob | null>((res) => processed.toBlob(res, 'image/jpeg', 0.92));
       if (!blob) return;
@@ -390,17 +460,25 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
           ctx.stroke();
         }
 
-        // Overwrite disk page storage with permanently redacted pixels
-        await storePageToDisk(
+        // Overwrite disk page storage with permanently redacted pixels and sync thumbnail
+        const originalUrl = await loadOriginalDataUrlFromDisk(currentPage.id).catch(
+          () => currentPage.thumbnailDataUrl
+        );
+        const newThumb = await storePageToDisk(
           currentPage.id,
-          currentPage.thumbnailDataUrl,
+          originalUrl,
           rawCanvas,
           rawCanvas,
           currentPage.filter
         );
+        onUpdatePageThumbnail?.(currentPage.id, newThumb);
 
         setFullResPreviewUrl(rawCanvas.toDataURL('image/jpeg', 0.9));
+        redactionPointsRef.current = [];
+        redactionLiveStrRef.current = '';
+        redactionSvgRectRef.current = null;
         setRedactionStrokes([]);
+        setRedactionDraftInit(null);
         setIsRedacting(false);
         setToastMsg('Confidential info permanently censored');
         setTimeout(() => setToastMsg(''), 2200);
@@ -416,10 +494,10 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
       const rawCanvas = await loadPageCanvasFromDisk(page.id);
-      const processed = curvature > 0 ? dewarpBookCurvature(rawCanvas, curvature, spinePos) : rawCanvas;
+      const processed = curvature > 0 ? await dewarpBookCurvatureAsync(rawCanvas, curvature, spinePos) : rawCanvas;
 
       // Overlay digital signature if present for this page
-      const sig = signatures[i];
+      const sig = signatures[page.id];
       if (sig) {
         const sigImg = new Image();
         sigImg.src = sig.dataUrl;
@@ -464,7 +542,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     try {
       await onRotatePage(safeIndex);
       const canvas = await loadPageCanvasFromDisk(currentPage.id);
-      const finalCanvas = curvature > 0 ? dewarpBookCurvature(canvas, curvature, spinePos) : canvas;
+      const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
       setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
     } catch (e) {
       console.warn('Rotation failed:', e);
@@ -478,7 +556,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     setToastMsg('جاري استخراج النص والتعرف الضوئي...');
     try {
       const rawCanvas = await loadPageCanvasFromDisk(currentPage.id);
-      const finalCanvas = curvature > 0 ? dewarpBookCurvature(rawCanvas, curvature, spinePos) : rawCanvas;
+      const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(rawCanvas, curvature, spinePos) : rawCanvas;
       const result = await extractPageTextAndMetadata(finalCanvas);
       setExtractedText(result.text || 'لم يتم العثور على نص واضح في هذه الصفحة.');
       if (result.suggestedTitle) {
@@ -731,7 +809,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
               setIsSignatureOpen(true);
             }}
             className={`p-1.5 rounded-full glass-button transition-colors ${
-              signatures[safeIndex] ? 'text-accent border-accent/50' : 'text-gray-300 active:text-accent'
+              signatures[currentPage?.id ?? ''] ? 'text-accent border-accent/50' : 'text-gray-300 active:text-accent'
             }`}
             title="إضافة توقيع"
           >
@@ -881,6 +959,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
           onTouchStart={handleStageTouchStart}
           onTouchMove={handleStageTouchMove}
           onTouchEnd={handleStageTouchEnd}
+          onTouchCancel={handleStageTouchEnd}
           className="relative flex-1 w-full h-full flex items-center justify-center p-4 overflow-hidden touch-none"
         >
           {toastMsg && (
@@ -898,8 +977,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
               <button
                 onClick={() => {
                   triggerHaptic(10);
-                  setZoomScale(1);
-                  setPanOffset({ x: 0, y: 0 });
+                  resetZoomAndPan();
                 }}
                 className="px-3.5 py-1 rounded-full bg-black/85 backdrop-blur-md border border-accent/50 text-accent text-xs font-bold shadow-2xl flex items-center gap-1.5 active:scale-95 transition-transform"
               >
@@ -953,9 +1031,10 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
 
           {/* Full-Frame Unobstructed Document Preview Stage */}
           <div
+            ref={stageContainerRef}
             style={{
-              transform: `translateX(${swipeTranslateX}px) translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-              transition: isSwiping || zoomScale > 1.05 ? 'none' : 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+              transform: `translateX(0px) translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+              transition: zoomScale > 1.05 ? 'none' : 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
             className="relative w-full h-full max-h-[64vh] flex items-center justify-center select-none will-change-transform"
           >
@@ -975,23 +1054,40 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
                     (e.target as HTMLElement).setPointerCapture(e.pointerId);
                   } catch {}
                   const rect = e.currentTarget.getBoundingClientRect();
+                  redactionSvgRectRef.current = rect;
                   const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-                  setCurrentStroke([pt]);
+                  const initStr = `${pt.x},${pt.y} ${pt.x},${pt.y}`;
+                  redactionPointsRef.current = [pt];
+                  redactionLiveStrRef.current = initStr;
+                  setRedactionDraftInit(initStr);
                 }}
                 onPointerMove={(e) => {
-                  if (currentStroke.length === 0) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (redactionPointsRef.current.length === 0) return;
+                  const cached = redactionSvgRectRef.current;
+                  const rect = cached && cached.width > 0 && cached.height > 0 ? cached : e.currentTarget.getBoundingClientRect();
                   const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-                  setCurrentStroke((prev) => [...prev, pt]);
+                  redactionPointsRef.current.push(pt);
+                  redactionLiveStrRef.current += ` ${pt.x},${pt.y}`;
+                  redactionPolylineRef.current?.setAttribute('points', redactionLiveStrRef.current);
                 }}
                 onPointerUp={(e) => {
                   try {
                     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
                   } catch {}
-                  if (currentStroke.length > 0) {
-                    setRedactionStrokes((prev) => [...prev, currentStroke]);
-                    setCurrentStroke([]);
+                  const pts = redactionPointsRef.current;
+                  redactionPointsRef.current = [];
+                  redactionLiveStrRef.current = '';
+                  redactionSvgRectRef.current = null;
+                  setRedactionDraftInit(null);
+                  if (pts.length > 0) {
+                    setRedactionStrokes((prev) => [...prev, pts]);
                   }
+                }}
+                onPointerCancel={() => {
+                  redactionPointsRef.current = [];
+                  redactionLiveStrRef.current = '';
+                  redactionSvgRectRef.current = null;
+                  setRedactionDraftInit(null);
                 }}
                 className="absolute inset-0 w-full h-full z-30 touch-none cursor-crosshair bg-black/5"
               >
@@ -1006,9 +1102,10 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
                     strokeLinejoin="round"
                   />
                 ))}
-                {currentStroke.length > 0 && (
+                {redactionDraftInit !== null && (
                   <polyline
-                    points={currentStroke.map((p) => `${p.x},${p.y}`).join(' ')}
+                    ref={redactionPolylineRef}
+                    points={redactionDraftInit}
                     fill="none"
                     stroke="#000000"
                     strokeWidth="18"
@@ -1036,16 +1133,16 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
             )}
 
             {/* Attached Digital Signature */}
-            {signatures[safeIndex] && (
+            {currentPage && signatures[currentPage.id] && (
               <div
                 style={{
-                  left: `${signatures[safeIndex].x * 100}%`,
-                  top: `${signatures[safeIndex].y * 100}%`,
+                  left: `${signatures[currentPage.id].x * 100}%`,
+                  top: `${signatures[currentPage.id].y * 100}%`,
                 }}
                 className="absolute z-20 w-32 -translate-x-1/2 -translate-y-1/2 p-1.5 border-2 border-dashed border-accent bg-accent/10 rounded-xl shadow-2xl flex items-center justify-center group"
               >
                 <img
-                  src={signatures[safeIndex].dataUrl}
+                  src={signatures[currentPage.id].dataUrl}
                   alt="Signature"
                   className="w-full h-auto object-contain pointer-events-none"
                 />
@@ -1055,7 +1152,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
                     triggerHaptic(10);
                     setSignatures((prev) => {
                       const next = { ...prev };
-                      delete next[safeIndex];
+                      delete next[currentPage.id];
                       return next;
                     });
                   }}
@@ -1455,10 +1552,11 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
         isOpen={isSignatureOpen}
         onClose={() => setIsSignatureOpen(false)}
         onSaveSignature={(sigUrl) => {
+          if (!currentPage) return;
           triggerHaptic(20);
           setSignatures((prev) => ({
             ...prev,
-            [safeIndex]: { dataUrl: sigUrl, x: 0.58, y: 0.72 },
+            [currentPage.id]: { dataUrl: sigUrl, x: 0.58, y: 0.72 },
           }));
           setToastMsg('Signature placed on current page');
           setTimeout(() => setToastMsg(''), 2200);

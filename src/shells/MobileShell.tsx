@@ -9,15 +9,15 @@ import { ReaderOverlays } from '../components/ReaderOverlays';
 import { ReaderWorkspace } from '../components/ReaderWorkspace';
 import { TextSelectionMenu } from '../components/TextSelectionMenu';
 import { WelcomeScreen } from '../components/WelcomeScreen';
-import { BeamModal } from '../board/beam/BeamModal';
 import { TeachingProvider, useTeaching } from '../components/TeachingContext';
 import { DocumentInkProvider } from '../components/DocumentInk';
 import { useMobileFullscreen } from '../platform/useMobileFullscreen';
 import { useDeviceUsage } from '../platform/deviceUsage';
-import { BoardSplitWorkspace } from '../board/components/BoardSplitWorkspace';
 import type { BoardSnippet } from '../board/types';
 import { useAppMedia } from '../media/useAppMedia';
 const MediaWorkspace = React.lazy(() => import('../media/MediaWorkspace').then(module => ({ default: module.MediaWorkspace })));
+const BoardSplitWorkspace = React.lazy(() => import('../board/components/BoardSplitWorkspace').then(module => ({ default: module.BoardSplitWorkspace })));
+const BeamModal = React.lazy(() => import('../board/beam/BeamModal').then(module => ({ default: module.BeamModal })));
 
 const ScannerModal = React.lazy(() =>
   import('../scanner/ScannerModal').then((m) => ({ default: m.ScannerModal }))
@@ -168,13 +168,17 @@ const MobileReader: React.FC = () => {
             mobile={teaching.mobile}
           />
 
-          {teaching.prefs.boardEnabled ? <BoardSplitWorkspace
-            reader={reader} isBoardOpen={isBoardOpen} onCloseBoard={() => setBoardOpen(false)}
-            snippets={snippets} onRestoreSnippets={setSnippets}
-            onAddSnippet={snippet => { setSnippets(previous => [...previous, snippet]); setBoardOpen(true); }}
-            onRemoveSnippet={id => setSnippets(previous => previous.filter(snippet => snippet.id !== id))}
-            onUpdateSnippetPosition={(id, x, y) => setSnippets(previous => previous.map(snippet => snippet.id === id ? { ...snippet, x, y } : snippet))}
-          /> : <ReaderWorkspace reader={reader} compact={teaching.mobile} />}
+          {teaching.prefs.boardEnabled ? (
+            <Suspense fallback={<ReaderWorkspace reader={reader} compact={teaching.mobile} />}>
+              <BoardSplitWorkspace
+                reader={reader}
+                snippets={snippets} onRestoreSnippets={setSnippets}
+                onAddSnippet={snippet => { setSnippets(previous => [...previous, snippet]); setBoardOpen(true); }}
+                onRemoveSnippet={id => setSnippets(previous => previous.filter(snippet => snippet.id !== id))}
+                onUpdateSnippetPosition={(id, x, y) => setSnippets(previous => previous.map(snippet => snippet.id === id ? { ...snippet, x, y } : snippet))}
+              />
+            </Suspense>
+          ) : <ReaderWorkspace reader={reader} compact={teaching.mobile} />}
         </>
       )}
 
@@ -230,17 +234,21 @@ const MobileReader: React.FC = () => {
       </Suspense>
 
       {/* Otium Smart Beam Modal */}
-      <BeamModal
-        isOpen={isBeamOpen}
-        lang={reader.lang}
-        theme={reader.theme}
-        reader={reader}
-        formFactor="mobile"
-        preferredRole={receiver ? 'receiver' : 'sender'}
-        isBoardOpen={isBoardOpen}
-        onSetBoardOpen={setBoardOpen}
-        onClose={() => setIsBeamOpen(false)}
-      />
+      {isBeamOpen && (
+        <Suspense fallback={null}>
+          <BeamModal
+            isOpen={isBeamOpen}
+            lang={reader.lang}
+            theme={reader.theme}
+            reader={reader}
+            formFactor="mobile"
+            preferredRole={receiver ? 'receiver' : 'sender'}
+            isBoardOpen={isBoardOpen}
+            onSetBoardOpen={setBoardOpen}
+            onClose={() => setIsBeamOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
     </DocumentInkProvider>
   );

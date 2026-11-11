@@ -121,7 +121,7 @@ function drawAnnotationLayer(
   dark: boolean
 ): void {
   const ratio = Math.min(
-    getCanvasPixelRatio(2.5),
+    getCanvasPixelRatio(),
     Math.sqrt(3_600_000 / Math.max(1, width * height))
   );
   const backingWidth = Math.max(1, Math.round(width * ratio));
@@ -204,10 +204,18 @@ const PdfPageView: React.FC<PdfPageProps> = ({
 
   const [isVisible, setIsVisible] = useState(false);
   const [hasRenderedOnce, setHasRenderedOnce] = useState(false);
+  const [rasterScale, setRasterScale] = useState(scale);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [textLayerVersion, setTextLayerVersion] = useState(0);
   const [activeAnno, setActiveAnno] = useState<ActiveAnnotation | null>(null);
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const rasterScaleRef = useRef(rasterScale);
+  rasterScaleRef.current = rasterScale;
+  const hasRenderedOnceRef = useRef(false);
+  hasRenderedOnceRef.current = hasRenderedOnce;
+  const wasVisibleRef = useRef(false);
   const isDark = theme === 'amoled' || theme === 'midnight' || theme === 'amber' || theme === 'forest' || theme === 'nordic';
   const cssThemeFilter = useMemo(() => {
     const filter = themeFilter(theme);
@@ -259,12 +267,35 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   // A reused component (dual mode) must never show the previous page while
   // the next one is still rasterising.
   useEffect(() => {
+    renderedKeyRef.current = '';
+    hasRenderedOnceRef.current = false;
     setHasRenderedOnce(false);
     setRenderError(null);
+    setRasterScale(scaleRef.current);
     if (textLayerRef.current) {
       delete textLayerRef.current.dataset.pageRendered;
     }
   }, [pageNumber, doc]);
+
+  // Keep CSS sizing immediate at 120Hz while debouncing heavy PDF.js rasterization
+  // during active pinch/wheel zoom on already-painted visible pages.
+  useEffect(() => {
+    if (!isVisible) {
+      wasVisibleRef.current = false;
+      return;
+    }
+    const justBecameVisible = !wasVisibleRef.current;
+    wasVisibleRef.current = true;
+    if (justBecameVisible || !hasRenderedOnceRef.current) {
+      setRasterScale((prev) => (Math.abs(prev - scale) < 0.0001 ? prev : scale));
+      return;
+    }
+    if (Math.abs(rasterScaleRef.current - scale) < 0.0001) return;
+    const timer = window.setTimeout(() => {
+      setRasterScale(scale);
+    }, 90);
+    return () => window.clearTimeout(timer);
+  }, [scale, isVisible]);
 
   // Auto-heal canvas on GPU context restoration (e.g. after low-memory resume)
   useEffect(() => {
@@ -322,7 +353,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   useEffect(() => {
     if (!isVisible) return;
 
-    const renderKey = `${pageNumber}:${scale.toFixed(4)}:${theme}`;
+    const renderKey = `${pageNumber}:${rasterScale.toFixed(4)}:${theme}`;
     if (renderedKeyRef.current === renderKey) return;
 
     let cancelled = false;
@@ -341,12 +372,12 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         // Safe bitmap ceiling (4.5M pixels = ~18MB buffer) prevents mobile WebView OOM
         // crashes and GPU texture exhaustion when zooming in to 250%+ on Retina displays.
         const MAX_CANVAS_PIXELS = 4_500_000;
-        const rawPixels = (pageSize.width * scale * dpr) * (pageSize.height * scale * dpr);
+        const rawPixels = (pageSize.width * rasterScale * dpr) * (pageSize.height * rasterScale * dpr);
         const dprAdjustment = rawPixels > MAX_CANVAS_PIXELS ? Math.sqrt(MAX_CANVAS_PIXELS / rawPixels) : 1;
         const effectiveDpr = Math.max(1, dpr * dprAdjustment);
 
-        const viewport = page.getViewport({ scale: scale * effectiveDpr });
-        const cssViewport = page.getViewport({ scale });
+        const viewport = page.getViewport({ scale: rasterScale * effectiveDpr });
+        const cssViewport = page.getViewport({ scale: rasterScale });
 
         // Render into a staging canvas first. The visible canvas is updated in
         // one synchronous copy, so zooming never flashes a blank page.
@@ -456,7 +487,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         currentRenderTaskRef.current = null;
       }
     };
-  }, [doc, pageNumber, scale, theme, isVisible, retryKey]);
+  }, [doc, pageNumber, rasterScale, theme, isVisible, retryKey]);
 
   // The text layer is laid out once at the page's natural size and scaled with
   // a CSS transform. Rebuilding it on every zoom step destroyed any selection

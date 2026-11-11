@@ -39,7 +39,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   // whole pane assigned to it, including a narrow split-screen pane.
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const laserCanvasRef = useRef<HTMLCanvasElement>(null);
+  const liveStrokeRef = useRef<BoardStroke | null>(null);
+  const livePaintRafRef = useRef<number | null>(null);
+  const strokeRectRef = useRef<DOMRect | null>(null);
+  const undoSnapshotRef = useRef<BoardStroke[] | null>(null);
   const { prefs, registerBoard, target, presentation } = useTeaching();
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<SaveStatus>('loading');
@@ -84,8 +89,37 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }
   }, []);
 
+  const clearLiveCanvas = useCallback(() => {
+    const liveCanvas = liveCanvasRef.current;
+    if (!liveCanvas) return;
+    const ctx = liveCanvas.getContext('2d');
+    ctx?.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+  }, []);
+
+  const paintLiveStroke = useCallback(() => {
+    const liveCanvas = liveCanvasRef.current;
+    if (!liveCanvas) return;
+    const ctx = liveCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+    const liveStroke = liveStrokeRef.current;
+    if (!liveStroke) return;
+    ctx.save();
+    ctx.scale(liveCanvas.width / 1920, liveCanvas.height / 1080);
+    drawBoardInk(ctx, [liveStroke], paintState.current.isDarkBg);
+    ctx.restore();
+  }, []);
+
+  const scheduleLivePaint = useCallback(() => {
+    if (livePaintRafRef.current !== null) return;
+    livePaintRafRef.current = requestAnimationFrame(() => {
+      livePaintRafRef.current = null;
+      paintLiveStroke();
+    });
+  }, [paintLiveStroke]);
+
   const checkAndSnapShape = useCallback(() => {
-    if (!isDrawingRef.current || isShapeSnappedRef.current) return;
+    if (!isDrawingRef.current || isShapeSnappedRef.current || !liveStrokeRef.current) return;
     const pts = currentPointsRef.current;
     if (pts.length < 5) return;
 
@@ -103,18 +137,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       isShapeSnappedRef.current = true;
       const points = recognized.points.map(p => ({ ...p, x: p.x * 1920 / rect.width, y: p.y * 1080 / rect.height }));
       currentPointsRef.current = points;
-
-      setStrokes((prev) => {
-        if (prev.length === 0) return prev;
-        const last = prev[prev.length - 1];
-        return [...prev.slice(0, -1), { ...last, points, shape: recognized.type }];
-      });
+      liveStrokeRef.current = { ...liveStrokeRef.current, points, shape: recognized.type };
+      paintLiveStroke();
     }
-  }, []);
+  }, [paintLiveStroke]);
 
   useEffect(() => {
     return () => {
       cancelShapeHoldTimer();
+      if (livePaintRafRef.current !== null) {
+        cancelAnimationFrame(livePaintRafRef.current);
+        livePaintRafRef.current = null;
+      }
     };
   }, [cancelShapeHoldTimer]);
 
@@ -178,26 +212,41 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     drawBoardInk(ctx, paintState.current.strokes, paintState.current.isDarkBg);
 
     ctx.restore();
-  }, []);
+    if (!liveStrokeRef.current) {
+      clearLiveCanvas();
+    } else {
+      paintLiveStroke();
+    }
+  }, [clearLiveCanvas, paintLiveStroke]);
 
   // Sync canvas size with high DPI pixel ratio and observe container resizing
   const syncCanvasDimensions = useCallback(() => {
     const canvas = canvasRef.current;
+    const liveCanvas = liveCanvasRef.current;
     const laserCanvas = laserCanvasRef.current;
     const container = stageRef.current;
     if (!canvas || !laserCanvas || !container) return;
 
+    strokeRectRef.current = null;
     const rect = container.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const raster = boardRasterSize(rect.width, rect.height, window.devicePixelRatio || 1);
 
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
+    if (liveCanvas) {
+      liveCanvas.style.width = `${rect.width}px`;
+      liveCanvas.style.height = `${rect.height}px`;
+    }
     laserCanvas.style.width = `${rect.width}px`;
     laserCanvas.style.height = `${rect.height}px`;
     if (canvas.width === raster.width && canvas.height === raster.height) return;
     canvas.width = raster.width;
     canvas.height = raster.height;
+    if (liveCanvas) {
+      liveCanvas.width = raster.width;
+      liveCanvas.height = raster.height;
+    }
     laserCanvas.width = raster.width;
     laserCanvas.height = raster.height;
 
@@ -329,10 +378,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   };
 
   // Pointer event handlers for zero-latency drawing with Palm Rejection
-  const getCanvasCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const getCanvasCoordinates = (e: { clientX: number; clientY: number; pressure?: number }) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
+    const cached = strokeRectRef.current;
+    const rect = cached && cached.width > 0 && cached.height > 0 ? cached : canvas.getBoundingClientRect();
     return {
       x: (e.clientX - rect.left) * 1920 / rect.width,
       y: (e.clientY - rect.top) * 1080 / rect.height,
@@ -358,7 +408,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     } catch {}
 
     pointer.current = e.pointerId;
-    setUndoStack(prev => [...prev, strokes].slice(-60));
+    strokeRectRef.current = canvas.getBoundingClientRect();
     const coords = getCanvasCoordinates(e);
 
     if (activeTool === 'laser') {
@@ -367,12 +417,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }
 
     if (activeTool === 'eraser') {
+      setUndoStack(prev => [...prev, strokes].slice(-60));
       eraseStrokesNearPoint(coords.x, coords.y);
       isDrawingRef.current = true;
       return;
     }
 
     isDrawingRef.current = true;
+    undoSnapshotRef.current = strokes;
     currentPointsRef.current = [coords];
     isShapeSnappedRef.current = false;
     lastStationaryCoordRef.current = { x: coords.x, y: coords.y };
@@ -390,8 +442,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       tool: activeTool === 'highlighter' ? 'highlighter' : 'pen'
     };
 
-    setStrokes((prev) => [...prev, newStroke]);
-    setRedoStack([]);
+    liveStrokeRef.current = newStroke;
+    paintLiveStroke();
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -416,7 +468,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       return;
     }
 
-    if (isShapeSnappedRef.current) return;
+    if (isShapeSnappedRef.current || !liveStrokeRef.current) return;
 
     // Reset hold timer if pointer moved significantly (> 12px)
     if (lastStationaryCoordRef.current) {
@@ -440,7 +492,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const cached = strokeRectRef.current;
+    const rect = cached && cached.width > 0 && cached.height > 0 ? cached : canvas.getBoundingClientRect();
 
     const coalesced = samples.length ? samples : [e.nativeEvent];
     const newPoints: StrokePoint[] = coalesced.map((pe) => ({
@@ -450,16 +503,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }));
 
     currentPointsRef.current.push(...newPoints);
-
-    setStrokes((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      const updatedStroke = {
-        ...last,
-        points: [...last.points, ...newPoints]
-      };
-      return [...prev.slice(0, -1), updatedStroke];
-    });
+    liveStrokeRef.current.points.push(...newPoints);
+    scheduleLivePaint();
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -467,6 +512,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     pointer.current = null;
     cancelShapeHoldTimer();
     isShapeSnappedRef.current = false;
+    strokeRectRef.current = null;
+    if (livePaintRafRef.current !== null) {
+      cancelAnimationFrame(livePaintRafRef.current);
+      livePaintRafRef.current = null;
+    }
 
     if (stylusOnly && e.pointerType === 'touch') {
       return;
@@ -480,6 +530,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     } catch {}
     isDrawingRef.current = false;
     currentPointsRef.current = [];
+
+    const finished = liveStrokeRef.current;
+    liveStrokeRef.current = null;
+    const prevSnapshot = undoSnapshotRef.current;
+    undoSnapshotRef.current = null;
+    if (finished) {
+      if (prevSnapshot) {
+        setUndoStack((prev) => [...prev, prevSnapshot].slice(-60));
+      }
+      setStrokes((prev) => [...prev, finished]);
+      setRedoStack([]);
+    }
     setDrawingRevision(value => value + 1);
   };
 
@@ -684,6 +746,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         onPointerCancel={handlePointerUp}
         onLostPointerCapture={handlePointerUp}
         className="absolute inset-0 cursor-crosshair z-10 touch-none select-none"
+      />
+
+      {/* Live 120Hz Active Stroke Overlay (avoids full-board repaints per sample) */}
+      <canvas
+        ref={liveCanvasRef}
+        className="absolute inset-0 pointer-events-none z-[11]"
       />
 
       {/* Floating Laser Trail Overlay */}

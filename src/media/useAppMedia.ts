@@ -4,7 +4,7 @@ import type { RecentDocItem } from '../core/storage/documents';
 import { describeFile, validateFile } from './media';
 import { registerIncomingDocumentHandler } from '../platform/incomingDocument';
 import { loadMedia, mediaKind, newMediaItem, storeMedia, updateMedia, type MediaLibraryItem, type MediaProgress } from './library';
-import { loadDocumentTheme, saveDocumentTheme } from '../core/settings/preferences';
+import { loadDocumentTheme, loadRememberDocTheme, saveDocumentTheme } from '../core/settings/preferences';
 export type ActiveMedia = { file: File; item: MediaLibraryItem; saved: boolean };
 export function useAppMedia(reader: ReaderController) {
   const [active, setActive] = useState<ActiveMedia | null>(null);
@@ -21,9 +21,11 @@ export function useAppMedia(reader: ReaderController) {
     dirty.current = false;
     if (value) {
       progress.current = value.item;
-      const savedTheme = loadDocumentTheme(value.item.id, value.file.name);
-      if (savedTheme) {
-        reader.changeTheme(savedTheme, false);
+      if (loadRememberDocTheme()) {
+        const savedTheme = loadDocumentTheme(value.item.id, value.file.name);
+        if (savedTheme) {
+          reader.changeTheme(savedTheme, false);
+        }
       }
     }
   }, [reader]);
@@ -56,17 +58,18 @@ export function useAppMedia(reader: ReaderController) {
     }
   }), []);
   useEffect(() => {
-    if (current.current?.item.id && reader.theme) {
+    if (current.current?.item.id && reader.theme && loadRememberDocTheme()) {
       saveDocumentTheme(current.current.item.id, reader.theme);
     }
   }, [reader.theme]);
   useEffect(() => {
+    if (!active) return;
     const timer = window.setInterval(() => { void persist(); }, 5000);
     const flush = () => { void persist(); };
     window.addEventListener('pagehide', flush);
     document.addEventListener('visibilitychange', flush);
     return () => { window.clearInterval(timer); window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', flush); void persist(); };
-  }, [persist]);
+  }, [active, persist]);
   const close = useCallback(async () => { const ticket = ++generation.current; await persist(); if (ticket !== generation.current) return; current.current = null; setActive(null); setPending(false); }, [persist]);
   const open = useCallback(async (file: File) => {
     if (describeFile(file.name).kind !== 'pdf') {

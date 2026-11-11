@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { openPptx, readSlide } from '../../src/media/pptx';
 import { crc32, LocalZip, resolvePart } from '../../src/media/zip';
 import { zipFixture, deckParts, slideXml } from './test/fixture';
@@ -98,4 +98,35 @@ it('loads embedded image bytes without following an external picture link', asyn
   parts['ppt/slides/_rels/slide2.xml.rels'] = '<Relationships><Relationship Id="picture" Type="x/image" Target="https://example.test/x.png" TargetMode="External"/></Relationships>';
   const blocked = await readSlide(await openPptx(zipFixture(parts)), 1);
   expect(blocked.elements).toHaveLength(1); expect(blocked.limited).toBe(true);
+});
+
+it('caches shared slide layout/master/theme XML lookups per Deck and honors AbortSignal', async () => {
+  const parts = deckParts();
+  const p = 'http://schemas.openxmlformats.org/presentationml/2006/main';
+  const a = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  const ns = `xmlns:p="${p}" xmlns:a="${a}"`;
+  parts['ppt/slides/_rels/slide2.xml.rels'] = '<Relationships><Relationship Id="layout" Type="x/slideLayout" Target="../slideLayouts/layout1.xml"/></Relationships>';
+  parts['ppt/slides/_rels/slide1.xml.rels'] = '<Relationships><Relationship Id="layout" Type="x/slideLayout" Target="../slideLayouts/layout1.xml"/></Relationships>';
+  parts['ppt/slideLayouts/layout1.xml'] = `<p:sldLayout ${ns}><p:cSld><p:spTree/></p:cSld></p:sldLayout>`;
+  parts['ppt/slideLayouts/_rels/layout1.xml.rels'] = '<Relationships><Relationship Id="master" Type="x/slideMaster" Target="../slideMasters/master1.xml"/></Relationships>';
+  parts['ppt/slideMasters/master1.xml'] = `<p:sldMaster ${ns}><p:cSld><p:spTree/></p:cSld></p:sldMaster>`;
+  parts['ppt/slideMasters/_rels/master1.xml.rels'] = '<Relationships><Relationship Id="theme" Type="x/theme" Target="../theme/theme1.xml"/></Relationships>';
+
+  const deck = await openPptx(zipFixture(parts));
+  const xmlSpy = vi.spyOn(deck.zip, 'xml');
+
+  await readSlide(deck, 1);
+  await readSlide(deck, 2);
+  await readSlide(deck, 1);
+
+  const callsForLayout = xmlSpy.mock.calls.filter(([path]) => path === 'ppt/slideLayouts/layout1.xml');
+  const callsForMaster = xmlSpy.mock.calls.filter(([path]) => path === 'ppt/slideMasters/master1.xml');
+  const callsForSlide2 = xmlSpy.mock.calls.filter(([path]) => path === 'ppt/slides/slide2.xml');
+  expect(callsForLayout).toHaveLength(1);
+  expect(callsForMaster).toHaveLength(1);
+  expect(callsForSlide2).toHaveLength(1);
+
+  const controller = new AbortController();
+  controller.abort();
+  await expect(readSlide(deck, 1, controller.signal)).rejects.toThrow();
 });

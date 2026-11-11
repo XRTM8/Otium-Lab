@@ -9,13 +9,14 @@ import { TextSelectionMenu } from '../components/TextSelectionMenu';
 import { Toolbar } from '../components/Toolbar';
 import { WelcomeScreen } from '../components/WelcomeScreen';
 import { ReaderWorkspace } from '../components/ReaderWorkspace';
-import { BoardSplitWorkspace } from '../board/components/BoardSplitWorkspace';
-import { BeamModal } from '../board/beam/BeamModal';
 import { DocumentInkProvider } from '../components/DocumentInk';
 import { TeachingProvider, useTeaching } from '../components/TeachingContext';
 import { useDeviceUsage } from '../platform/deviceUsage';
 import { useAppMedia } from '../media/useAppMedia';
+import { describeFile } from '../media/media';
 const MediaWorkspace = React.lazy(() => import('../media/MediaWorkspace').then(module => ({ default: module.MediaWorkspace })));
+const BoardSplitWorkspace = React.lazy(() => import('../board/components/BoardSplitWorkspace').then(module => ({ default: module.BoardSplitWorkspace })));
+const BeamModal = React.lazy(() => import('../board/beam/BeamModal').then(module => ({ default: module.BeamModal })));
 import type { BoardSnippet } from '../board/types';
 
 /** Windows shell: floating desktop toolbar, Otium Board split-screen studio, and Smart Beam. */
@@ -151,19 +152,35 @@ const DesktopReader: React.FC = () => {
             const filePath = payload.paths?.[0];
             if (filePath) {
               const currentReader = readerRef.current;
-              if (filePath.toLowerCase().endsWith('.pdf') || !filePath.includes('.')) {
+              const name = filePath.split(/[/\\]/).pop() || 'document';
+              const { kind, mime } = describeFile(name);
+              if (kind === 'pdf' || !filePath.includes('.')) {
                 void invoke<ArrayBuffer | number[]>('read_pdf_bytes', { path: filePath })
                   .then((bytes) => {
                     const data = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes as number[]).buffer;
-                    const name = filePath.split(/[/\\]/).pop() || 'document.pdf';
-                    void currentReader.loadDocumentBytes(data, name);
+                    void currentReader.loadDocumentBytes(data, name.endsWith('.pdf') ? name : `${name}.pdf`);
                   })
                   .catch((err) => {
-                    console.error('Failed to read dropped file in Tauri:', err);
+                    console.error('Failed to read dropped PDF in Tauri:', err);
+                    currentReader.setDocumentError(currentReader.lang === 'ar' ? 'تعذر فتح الملف المسحوب.' : 'Could not open dropped file.');
+                  });
+              } else if (kind !== 'unsupported' && kind !== 'office') {
+                void invoke<ArrayBuffer | number[]>('read_media_file_bytes', { path: filePath })
+                  .then((bytes) => {
+                    const data = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes as number[]);
+                    const file = new File([data], name, mime ? { type: mime } : undefined);
+                    void mediaRef.current.open(file);
+                  })
+                  .catch((err) => {
+                    console.error('Failed to read dropped media file in Tauri:', err);
                     currentReader.setDocumentError(currentReader.lang === 'ar' ? 'تعذر فتح الملف المسحوب.' : 'Could not open dropped file.');
                   });
               } else {
-                currentReader.setDocumentError(currentReader.lang === 'ar' ? 'يرجى اختيار ملف PDF صالح.' : 'Please select a valid PDF file.');
+                currentReader.setDocumentError(
+                  currentReader.lang === 'ar'
+                    ? 'صيغة الملف المسحوب غير مدعومة.'
+                    : 'Dropped file format is not supported.'
+                );
               }
             }
           }
@@ -282,16 +299,18 @@ const DesktopReader: React.FC = () => {
             onClipToBoard={teaching.prefs.boardEnabled ? handleClipTextToBoard : undefined}
           />
 
-          {teaching.prefs.boardEnabled ? <BoardSplitWorkspace
-            reader={reader}
-            onRestoreSnippets={setSnippets}
-            isBoardOpen={isBoardOpen}
-            onCloseBoard={() => setIsBoardOpen(false)}
-            snippets={snippets}
-            onAddSnippet={handleAddSnippet}
-            onRemoveSnippet={handleRemoveSnippet}
-            onUpdateSnippetPosition={handleUpdateSnippetPosition}
-          /> : <ReaderWorkspace reader={reader} />}
+          {teaching.prefs.boardEnabled ? (
+            <React.Suspense fallback={<ReaderWorkspace reader={reader} />}>
+              <BoardSplitWorkspace
+                reader={reader}
+                onRestoreSnippets={setSnippets}
+                snippets={snippets}
+                onAddSnippet={handleAddSnippet}
+                onRemoveSnippet={handleRemoveSnippet}
+                onUpdateSnippetPosition={handleUpdateSnippetPosition}
+              />
+            </React.Suspense>
+          ) : <ReaderWorkspace reader={reader} />}
         </>
       )}
 
@@ -299,17 +318,21 @@ const DesktopReader: React.FC = () => {
       {media.pending && !reader.passwordModal.isOpen && <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim text-ink">{reader.lang === 'ar' ? 'جارٍ فتح الملف…' : 'Opening file…'}</div>}
 
       {/* Otium Smart Beam Modal */}
-      <BeamModal
-        isOpen={isBeamOpen}
-        lang={reader.lang}
-        theme={reader.theme}
-        reader={reader}
-        formFactor="desktop"
-        preferredRole={receiver ? 'receiver' : role === 'handheld' ? 'sender' : undefined}
-        isBoardOpen={isBoardOpen}
-        onSetBoardOpen={setIsBoardOpen}
-        onClose={() => setIsBeamOpen(false)}
-      />
+      {isBeamOpen && (
+        <React.Suspense fallback={null}>
+          <BeamModal
+            isOpen={isBeamOpen}
+            lang={reader.lang}
+            theme={reader.theme}
+            reader={reader}
+            formFactor="desktop"
+            preferredRole={receiver ? 'receiver' : role === 'handheld' ? 'sender' : undefined}
+            isBoardOpen={isBoardOpen}
+            onSetBoardOpen={setIsBoardOpen}
+            onClose={() => setIsBeamOpen(false)}
+          />
+        </React.Suspense>
+      )}
 
       {/* Full-Window Drag and Drop Frosted Overlay */}
       {isDraggingOverWindow && (

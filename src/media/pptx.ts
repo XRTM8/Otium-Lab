@@ -6,6 +6,35 @@ const num = (node: Element | undefined, key: string, fallback = 0) => {
   return Number.isFinite(n) && Math.abs(n) < 1e10 ? n : fallback;
 };
 type Relation = { target: string; type: string };
+type DeckCache = {
+  xml: Map<string, Promise<Document>>;
+  rels: Map<string, Promise<Map<string, Relation>>>;
+  schemes: Map<string, Promise<Record<string, string>>>;
+};
+const deckCache = new WeakMap<Deck, DeckCache>();
+function getDeckCache(deck: Deck): DeckCache {
+  let cached = deckCache.get(deck);
+  if (!cached) {
+    cached = { xml: new Map(), rels: new Map(), schemes: new Map() };
+    deckCache.set(deck, cached);
+  }
+  return cached;
+}
+async function cachedXml(deck: Deck, path: string, signal?: AbortSignal): Promise<Document> {
+  signal?.throwIfAborted();
+  const { xml } = getDeckCache(deck);
+  let pending = xml.get(path);
+  if (!pending) {
+    pending = deck.zip.xml(path).catch((err) => {
+      if (xml.get(path) === pending) xml.delete(path);
+      throw err;
+    });
+    xml.set(path, pending);
+  }
+  const doc = await pending;
+  signal?.throwIfAborted();
+  return doc;
+}
 async function relations(zip: LocalZip, source: string, signal?: AbortSignal) {
   const slash = source.lastIndexOf('/');
   const path = `${source.slice(0, slash + 1)}_rels/${source.slice(slash + 1)}.rels`;
@@ -17,6 +46,59 @@ async function relations(zip: LocalZip, source: string, signal?: AbortSignal) {
     if (target && zip.has(target)) result.set(rel.getAttribute('Id') ?? '', { target, type: rel.getAttribute('Type') ?? '' });
   }
   return result;
+}
+async function cachedRelations(deck: Deck, source: string, signal?: AbortSignal): Promise<Map<string, Relation>> {
+  signal?.throwIfAborted();
+  const { rels } = getDeckCache(deck);
+  let pending = rels.get(source);
+  if (!pending) {
+    const slash = source.lastIndexOf('/');
+    const path = `${source.slice(0, slash + 1)}_rels/${source.slice(slash + 1)}.rels`;
+    pending = (async () => {
+      const result = new Map<string, Relation>();
+      if (!deck.zip.has(path)) return result;
+      for (const rel of all(await cachedXml(deck, path), 'Relationship')) {
+        if (rel.getAttribute('TargetMode') === 'External') continue;
+        const target = resolvePart(source, rel.getAttribute('Target') ?? '');
+        if (target && deck.zip.has(target)) result.set(rel.getAttribute('Id') ?? '', { target, type: rel.getAttribute('Type') ?? '' });
+      }
+      return result;
+    })().catch((err) => {
+      if (rels.get(source) === pending) rels.delete(source);
+      throw err;
+    });
+    rels.set(source, pending);
+  }
+  const map = await pending;
+  signal?.throwIfAborted();
+  return map;
+}
+async function cachedThemeScheme(deck: Deck, themePath: string, signal?: AbortSignal): Promise<Record<string, string>> {
+  signal?.throwIfAborted();
+  const { schemes } = getDeckCache(deck);
+  let pending = schemes.get(themePath);
+  if (!pending) {
+    pending = (async () => {
+      const overrides: Record<string, string> = {};
+      const scheme = first(await cachedXml(deck, themePath), 'clrScheme');
+      if (scheme) {
+        const scratch = { ...deck.theme };
+        for (const item of scheme.children) {
+          const resolved = color(item, scratch, '#000000');
+          scratch[item.localName] = resolved;
+          overrides[item.localName] = resolved;
+        }
+      }
+      return overrides;
+    })().catch((err) => {
+      if (schemes.get(themePath) === pending) schemes.delete(themePath);
+      throw err;
+    });
+    schemes.set(themePath, pending);
+  }
+  const resolved = await pending;
+  signal?.throwIfAborted();
+  return resolved;
 }
 const rid = (node: Element, key = 'id') => node.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', key)
   || node.getAttributeNS('http://purl.oclc.org/ooxml/officeDocument/relationships', key) || node.getAttribute(`r:${key}`) || '';
@@ -68,19 +150,18 @@ export async function openPptx(buffer: ArrayBuffer, signal?: AbortSignal): Promi
 export async function readSlide(deck: Deck, page: number, signal?: AbortSignal): Promise<Slide> {
   const source = deck.slides[page - 1];
   if (!source) throw new Error('رقم الشريحة غير صالح.');
-  const doc = await deck.zip.xml(source, signal);
-  const refs = await relations(deck.zip, source, signal);
+  const doc = await cachedXml(deck, source, signal);
+  const refs = await cachedRelations(deck, source, signal);
   const layoutRef = [...refs.values()].find(rel => rel.type.endsWith('/slideLayout'));
-  const layout = layoutRef ? await deck.zip.xml(layoutRef.target, signal) : undefined;
-  const layoutRefs = layoutRef ? await relations(deck.zip, layoutRef.target, signal) : new Map<string, Relation>();
+  const layout = layoutRef ? await cachedXml(deck, layoutRef.target, signal) : undefined;
+  const layoutRefs = layoutRef ? await cachedRelations(deck, layoutRef.target, signal) : new Map<string, Relation>();
   const masterRef = [...layoutRefs.values()].find(rel => rel.type.endsWith('/slideMaster'));
-  const master = masterRef ? await deck.zip.xml(masterRef.target, signal) : undefined;
-  const masterRefs = masterRef ? await relations(deck.zip, masterRef.target, signal) : new Map<string, Relation>();
+  const master = masterRef ? await cachedXml(deck, masterRef.target, signal) : undefined;
+  const masterRefs = masterRef ? await cachedRelations(deck, masterRef.target, signal) : new Map<string, Relation>();
   const theme = { ...deck.theme };
   const themeRef = [...masterRefs.values()].find(rel => rel.type.endsWith('/theme'));
   if (themeRef) {
-    const scheme = first(await deck.zip.xml(themeRef.target, signal), 'clrScheme');
-    if (scheme) for (const item of scheme.children) theme[item.localName] = color(item, theme, '#000000');
+    Object.assign(theme, await cachedThemeScheme(deck, themeRef.target, signal));
   }
   for (const attr of first(master, 'clrMap')?.attributes ?? []) if (theme[attr.value]) theme[attr.name] = theme[attr.value];
   const elements: SlideElement[] = [];

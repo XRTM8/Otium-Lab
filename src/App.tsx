@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { getFormFactor } from './platform/runtime';
 import type { FormFactor } from './platform/runtime';
 import { requestStoragePersistence } from './core/storage/persistence';
-import { DesktopShell } from './shells/DesktopShell';
-import { MobileShell } from './shells/MobileShell';
+
+const DesktopShell = lazy(() =>
+  import('./shells/DesktopShell').then((mod) => ({ default: mod.DesktopShell }))
+);
+const MobileShell = lazy(() =>
+  import('./shells/MobileShell').then((mod) => ({ default: mod.MobileShell }))
+);
 import { useDisplayNavigation } from './platform/useDisplayNavigation';
 import { AutoUpdateBanner } from './components/AutoUpdateBanner';
 
@@ -27,7 +32,9 @@ const App: React.FC = () => {
   return (
     <>
       <AutoUpdateBanner />
-      {formFactor === 'mobile' ? <MobileShell /> : <DesktopShell />}
+      <Suspense fallback={null}>
+        {formFactor === 'mobile' ? <MobileShell /> : <DesktopShell />}
+      </Suspense>
     </>
   );
 };
