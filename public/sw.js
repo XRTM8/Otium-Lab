@@ -12,7 +12,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin || !url.href.startsWith(APP_ROOT)) return;
+  if (url.origin !== self.location.origin || !url.href.startsWith(APP_ROOT) || url.pathname.endsWith('/latest.json')) return;
   const remember = response => {
     if (response.ok) { const copy = response.clone(); void caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {}); }
     return response;

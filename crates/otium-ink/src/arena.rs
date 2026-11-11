@@ -68,8 +68,13 @@ mod tests {
         let v1 = arena.alloc_vertex(InkVertex::new(15.0, 25.0, 0.0, 1.0, 4.0, 1.0));
         assert_eq!(v1.width, 4.0);
 
-        assert!(arena.allocated_bytes() > 0);
+        let bytes_before_reset = arena.allocated_bytes();
+        assert!(bytes_before_reset > 0);
         arena.reset();
-        assert_eq!(arena.allocated_bytes(), 0);
+        // Bump::reset() resets the bump pointer while keeping the backing chunk pooled for zero-OS-alloc reuse
+        assert_eq!(arena.allocated_bytes(), bytes_before_reset);
+        let p2 = arena.alloc_point(InkPoint::new(30.0, 40.0, 1.0, 200));
+        assert_eq!(p2.x, 30.0);
+        assert_eq!(arena.allocated_bytes(), bytes_before_reset);
     }
 }

@@ -540,7 +540,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                       <span>{updateError}</span>
                     </div>
                     <button
-                      onClick={() => nativeOpenUrl('https://github.com/XRTM8/Otium/releases/latest')}
+                      onClick={() => nativeOpenUrl('https://github.com/XRTM8/Otium-Lab/releases/latest')}
                       className="fluid-press w-full py-2.5 px-3 rounded-xl bg-accent hover:opacity-90 text-on-accent text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-accent/20 cursor-pointer"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -645,7 +645,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
               {/* GitHub Link */}
               <button
-                onClick={() => nativeOpenUrl('https://github.com/XRTM8/Otium')}
+                onClick={() => nativeOpenUrl('https://github.com/XRTM8/Otium-Lab')}
                 className="w-full py-2 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 text-[11px] font-medium flex items-center justify-center gap-2 border border-white/[0.08] transition-colors"
               >
                 <span>مستودع المشروع على GitHub</span>

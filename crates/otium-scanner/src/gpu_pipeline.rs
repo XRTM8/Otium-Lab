@@ -1,4 +1,4 @@
-use crate::geometry::{Point2D, QuadCorners};
+use crate::geometry::{HomographyMatrix, QuadCorners};
 
 /// Static pre-compiled WGSL compute shaders embedded directly in `.rdata`
 pub const HOMOGRAPHY_WARP_WGSL: &str = include_str!("shaders/homography_warp.wgsl");
@@ -34,7 +34,9 @@ pub struct GpuWarpUniforms {
 
 impl GpuWarpUniforms {
     pub fn from_quad(quad: &QuadCorners, src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Self {
-        let (matrix, _) = quad.compute_perspective_matrix(dst_w as f32, dst_h as f32);
+        let matrix = HomographyMatrix::from_rect_to_quad(quad, dst_w as f32, dst_h as f32)
+            .map(|h| h.m)
+            .unwrap_or([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         Self {
             h00: matrix[0],
             h01: matrix[1],
@@ -73,6 +75,7 @@ impl ScannerAccelerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry::Point2D;
 
     #[test]
     fn test_shader_embeds() {

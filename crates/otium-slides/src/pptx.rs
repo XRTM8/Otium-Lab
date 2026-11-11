@@ -1,4 +1,4 @@
-use std::io::{Cursor, Read};
+use std::io::{BufReader, Cursor, Read};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use zip::ZipArchive;
@@ -76,7 +76,7 @@ impl PptxParser {
         let mut width = 960.0;
         let mut height = 540.0;
 
-        let mut reader = Reader::from_reader(reader_source);
+        let mut reader = Reader::from_reader(BufReader::new(reader_source));
         reader.config_mut().trim_text(true);
 
         let mut buf = Vec::new();
@@ -113,7 +113,7 @@ impl PptxParser {
     }
 
     fn parse_single_slide_stream<R: Read>(index: usize, reader_source: R) -> Result<Slide> {
-        let mut reader = Reader::from_reader(reader_source);
+        let mut reader = Reader::from_reader(BufReader::new(reader_source));
         reader.config_mut().trim_text(true);
 
         let mut elements = Vec::new();

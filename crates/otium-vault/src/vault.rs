@@ -53,7 +53,7 @@ impl SovereignVault {
     /// Store an encrypted document payload
     pub fn put_document(&self, doc_id: &str, data: &[u8]) -> Result<()> {
         let payload = if let Some(ref key) = self.key {
-            VaultCrypto::encrypt(key.as_ref(), data)?
+            VaultCrypto::encrypt(key, data)?
         } else {
             data.to_vec()
         };
@@ -90,7 +90,7 @@ impl SovereignVault {
         if let Some(entry) = table.get(doc_id).map_err(|e| OtiumError::Vault(e.to_string()))? {
             let val = entry.value();
             let decrypted = if let Some(ref key) = self.key {
-                VaultCrypto::decrypt(key.as_ref(), val)?
+                VaultCrypto::decrypt(key, val)?
             } else {
                 val.to_vec()
             };

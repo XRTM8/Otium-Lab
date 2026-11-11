@@ -37,11 +37,3 @@ tauri-plugin-process = "2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
-
-[profile.release]
-# Maximum performance compiler settings
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true

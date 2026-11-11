@@ -1,4 +1,4 @@
-use image::{DynamicImage, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
+use image::{DynamicImage, GrayImage, ImageBuffer, Rgba, RgbaImage};
 
 use crate::geometry::{HomographyMatrix, Point2D, QuadCorners};
 use otium_core::{OtiumError, Result};

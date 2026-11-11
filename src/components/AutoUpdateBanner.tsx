@@ -5,8 +5,9 @@ import { getUpdateAdapter } from '../platform/updates';
 
 export const AutoUpdateBanner: React.FC = () => {
   const [adapter] = useState(getUpdateAdapter);
-  const { snapshot, isChecking, isInstalling, check, install } = useUpdateChecker(adapter);
+  const { snapshot, isChecking, isInstalling, check, install, openManualDownload } = useUpdateChecker(adapter);
   const [isDismissed, setIsDismissed] = useState(false);
+  const [userInitiatedInstall, setUserInitiatedInstall] = useState(false);
 
   // Background check 3.5s after mount so app launch is 100% instant and unaffected
   useEffect(() => {
@@ -19,9 +20,20 @@ export const AutoUpdateBanner: React.FC = () => {
 
   if (!snapshot || isDismissed) return null;
   if (snapshot.phase === 'up-to-date' || snapshot.phase === 'unsupported') return null;
+  // Silent background failures (e.g. reading offline in a classroom) must never nag the reader.
+  if (snapshot.phase === 'error' && !userInitiatedInstall) return null;
 
   const version = snapshot.phase === 'available' ? (snapshot.latestVersion ?? '') : '';
   const progressPercent = snapshot.progress?.percent ?? 0;
+
+  const handleAction = () => {
+    setUserInitiatedInstall(true);
+    if (snapshot.canAutoInstall) {
+      void install();
+    } else {
+      void openManualDownload();
+    }
+  };
 
   return (
     <aside
@@ -69,18 +81,18 @@ export const AutoUpdateBanner: React.FC = () => {
             <button
               type="button"
               disabled={isInstalling || isChecking}
-              onClick={() => void install()}
+              onClick={handleAction}
               className="fluid-press flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent text-on-accent text-xs font-bold shadow-md hover:brightness-110 active:scale-95 transition-all cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>تثبيت</span>
+              <span>{snapshot.canAutoInstall ? 'تثبيت' : 'تنزيل'}</span>
             </button>
           )}
 
           {snapshot.phase === 'ready' && (
             <button
               type="button"
-              onClick={() => void install()}
+              onClick={handleAction}
               className="fluid-press flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md hover:brightness-110 active:scale-95 transition-all cursor-pointer"
             >
               <span>فتح المثبت</span>

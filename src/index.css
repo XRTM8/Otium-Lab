@@ -521,9 +521,7 @@ html.theme-transitioning *::after {
 }
 
 ::view-transition-new(root) {
-  animation: 500ms cubic-bezier(0.16, 1, 0.3, 1) both otiumThemeWaterfall;
   z-index: 2;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.16)) drop-shadow(0 16px 36px rgba(0, 0, 0, 0.28));
 }
 
 @keyframes otiumThemeWaterfall {
@@ -723,17 +721,8 @@ html.theme-fallback-transition #root {
   will-change: transform, opacity;
 }
 
-/* Mobile chrome surface: high-performance alpha surface with lightweight 8px blur */
+/* Ambient glow breathing optimizations on small screens */
 @media (max-width: 640px) {
-  .chrome-surface {
-    transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
-    background: color-mix(in srgb, var(--surface-2) 94%, transparent);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--line-subtle);
-    box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.14);
-  }
-
   .animate-glow-amber,
   .animate-glow-indigo {
     animation: none;
@@ -946,6 +935,20 @@ html.theme-fallback-transition #root {
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.08) inset,
     0 14px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+/* Mobile chrome surface: placed AFTER theme chrome overrides so 32px desktop blur
+   never crushes mobile WebView scroll/zoom frame times. */
+@media (max-width: 640px) {
+  .chrome-surface,
+  .theme-amoled .chrome-surface,
+  .theme-amber .chrome-surface,
+  .theme-paper .chrome-surface,
+  .theme-eink .chrome-surface {
+    transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
 }
 
 .otium-panel {

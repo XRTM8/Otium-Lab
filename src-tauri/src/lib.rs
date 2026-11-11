@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use tauri::ipc::Response;
@@ -198,7 +197,7 @@ fn is_installed_build() -> bool {
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
     use winreg::RegKey;
 
-    const KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Otium";
+    const KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Otium Lab";
 
     for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
       if RegKey::predef(hive).open_subkey(KEY).is_ok() {
@@ -227,7 +226,7 @@ fn clear_legacy_service_worker() {
     return;
   };
   let default_dir = Path::new(&local_app_data)
-    .join("com.otium.reader")
+    .join("com.otium.reader.lab")
     .join("EBWebView")
     .join("Default");
 

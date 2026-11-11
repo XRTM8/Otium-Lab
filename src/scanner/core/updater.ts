@@ -5,6 +5,8 @@
  */
 
 import { nativeFetchUrl } from './nativeBridge';
+import { getCurrentVersion } from '../../core/updates/currentVersion';
+import { isNewerVersion as isNewerReleaseVersion } from '../../core/updates/releaseFeed';
 
 export const APP_CURRENT_VERSION = '1.9.17';
 
@@ -26,24 +28,10 @@ export interface UpdateCheckResult {
 }
 
 /**
- * Compares two semantic version strings (e.g. "0.2.1" vs "0.2.0").
- * Returns true if vCandidate is strictly greater than vCurrent.
+ * Compares candidate tag against current Lab/SemVer version.
  */
 function isNewerVersion(vCandidate: string, vCurrent: string): boolean {
-  const cleanCand = vCandidate.replace(/^v/i, '').trim();
-  const cleanCurr = vCurrent.replace(/^v/i, '').trim();
-
-  const partsCand = cleanCand.split('.').map((p) => parseInt(p, 10) || 0);
-  const partsCurr = cleanCurr.split('.').map((p) => parseInt(p, 10) || 0);
-
-  const maxLen = Math.max(partsCand.length, partsCurr.length);
-  for (let i = 0; i < maxLen; i++) {
-    const c = partsCand[i] || 0;
-    const cur = partsCurr[i] || 0;
-    if (c > cur) return true;
-    if (c < cur) return false;
-  }
-  return false;
+  return isNewerReleaseVersion(vCandidate, vCurrent);
 }
 
 /**
@@ -64,27 +52,28 @@ export function detectDeviceArchitecture(): 'arm64-v8a' | 'armeabi-v7a' | 'x86_6
 }
 
 /**
- * Checks for updates using a 3-tier failover discovery system:
- * Tier 1: GitHub API (api.github.com/repos/XRTM8/Otium/releases/latest)
- * Tier 2: GitHub Web Releases Redirect (github.com/XRTM8/Otium/releases/latest) -> 0 rate limit
- * Tier 3: Raw Git package.json (raw.githubusercontent.com/XRTM8/Otium/main/package.json) -> 0 rate limit
+ * Checks for updates using a 3-tier failover discovery system scoped to Otium-Lab:
+ * Tier 1: GitHub Releases API (api.github.com/repos/XRTM8/Otium-Lab/releases/latest)
+ * Tier 2: GitHub Pages static Lab feed (xrtm8.github.io/Otium-Lab/latest.json) -> 0 rate limit
+ * Tier 3: Raw Git package.json (raw.githubusercontent.com/XRTM8/Otium-Lab/main/package.json) -> 0 rate limit
  *
- * Guarantees update detection even under strict GitHub API rate limits (HTTP 403) or country blocks.
+ * Strictly isolated to XRTM8/Otium-Lab so Lab installs never cross-update with com.otium.reader.
  */
 export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
   const targetAbi = detectDeviceArchitecture();
+  const currentVersion = getCurrentVersion() === '0.0.0' ? APP_CURRENT_VERSION : getCurrentVersion();
   let tag: string | null = null;
   let releaseNotes = '';
   let publishedAt: string | undefined = undefined;
-  let releaseUrl = 'https://github.com/XRTM8/Otium/releases';
+  let releaseUrl = 'https://github.com/XRTM8/Otium-Lab/releases';
   let matchedAsset: ReleaseAsset | undefined = undefined;
   let allAssets: ReleaseAsset[] = [];
 
   // =========================================================================
-  // TIER 1: Official GitHub Releases API (Native Android HTTP first, then Web fetch)
+  // TIER 1: Official Otium-Lab GitHub Releases API (Native Android HTTP first, then Web fetch)
   // =========================================================================
   try {
-    const GITHUB_API_URL = 'https://api.github.com/repos/XRTM8/Otium/releases/latest';
+    const GITHUB_API_URL = 'https://api.github.com/repos/XRTM8/Otium-Lab/releases/latest';
     let apiData: any = null;
 
     const nativeResponse = await nativeFetchUrl(GITHUB_API_URL);
@@ -126,24 +115,38 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
   }
 
   // =========================================================================
-  // TIER 2: GitHub Web Releases Redirect (100% immune to API rate limits)
+  // TIER 2: Otium-Lab Pages Feed (100% immune to GitHub API rate limits)
   // =========================================================================
   if (!tag) {
     try {
-      const webRes = await fetch('https://github.com/XRTM8/Otium/releases/latest', {
-        redirect: 'manual',
-      }).catch(() => null);
-
-      if (webRes) {
-        const location = webRes.headers.get('location') || webRes.url;
-        const match = location?.match(/tag\/v?([0-9]+\.[0-9]+\.[0-9]+)/i);
-        if (match && match[1]) {
-          tag = match[1].trim();
-          releaseUrl = `https://github.com/XRTM8/Otium/releases/tag/v${tag}`;
+      const PAGES_FEED_URL = 'https://xrtm8.github.io/Otium-Lab/latest.json';
+      let feedText: string | null = await nativeFetchUrl(PAGES_FEED_URL);
+      if (!feedText || feedText.startsWith('ERROR:')) {
+        const webRes = await fetch(PAGES_FEED_URL, { cache: 'no-store' }).catch(() => null);
+        if (webRes && webRes.ok) {
+          feedText = await webRes.text().catch(() => null);
+        }
+      }
+      if (feedText) {
+        const feed = JSON.parse(feedText);
+        if (feed && feed.version) {
+          tag = String(feed.tag_name || feed.version).replace(/^v/i, '').trim();
+          releaseNotes = feed.notes || '';
+          publishedAt = feed.pub_date;
+          releaseUrl = feed.tag_name
+            ? `https://github.com/XRTM8/Otium-Lab/releases/tag/${feed.tag_name}`
+            : 'https://github.com/XRTM8/Otium-Lab/releases/latest';
+          if (feed.assets?.androidApk?.url) {
+            allAssets = [{
+              name: feed.assets.androidApk.url.split('/').pop() || 'Otium-Lab-arm64-v8a.apk',
+              size: Number(feed.assets.androidApk.size) || 18 * 1024 * 1024,
+              downloadUrl: feed.assets.androidApk.url,
+            }];
+          }
         }
       }
     } catch (err) {
-      console.warn('Tier 2 GitHub web redirect check failed, proceeding to Tier 3:', err);
+      console.warn('Tier 2 Pages feed check failed, proceeding to Tier 3:', err);
     }
   }
 
@@ -152,7 +155,7 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
   // =========================================================================
   if (!tag) {
     try {
-      const RAW_PKG_URL = 'https://raw.githubusercontent.com/XRTM8/Otium/main/package.json';
+      const RAW_PKG_URL = 'https://raw.githubusercontent.com/XRTM8/Otium-Lab/main/package.json';
       let pkgText: string | null = await nativeFetchUrl(RAW_PKG_URL);
       if (!pkgText || pkgText.startsWith('ERROR:')) {
         const rawRes = await fetch(RAW_PKG_URL).catch(() => null);
@@ -165,7 +168,7 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
         const pkg = JSON.parse(pkgText);
         if (pkg && pkg.version) {
           tag = pkg.version.replace(/^v/i, '').trim();
-          releaseUrl = `https://github.com/XRTM8/Otium/releases/tag/v${tag}`;
+          releaseUrl = 'https://github.com/XRTM8/Otium-Lab/releases/latest';
         }
       }
     } catch (err) {
@@ -177,17 +180,7 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
     throw new Error('تعذر الاتصال بخوادم التحديثات. يرجى التحقق من اتصالك بالإنترنت.');
   }
 
-  const hasUpdate = isNewerVersion(tag, APP_CURRENT_VERSION);
-
-  // If assets were not available from API (Tier 2 or Tier 3 used), synthesize official deterministic URLs
-  if (allAssets.length === 0 && tag) {
-    const knownAbis: ('arm64-v8a' | 'armeabi-v7a' | 'x86_64')[] = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
-    allAssets = knownAbis.map((abi) => ({
-      name: `Otium_${tag}_${abi}.apk`,
-      size: 7 * 1024 * 1024,
-      downloadUrl: `https://github.com/XRTM8/Otium/releases/download/v${tag}/Otium_${tag}_${abi}.apk`,
-    }));
-  }
+  const hasUpdate = isNewerVersion(tag, currentVersion);
 
   matchedAsset =
     allAssets.find((a) => a.name.includes(targetAbi) && a.name.endsWith('.apk')) ||
@@ -195,8 +188,8 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
 
   return {
     hasUpdate,
-    currentVersion: APP_CURRENT_VERSION,
-    latestVersion: tag || APP_CURRENT_VERSION,
+    currentVersion,
+    latestVersion: tag || currentVersion,
     releaseUrl,
     releaseNotes,
     publishedAt,

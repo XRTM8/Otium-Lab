@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::search::{normalize_arabic_char, normalize_arabic_text, SearchMatch};
+use crate::search::{normalize_arabic_text, SearchMatch};
 
 /// Compact, lightning-fast trigram inverted index for sub-millisecond document search.
 /// Eliminates repeated linear string scanning across multi-megabyte texts on every search keystroke.

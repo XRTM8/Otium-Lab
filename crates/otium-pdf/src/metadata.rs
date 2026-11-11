@@ -60,7 +60,7 @@ impl PdfInspector {
     pub fn inspect_file<P: AsRef<std::path::Path>>(path: P) -> Result<PdfDocumentInfo> {
         let file = Self::open_direct_file(path)?;
         let mmap = unsafe { memmap2::Mmap::map(&file) }
-            .map_err(|e| OtiumError::Io(format!("Memory mapping failed: {e}")))?;
+            .map_err(|e| OtiumError::Io(std::io::Error::new(e.kind(), format!("Memory mapping failed: {e}"))))?;
         Self::inspect_bytes(&mmap)
     }
 

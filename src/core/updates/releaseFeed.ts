@@ -27,13 +27,13 @@ function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, '');
 }
 
-function parseVersionPart(version: string): { numbers: number[]; labNumber: number; prerelease: string } {
+function parseVersionPart(version: string): { numbers: number[]; labNumber: number; labOnly: boolean; prerelease: string } {
   const normalized = normalizeVersion(version);
-  // Match lab tags like "lab-07" or "lab-7"
+  // Match bare lab tags like "lab-07" or "lab-14"
   const labMatch = normalized.match(/^lab-(\d+)/i);
   if (labMatch) {
     const num = Number.parseInt(labMatch[1], 10);
-    return { numbers: [1, 9, 16], labNumber: num, prerelease: `lab.${num}` };
+    return { numbers: [0, 0, 0], labNumber: num, labOnly: true, prerelease: `lab.${num}` };
   }
   const [main, prerelease = ''] = normalized.split('-', 2);
   const numbers = main.split('.').map((part) => {
@@ -46,13 +46,17 @@ function parseVersionPart(version: string): { numbers: number[]; labNumber: numb
   const preLabMatch = prerelease.match(/lab\.?(\d+)/i);
   const labNumber = preLabMatch ? Number.parseInt(preLabMatch[1], 10) : 0;
 
-  return { numbers, labNumber, prerelease };
+  return { numbers, labNumber, labOnly: false, prerelease };
 }
 
 /** Returns a positive number when candidate is newer than current. */
 export function compareVersions(candidate: string, current: string): number {
   const left = parseVersionPart(candidate);
   const right = parseVersionPart(current);
+
+  if ((left.labOnly || right.labOnly) && left.labNumber > 0 && right.labNumber > 0) {
+    return left.labNumber - right.labNumber;
+  }
 
   for (let index = 0; index < 3; index += 1) {
     const difference = left.numbers[index] - right.numbers[index];

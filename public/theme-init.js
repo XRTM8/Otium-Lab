@@ -12,10 +12,10 @@
       forest: ['#0c1813', false],
       nordic: ['#15181e', false]
     };
-    var saved = localStorage.getItem('otium_theme') || localStorage.getItem('tirs_theme') || 'nordic';
-    var entry = themes[saved] || themes.nordic;
+    var saved = localStorage.getItem('otium-lab:otium_theme') || localStorage.getItem('otium-lab:tirs_theme') || 'paper';
+    var entry = themes[saved] || themes.paper;
     var root = document.documentElement;
-    root.className = 'theme-' + (themes[saved] ? saved : 'nordic');
+    root.className = 'theme-' + (themes[saved] ? saved : 'paper');
     root.style.colorScheme = entry[1] ? 'light' : 'dark';
     root.style.backgroundColor = entry[0];
     var meta = document.querySelector('meta[name="theme-color"]');

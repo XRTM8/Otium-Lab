@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
-use crate::stroke::{InkPoint, InkTool, Stroke};
+use crate::stroke::Stroke;
 
 /// Hardware-accelerated GPU Vertex representation (24 bytes packed, repr(C) for direct VRAM upload)
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Pod, Zeroable)]
