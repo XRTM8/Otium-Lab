@@ -18,6 +18,10 @@ import { getTranslations } from '../core/i18n/translations';
 import { saveTextFile } from '../platform/saveFile';
 import { copyTextToClipboard } from '../core/utils/clipboard';
 
+interface FlatTocItem extends TocItem {
+  depth: number;
+}
+
 interface SidebarProps {
   isOpen: boolean;
   doc: PDFDocumentProxy | null;
@@ -57,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const isSheet = variant === 'sheet';
   const [tab, setTab] = useState<'pages' | 'toc' | 'notes'>('pages');
-  const [toc, setToc] = useState<TocItem[]>([]);
+  const [toc, setToc] = useState<FlatTocItem[]>([]);
   const [displayedPageLimit, setDisplayedPageLimit] = useState(60);
   const [copiedAll, setCopiedAll] = useState(false);
   const [exported, setExported] = useState(false);
@@ -98,32 +102,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     if (!doc) return;
+    let cancelled = false;
+
+    const flattenOutline = async (
+      nodes: Awaited<ReturnType<typeof doc.getOutline>>,
+      depth: number,
+      out: FlatTocItem[]
+    ): Promise<void> => {
+      if (!nodes || depth > 8) return;
+      for (const item of nodes) {
+        let pageNum = 1;
+        try {
+          if (typeof item.dest === 'string') {
+            const dest = await doc.getDestination(item.dest);
+            if (dest) {
+              const ref = dest[0];
+              pageNum = (await doc.getPageIndex(ref)) + 1;
+            }
+          } else if (Array.isArray(item.dest)) {
+            pageNum = (await doc.getPageIndex(item.dest[0])) + 1;
+          }
+        } catch {
+          // Resilient fallback for broken outline destinations
+        }
+        out.push({
+          title: item.title,
+          pageNumber: Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1,
+          depth,
+        });
+        if (Array.isArray(item.items) && item.items.length > 0) {
+          await flattenOutline(item.items, depth + 1, out);
+        }
+      }
+    };
+
     const loadOutline = async () => {
       try {
         const outline = await doc.getOutline();
+        if (cancelled) return;
         if (outline && outline.length > 0) {
-          const items: TocItem[] = [];
-          for (const item of outline) {
-            let pageNum = 1;
-            try {
-              if (typeof item.dest === 'string') {
-                const dest = await doc.getDestination(item.dest);
-                if (dest) {
-                  const ref = dest[0];
-                  pageNum = (await doc.getPageIndex(ref)) + 1;
-                }
-              } else if (Array.isArray(item.dest)) {
-                pageNum = (await doc.getPageIndex(item.dest[0])) + 1;
-              }
-            } catch {
-              // Resilient fallback for broken outline destinations
-            }
-            items.push({
-              title: item.title,
-              pageNumber: Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1
-            });
-          }
-          setToc(items);
+          const items: FlatTocItem[] = [];
+          await flattenOutline(outline, 0, items);
+          if (!cancelled) setToc(items);
         } else {
           setToc([]);
         }
@@ -133,6 +153,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
 
     loadOutline();
+    return () => {
+      cancelled = true;
+    };
   }, [doc]);
 
   useEffect(() => {
@@ -479,7 +502,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onSelectPage(item.pageNumber);
                       onClose();
                     }}
-                    className="w-full text-start px-3 py-2.5 rounded-xl text-xs hover:bg-hover transition-colors flex items-center justify-between group cursor-pointer"
+                    style={{ paddingInlineStart: `${12 + item.depth * 14}px` }}
+                    className="w-full text-start pe-3 py-2.5 rounded-xl text-xs hover:bg-hover transition-colors flex items-center justify-between group cursor-pointer"
                   >
                     <span className="truncate flex-1 group-hover:text-highlight transition-colors font-sans">
                       {item.title}

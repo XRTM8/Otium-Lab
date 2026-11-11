@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import type { Point, Quad } from '../core/types';
-import { getDefaultQuad, getFullFrameQuad, warpPerspective, isQuadConvex } from '../core/geometry';
+import { getDefaultQuad, getFullFrameQuad, warpPerspectiveAsync, isQuadConvex } from '../core/geometry';
 import { detectDocumentCorners } from '../core/edgeDetection';
 import { Check, RotateCcw, X, Wand2, RotateCw, Maximize2, Undo2, Redo2, FileText, CreditCard, Receipt } from 'lucide-react';
 
@@ -26,6 +26,7 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
   const [edgeDragStart, setEdgeDragStart] = useState<{ client: Point; quad: Quad } | null>(null);
   const [pointerPos, setPointerPos] = useState<Point | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [isApplying, setIsApplying] = useState(false);
   const hasInitializedRef = useRef(false);
 
   // Undo / Redo History Stack
@@ -389,12 +390,16 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
     setCurrentSrc(rotatedDataUrl);
   };
 
-  const handleApply = () => {
-    if (!imageRef.current || !quad) return;
+  const handleApply = async () => {
+    if (!imageRef.current || !quad || isApplying) return;
+    setIsApplying(true);
     triggerHaptic(20);
-
-    const warped = warpPerspective(imageRef.current, quad);
-    onConfirm(warped, quad);
+    try {
+      const warped = await warpPerspectiveAsync(imageRef.current, quad);
+      onConfirm(warped, quad);
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   const renderPolyPoints = () => {
@@ -702,9 +707,9 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
 
         <button
           onClick={handleApply}
-          disabled={!isValidQuad}
+          disabled={!isValidQuad || isApplying}
           className={`flex items-center gap-2 px-7 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-xl cursor-pointer ${
-            isValidQuad
+            isValidQuad && !isApplying
               ? 'bg-accent text-on-accent shadow-accent/25'
               : 'bg-red-500/20 text-red-300 border border-red-500/30 opacity-70 cursor-not-allowed'
           }`}

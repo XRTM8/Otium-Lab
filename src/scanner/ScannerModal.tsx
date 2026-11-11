@@ -12,13 +12,15 @@ import {
   clearScanSession,
   rotateStoredPage,
   deleteStoredPage,
+  duplicateStoredPage,
   loadOriginalDataUrlFromDisk,
   saveActiveSessionPages,
   getActiveSessionPages,
   clearActiveSessionPages,
 } from './core/storage/pageStore';
 import { getFullFrameQuad } from './core/edgeDetection';
-import { warpPerspective } from './core/geometry';
+import { warpPerspectiveAsync } from './core/geometry';
+import { terminateScannerWorker } from './core/wasmEngine';
 import { AlertTriangle, Bookmark, Trash2 } from 'lucide-react';
 import { OtiumLogo } from '../components/OtiumLogo';
 import type { ThemeMode } from '../core/types';
@@ -57,6 +59,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [isOpeningInReader, setIsOpeningInReader] = useState(false);
+
+  // Clean up background WASM Web Worker when modal unmounts.
+  useEffect(() => {
+    return () => {
+      terminateScannerWorker();
+    };
+  }, []);
 
   // Restore active draft session upon opening
   useEffect(() => {
@@ -104,7 +113,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         ctx.drawImage(img, 0, 0);
 
         const quad = detectedQuad ?? getFullFrameQuad(canvas.width, canvas.height, 0.005);
-        const warpedCanvas = warpPerspective(canvas, quad);
+        const warpedCanvas = await warpPerspectiveAsync(canvas, quad);
         const filteredCanvas = await applyFilterAsync(warpedCanvas, 'magic');
 
         const pageId = `page_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -235,6 +244,35 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       return next;
     });
   };
+
+  const handleDuplicatePage = async (index: number) => {
+    const page = pages[index];
+    if (!page) return;
+    const newId = `page_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    try {
+      await duplicateStoredPage(page.id, newId);
+      setPages((prev) => {
+        const idx = prev.findIndex((p) => p.id === page.id);
+        if (idx === -1) return prev;
+        const copy: ScannedPage = {
+          ...prev[idx],
+          id: newId,
+          timestamp: Date.now(),
+        };
+        const updated = [...prev];
+        updated.splice(idx + 1, 0, copy);
+        return updated;
+      });
+    } catch (err) {
+      console.warn('Failed to duplicate page:', err);
+    }
+  };
+
+  const handleUpdatePageThumbnail = useCallback((pageId: string, thumbnailDataUrl: string) => {
+    setPages((prev) =>
+      prev.map((page) => (page.id === pageId ? { ...page, thumbnailDataUrl } : page))
+    );
+  }, []);
 
   const handleMovePage = (fromIndex: number, toIndex: number) => {
     setPages((prev) => {
@@ -374,6 +412,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           onMovePage={handleMovePage}
           onRetakePage={handleRetakePage}
           onRotatePage={handleRotatePage}
+          onDuplicatePage={handleDuplicatePage}
+          onUpdatePageThumbnail={handleUpdatePageThumbnail}
           onEditCrop={handleEditCrop}
           onResetAll={handleResetAll}
           onOpenPdfInReader={(file) => {

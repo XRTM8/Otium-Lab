@@ -24,6 +24,7 @@ import {
   calculateLaplacianSharpness,
   getFullFrameQuad,
 } from '../core/edgeDetection';
+import { runWasmMotionAndSharpness } from '../core/wasmEngine';
 import type { Quad, CropMode } from '../core/types';
 
 interface CameraViewProps {
@@ -101,6 +102,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevFrameLumRef = useRef<Uint8Array | null>(null);
   const stabilityStepRef = useRef<number>(0);
+  const analysisBusyRef = useRef<boolean>(false);
 
   const initCamera = useCallback(async (targetFacingMode?: 'environment' | 'user') => {
     const activeFacing = targetFacingMode || facingMode;
@@ -529,73 +531,103 @@ export const CameraView: React.FC<CameraViewProps> = ({
       setLiveDocPresent(false);
       setStabilityProgress(0);
       stabilityStepRef.current = 0;
+      analysisBusyRef.current = false;
       return;
     }
 
-    const intervalId = window.setInterval(() => {
+    let cancelled = false;
+    let resetWasmPrev = true;
+
+    const intervalId = window.setInterval(async () => {
+      if (analysisBusyRef.current || cancelled) return;
       const video = videoRef.current;
       if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0 || capturing) {
         return;
       }
 
-      if (!scratchCanvasRef.current) {
-        scratchCanvasRef.current = document.createElement('canvas');
-        scratchCanvasRef.current.width = 180;
-        scratchCanvasRef.current.height = 135;
-      }
-
-      const canvas = scratchCanvasRef.current;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
-
-      // 1. Motion Calculation against previous sampled frame
-      const totalPixels = canvas.width * canvas.height;
-      const currLum = new Uint8Array(totalPixels);
-      for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-        currLum[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-      }
-
-      let motionScore = 0;
-      if (prevFrameLumRef.current && prevFrameLumRef.current.length === totalPixels) {
-        let diffSum = 0;
-        const step = 4;
-        let count = 0;
-        for (let i = 0; i < totalPixels; i += step) {
-          diffSum += Math.abs(currLum[i] - prevFrameLumRef.current[i]);
-          count++;
+      analysisBusyRef.current = true;
+      try {
+        if (!scratchCanvasRef.current) {
+          scratchCanvasRef.current = document.createElement('canvas');
+          scratchCanvasRef.current.width = 180;
+          scratchCanvasRef.current.height = 135;
         }
-        motionScore = count > 0 ? diffSum / count : 0;
-      }
-      prevFrameLumRef.current = currLum;
 
-      // 2. Document Presence & Sharpness Analysis
-      const analysis = detectDocumentCornersWithConfidence(canvas);
-      const sharpness = calculateLaplacianSharpness(canvas);
-      setLiveDocPresent(analysis.isDocumentPresent);
+        const canvas = scratchCanvasRef.current;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
 
-      // 3. Auto-Capture Trigger Condition
-      // Stable holding (motion < 8), Document framed (confidence >= 45), Focused (sharpness >= 15)
-      if (autoCapture && analysis.isDocumentPresent && motionScore < 8.5 && sharpness >= 15) {
-        stabilityStepRef.current += 1;
-        const progress = Math.min(100, Math.round((stabilityStepRef.current / 3) * 100));
-        setStabilityProgress(progress);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
 
-        if (stabilityStepRef.current >= 3) {
+        // 1. Document presence geometry + off-thread Rust WASM motion & Laplacian sharpness
+        const wasmPromise = runWasmMotionAndSharpness(
+          data,
+          canvas.width,
+          canvas.height,
+          resetWasmPrev
+        );
+        resetWasmPrev = false;
+
+        const analysis = detectDocumentCornersWithConfidence(canvas);
+        const wasmMetrics = await wasmPromise;
+        if (cancelled) return;
+
+        let motionScore = 0;
+        let sharpness: number;
+        if (wasmMetrics) {
+          motionScore = wasmMetrics.motion;
+          sharpness = wasmMetrics.sharpness;
+        } else {
+          if (data.byteLength > 0) {
+            const totalPixels = canvas.width * canvas.height;
+            const currLum = new Uint8Array(totalPixels);
+            for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+              currLum[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            }
+
+            if (prevFrameLumRef.current && prevFrameLumRef.current.length === totalPixels) {
+              let diffSum = 0;
+              const step = 4;
+              let count = 0;
+              for (let i = 0; i < totalPixels; i += step) {
+                diffSum += Math.abs(currLum[i] - prevFrameLumRef.current[i]);
+                count++;
+              }
+              motionScore = count > 0 ? diffSum / count : 0;
+            }
+            prevFrameLumRef.current = currLum;
+          }
+          sharpness = calculateLaplacianSharpness(canvas);
+        }
+
+        setLiveDocPresent(analysis.isDocumentPresent);
+
+        // 2. Auto-Capture Trigger Condition
+        // Stable holding (motion < 8.5), Document framed, Focused (sharpness >= 15)
+        if (autoCapture && analysis.isDocumentPresent && motionScore < 8.5 && sharpness >= 15) {
+          stabilityStepRef.current += 1;
+          const progress = Math.min(100, Math.round((stabilityStepRef.current / 3) * 100));
+          setStabilityProgress(progress);
+
+          if (stabilityStepRef.current >= 3) {
+            stabilityStepRef.current = 0;
+            setStabilityProgress(0);
+            handleCaptureRef.current();
+          }
+        } else {
           stabilityStepRef.current = 0;
           setStabilityProgress(0);
-          handleCaptureRef.current();
         }
-      } else {
-        stabilityStepRef.current = 0;
-        setStabilityProgress(0);
+      } finally {
+        analysisBusyRef.current = false;
       }
     }, 220);
 
     return () => {
+      cancelled = true;
+      analysisBusyRef.current = false;
       window.clearInterval(intervalId);
     };
   }, [autoCapture, capturing, hasPermission, stream]);

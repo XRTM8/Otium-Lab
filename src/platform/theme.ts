@@ -140,7 +140,6 @@ export const triggerThemeCurtain = (theme: ThemeMode, onMidpoint?: () => void) =
     onMidpoint?.();
   });
 };
-export const triggerThemeWaterfall = triggerThemeCurtain;
 
 /**
  * Keeps the native chrome in step with the in-app theme:

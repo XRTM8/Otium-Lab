@@ -34,7 +34,7 @@ const LEGACY_SIZES = {
 
 async function main() {
   const plateSvg = fs.readFileSync(path.resolve('public/favicon.svg'));
-  const glyphSvg = fs.readFileSync(path.resolve('public/app-icon-glyph.svg'));
+  const glyphSvg = fs.readFileSync(path.resolve('assets/app-icon-glyph.svg'));
 
   console.log('Rendering master app-icon.png from the flat Otium plate...');
   await sharp(plateSvg).resize(1024, 1024).png().toFile(path.resolve('app-icon.png'));

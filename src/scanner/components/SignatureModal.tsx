@@ -18,7 +18,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
   const [penColor, setPenColor] = useState<string>('#1e3a8a'); // Classic blue ink
-  const [lineWidth, setLineWidth] = useState<number>(3);
+  const [lineWidth, setLineWidth] = useState<number>(3.5);
 
   // Setup canvas size once when modal opens
   useEffect(() => {

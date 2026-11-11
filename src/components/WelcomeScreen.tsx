@@ -36,7 +36,6 @@ import { APP_FILE_ACCEPT, listMedia, removeMedia, type MediaKind } from '../medi
 import { formatTime } from '../media/media';
 import { ConfirmDialog } from '../library/ConfirmDialog';
 import { registerBackHandler } from '../core/navigation/backHandler';
-import '../library/library.css';
 
 type LibraryItem = RecentDocItem & { mediaKind?: MediaKind; position?: number };
 

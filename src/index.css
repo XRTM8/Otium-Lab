@@ -552,62 +552,12 @@ html.theme-transitioning *::after {
   }
 }
 
-@keyframes logoCascadeIn {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, -20px, 0) scale(0.94);
-    filter: blur(4px);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0px);
-  }
-}
-
-.logo-cascade {
-  animation: logoCascadeIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: top center;
-  will-change: transform, opacity, filter;
-}
-
 /* Scoped fallback transitions when View Transitions is not supported */
 html.theme-fallback-transition,
 html.theme-fallback-transition body,
 html.theme-fallback-transition #root {
   transition: background-color 350ms cubic-bezier(0.16, 1, 0.3, 1),
               color 350ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Ambient glow breathing animations */
-@keyframes ambientGlow1 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-    opacity: 0.20;
-  }
-  50% {
-    transform: translate(30px, -20px) scale(1.18);
-    opacity: 0.35;
-  }
-}
-
-@keyframes ambientGlow2 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-    opacity: 0.18;
-  }
-  50% {
-    transform: translate(-25px, 20px) scale(1.22);
-    opacity: 0.30;
-  }
-}
-
-.animate-glow-amber {
-  animation: ambientGlow1 10s ease-in-out infinite;
-}
-
-.animate-glow-indigo {
-  animation: ambientGlow2 14s ease-in-out infinite;
 }
 
 .glass-panel {
@@ -617,45 +567,15 @@ html.theme-fallback-transition #root {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Paper Texture Overlays */
-.paper-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  z-index: 5;
-}
-
-.paper-overlay-book {
-  background-image: 
-    linear-gradient(to right, rgba(0, 0, 0, 0.045) 0%, rgba(0, 0, 0, 0.01) 3%, transparent 8%, transparent 92%, rgba(0, 0, 0, 0.035) 100%),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
-  mix-blend-mode: multiply;
-}
-
-.paper-overlay-parchment {
-  background-image: 
-    radial-gradient(ellipse at center, transparent 55%, rgba(160, 115, 65, 0.09) 100%),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.06'/%3E%3C/svg%3E");
-  mix-blend-mode: multiply;
-}
-
-.paper-overlay-sakura {
-  background-image:
-    radial-gradient(ellipse at center, transparent 65%, rgba(244, 114, 182, 0.05) 100%),
-    linear-gradient(to bottom, rgba(254, 235, 240, 0.32), rgba(254, 235, 240, 0.32));
-  mix-blend-mode: multiply;
-}
-
-/* In Dark Themes (amoled, midnight, amber, forest, nordic), soften paper overlays to overlay blend */
-.theme-amoled .paper-overlay,
-.theme-midnight .paper-overlay,
-.theme-amber .paper-overlay,
-.theme-forest .paper-overlay,
-.theme-nordic .paper-overlay {
-  mix-blend-mode: overlay;
-  opacity: 0.35;
-}
+.lab-confirm { max-width: min(440px, calc(100vw - 32px)); padding: 28px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface-1); color: var(--ink); margin: auto; box-shadow: 0 25px 80px #0004; line-height: 1.9; }
+.lab-confirm::backdrop { background: #0007; backdrop-filter: blur(5px); }
+.lab-confirm h2 { font-size: 20px; font-weight: 750; margin: 0 0 12px; }
+.lab-confirm p { color: var(--ink-muted); font-size: 13px; }
+.lab-confirm strong { display: block; overflow-wrap: anywhere; font-size: 13px; }
+.lab-confirm-actions { display: flex; justify-content: end; gap: 10px; margin-top: 24px; }
+.lab-confirm button { min-height: 44px; padding: 8px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); font-size: 12px; cursor: pointer; touch-action: manipulation; }
+.lab-confirm button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.lab-confirm .lab-danger { background: var(--danger-ink); color: var(--surface-1); border-color: transparent; }
 
 /* Touch bottom sheets. The sheet is reachable one-handed; its close action
    lives in the footer instead of the top edge. */
@@ -1218,70 +1138,10 @@ body[data-has-selection='true'] .teacher-dock {
   );
 }
 
-/* Ephemeral selection geometry captured over the PDF.js text layer. */
-.selection-overlay {
-  background: rgba(37, 99, 235, 0.26);
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.28);
-  mix-blend-mode: multiply;
-  border-radius: 2px;
-  pointer-events: none;
-}
-
-.theme-midnight .selection-overlay {
-  background: rgba(56, 189, 248, 0.32);
-  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.38);
-  mix-blend-mode: screen;
-}
-
-.theme-amoled .selection-overlay {
-  background: rgba(16, 185, 129, 0.30);
-  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.38);
-  mix-blend-mode: screen;
-}
-
-.theme-amber .selection-overlay {
-  background: rgba(245, 158, 11, 0.32);
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.40);
-  mix-blend-mode: screen;
-}
-
-.theme-eink .selection-overlay {
-  background: rgba(30, 30, 30, 0.22);
-  box-shadow: 0 0 0 1px rgba(30, 30, 30, 0.30);
-  mix-blend-mode: multiply;
-}
-
-.theme-sakura .selection-overlay {
-  background: rgba(244, 114, 182, 0.28);
-  box-shadow: 0 0 0 1px rgba(244, 114, 182, 0.36);
-  mix-blend-mode: multiply;
-}
-
-.theme-forest .selection-overlay {
-  background: rgba(72, 169, 124, 0.32);
-  box-shadow: 0 0 0 1px rgba(72, 169, 124, 0.40);
-  mix-blend-mode: screen;
-}
-
-.theme-nordic .selection-overlay {
-  background: rgba(91, 147, 211, 0.32);
-  box-shadow: 0 0 0 1px rgba(91, 147, 211, 0.40);
-  mix-blend-mode: screen;
-}
-
-.annotation-highlight {
-  pointer-events: none;
-}
-
-.annotation-underline {
-  pointer-events: none;
-}
-
 /* Android webview suppresses its own context menu; the in-app action bar
    replaces it while text remains selectable. */
 .pdf-page-slot,
-.chrome-surface,
-.selection-overlay {
+.chrome-surface {
   -webkit-touch-callout: none;
 }
 
@@ -1519,10 +1379,6 @@ button:focus:not(:focus-visible),
   from { opacity: .82; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.otium-tool-panel, .otium-panel-content { animation: otiumPanelIn 180ms cubic-bezier(.2,.8,.2,1) both; }
-.otium-tool-panel button { transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 120ms ease; }
-.otium-tool-panel button:active { transform: scale(.96); }
-.otium-tool-panel button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* A single reachable teaching dock; secondary options open directly above it. */
 .teacher-status { position: fixed; z-index: 35; top: max(10px, env(safe-area-inset-top, 0px)); left: 16px; right: 16px; margin: auto; width: fit-content; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 24px; padding: 9px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-1); color: var(--ink-muted); font-size: 12px; pointer-events: none; }
@@ -1575,8 +1431,6 @@ button:focus:not(:focus-visible),
 }
 @media print { .teacher-dock, .teacher-status { display: none !important; } }
 @media (prefers-reduced-motion: reduce) {
-  .otium-tool-panel, .otium-panel-content { animation: none; }
-  .otium-tool-panel button { transition: none; transform: none; }
   .reader-viewport * { animation: none !important; transition-duration: 0ms !important; }
 }
 /* TV remotes need a visible focus target, including on transparent controls. */

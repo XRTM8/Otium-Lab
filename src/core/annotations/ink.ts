@@ -92,35 +92,59 @@ export function paintInk(ctx: CanvasRenderingContext2D, marks: InkMark[], width:
   }
 }
 
+let inkDbCache: { opener: typeof labIndexedDB; promise: Promise<IDBDatabase> } | null = null;
+
 function inkDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (inkDbCache && inkDbCache.opener === labIndexedDB) {
+    return inkDbCache.promise;
+  }
+  const promise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = labIndexedDB.open('otium-page-ink', 1);
-    request.onupgradeneeded = () => request.result.createObjectStore('documents');
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains('documents')) {
+        request.result.createObjectStore('documents');
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        try { db.close(); } catch {}
+        if (inkDbCache?.promise === promise) inkDbCache = null;
+      };
+      db.onclose = () => {
+        if (inkDbCache?.promise === promise) inkDbCache = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      if (inkDbCache?.promise === promise) inkDbCache = null;
+      reject(request.error);
+    };
+    request.onblocked = () => {
+      if (inkDbCache?.promise === promise) inkDbCache = null;
+      reject(new Error('Annotations database is blocked'));
+    };
   });
+  inkDbCache = { opener: labIndexedDB, promise };
+  return promise;
 }
 
 export async function readInk(id: string): Promise<InkMark[]> {
   const db = await inkDatabase();
-  try {
-    return await new Promise((resolve, reject) => {
-      const request = db.transaction('documents').objectStore('documents').get(id);
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  } finally { db.close(); }
+  return await new Promise((resolve, reject) => {
+    const request = db.transaction('documents').objectStore('documents').get(id);
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
 }
 
 export async function writeInk(id: string, marks: InkMark[]): Promise<void> {
   const db = await inkDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction('documents', 'readwrite');
-      transaction.objectStore('documents').put(marks, id);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error || new Error('Saving annotations was interrupted'));
-    });
-  } finally { db.close(); }
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('documents', 'readwrite');
+    transaction.objectStore('documents').put(marks, id);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('Saving annotations was interrupted'));
+  });
 }

@@ -24,7 +24,7 @@
  * Requires the Android SDK build-tools (apksigner, aapt2, zipalign) and
  * ANDROID_HOME / ANDROID_SDK_ROOT, or the tools on PATH.
  */
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { labVersion } from './lab-version.mjs';

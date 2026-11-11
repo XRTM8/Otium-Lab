@@ -322,8 +322,3 @@ export function saveStoredAnnotations(
 
   return next;
 }
-
-/** Synchronous legacy reader kept for callers that only need a snapshot. */
-export function getStoredAnnotations(docTitle: string): TextAnnotation[] {
-  return readLegacy(docTitle);
-}
