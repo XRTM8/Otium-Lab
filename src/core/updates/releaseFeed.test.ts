@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { compareVersions, isNewerVersion, parseReleaseInfo } from './releaseFeed';
 import * as runtime from '../../platform/runtime';
@@ -37,5 +39,15 @@ describe('releaseFeed & platform update isolation', () => {
   it('returns null update adapter on web browsers so PWA does not prompt APK installs', () => {
     vi.spyOn(runtime, 'getPlatformId').mockReturnValue('web');
     expect(getUpdateAdapter()).toBeNull();
+  });
+
+  it('keeps platforms object present in latest.json feeds for Tauri v2 desktop updater compatibility', () => {
+    for (const relPath of ['public/latest.json', 'docs/latest.json']) {
+      const raw = readFileSync(resolve(process.cwd(), relPath), 'utf8');
+      const parsed = JSON.parse(raw) as { platforms?: unknown };
+      expect(parsed.platforms).toBeTypeOf('object');
+      expect(parsed.platforms).not.toBeNull();
+      expect(Array.isArray(parsed.platforms)).toBe(false);
+    }
   });
 });

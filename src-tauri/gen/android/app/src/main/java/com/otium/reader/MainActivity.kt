@@ -468,39 +468,66 @@ class MainActivity : TauriActivity() {
     }
 
     /**
-     * GitHub-only GET for the update checker. Blocking is acceptable here: the
+     * Allowlisted GET for the update checker. Blocking is acceptable here: the
      * JS bridge runs this on its own thread, not the UI thread.
      */
     @JavascriptInterface
     fun fetchUrl(urlStr: String): String {
+      fun isAllowedUrl(candidate: String): Boolean {
+        val parsed = try {
+          URL(candidate)
+        } catch (_: Exception) {
+          return false
+        }
+        if (!parsed.protocol.equals("https", ignoreCase = true) || !parsed.userInfo.isNullOrEmpty()) {
+          return false
+        }
+        return when (parsed.host.lowercase(java.util.Locale.ROOT)) {
+          "api.github.com",
+          "raw.githubusercontent.com",
+          "github.com",
+          "objects.githubusercontent.com",
+          "release-assets.githubusercontent.com" -> true
+          "xrtm8.github.io" -> parsed.path == "/Otium-Lab" || parsed.path.startsWith("/Otium-Lab/")
+          else -> false
+        }
+      }
+
       return try {
-        val allowedPrefixes = listOf(
-          "https://api.github.com/",
-          "https://raw.githubusercontent.com/",
-          "https://github.com/",
-          "https://objects.githubusercontent.com/"
-        )
-        if (allowedPrefixes.none { urlStr.startsWith(it) }) {
-          return "ERROR: URL domain is not permitted"
-        }
-        val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-          requestMethod = "GET"
-          instanceFollowRedirects = false
-          setRequestProperty("User-Agent", "Otium-Android")
-          setRequestProperty("Accept", "application/vnd.github.v3+json")
-          connectTimeout = 10_000
-          readTimeout = 10_000
-        }
-        try {
-          val stream = if (connection.responseCode in 200..299) {
-            connection.inputStream
-          } else {
-            connection.errorStream
+        var currentUrl = urlStr
+        for (redirectCount in 0..4) {
+          if (!isAllowedUrl(currentUrl)) {
+            return "ERROR: URL domain is not permitted"
           }
-          stream.bufferedReader().use { it.readText() }
-        } finally {
-          connection.disconnect()
+          val connection = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            instanceFollowRedirects = false
+            setRequestProperty("User-Agent", "Otium-Android")
+            setRequestProperty("Accept", "application/vnd.github.v3+json, application/json")
+            connectTimeout = 10_000
+            readTimeout = 10_000
+          }
+          try {
+            val code = connection.responseCode
+            if (code in 301..303 || code == 307 || code == 308) {
+              val location = connection.getHeaderField("Location")
+              if (location.isNullOrBlank()) {
+                return "ERROR: Redirect without Location header"
+              }
+              currentUrl = URL(URL(currentUrl), location).toString()
+              continue
+            }
+            val stream = if (code in 200..299) {
+              connection.inputStream
+            } else {
+              connection.errorStream
+            }
+            return stream?.bufferedReader()?.use { it.readText() } ?: "ERROR:HTTP_$code"
+          } finally {
+            connection.disconnect()
+          }
         }
+        "ERROR: Too many redirects"
       } catch (error: Exception) {
         "ERROR:" + (error.message ?: "Network error")
       }

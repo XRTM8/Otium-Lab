@@ -16,13 +16,23 @@ export interface ExtractedPageTextResult {
  * worker is spawned from a blob, so a relative path would resolve against the
  * blob origin instead of the app.
  */
-function ocrAssetBase(): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/tesseract`;
+export function resolveOcrAssetBase(
+  baseURI: string = typeof document !== 'undefined' ? document.baseURI : '',
+  locationHref: string = typeof window !== 'undefined' ? window.location.href : ''
+): string {
+  const anchor = baseURI || locationHref;
+  if (anchor) {
+    try {
+      return new URL('./tesseract', anchor).href.replace(/\/$/, '');
+    } catch {
+      // Fall through to relative path.
+    }
+  }
+  return './tesseract';
 }
 
 function workerOptions() {
-  const base = ocrAssetBase();
+  const base = resolveOcrAssetBase();
   return {
     workerPath: `${base}/worker.min.js`,
     corePath: `${base}/core`,
@@ -68,18 +78,23 @@ export async function preloadOcrLanguage(
 async function getWorker(lang: string = 'ara+eng') {
   if (!workers.has(lang)) {
     const promise = (async () => {
-      // Configure local cache persistence so language weights are saved to IndexedDB
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker(lang, 1, {
-        ...workerOptions(),
-        cacheMethod: 'write',
-        gzip: true,
-        logger: () => {}, // silent
-      });
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(`${OCR_CACHE_KEY_PREFIX}${lang}`, 'true');
+      try {
+        // Configure local cache persistence so language weights are saved to IndexedDB
+        const { createWorker } = await import('tesseract.js');
+        const worker = await createWorker(lang, 1, {
+          ...workerOptions(),
+          cacheMethod: 'write',
+          gzip: true,
+          logger: () => {}, // silent
+        });
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(`${OCR_CACHE_KEY_PREFIX}${lang}`, 'true');
+        }
+        return worker;
+      } catch (err) {
+        workers.delete(lang);
+        throw err;
       }
-      return worker;
     })();
     workers.set(lang, promise);
   }

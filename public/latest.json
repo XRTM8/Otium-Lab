@@ -3,6 +3,7 @@
   "tag_name": "lab-11",
   "notes": "Otium Lab lab-11 - Rock-solid zoom stability, zero page flipping, clean memory architecture, and seamless auto-updates.",
   "pub_date": "2026-11-07T15:22:18.749Z",
+  "platforms": {},
   "assets": {
     "androidApk": {
       "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-11/Otium-Lab-11-arm64-v8a.apk",

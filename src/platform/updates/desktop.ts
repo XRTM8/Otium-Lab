@@ -69,7 +69,22 @@ export const desktopUpdateAdapter: UpdateAdapter = {
   async check(signal) {
     const current = getCurrentVersion();
     const installed = await isInstalledBuild();
-    const update = await check({ timeout: 20_000 });
+    let update: Update | null;
+    try {
+      update = await check({ timeout: 20_000 });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // An Android-only release feed without Windows platform signatures should not surface as an error on Windows.
+      if (/platforms/i.test(msg)) {
+        return {
+          phase: 'up-to-date',
+          currentVersion: current,
+          latestVersion: current,
+          canAutoInstall: installed
+        };
+      }
+      throw error;
+    }
     if (signal?.aborted) {
       await update?.close().catch(() => {});
       throw new Error('Update check cancelled.');

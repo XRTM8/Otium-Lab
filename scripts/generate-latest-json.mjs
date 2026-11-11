@@ -26,6 +26,7 @@ const latestData = {
   tag_name: labTag,
   notes: `Otium Lab ${labTag} - Rock-solid zoom stability, zero page flipping, clean memory architecture, and seamless auto-updates.`,
   pub_date: new Date().toISOString(),
+  platforms: {},
   assets: {
     androidApk: {
       url: `https://github.com/XRTM8/Otium-Lab/releases/download/${labTag}/${apkName}`,

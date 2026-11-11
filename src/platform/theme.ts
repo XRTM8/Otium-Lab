@@ -83,29 +83,35 @@ export function triggerThemeTransition(_theme: ThemeMode, updateThemeCallback: (
       });
 
       if (transition && typeof transition.ready?.then === 'function') {
-        transition.ready.then(() => {
-          try {
-            document.documentElement.animate(
-              {
-                clipPath: [
-                  'ellipse(135% 0% at 50% -10%)',
-                  'ellipse(135% 150% at 50% -10%)'
-                ]
-              },
-              {
-                duration: 500,
-                easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-                pseudoElement: '::view-transition-new(root)'
-              }
-            );
-          } catch {
-            // CSS otiumThemeWaterfall fallback is active
-          }
-        });
+        transition.ready
+          .then(() => {
+            try {
+              document.documentElement.animate(
+                {
+                  clipPath: [
+                    'ellipse(135% 0% at 50% -10%)',
+                    'ellipse(135% 150% at 50% -10%)'
+                  ]
+                },
+                {
+                  duration: 500,
+                  easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                  pseudoElement: '::view-transition-new(root)'
+                }
+              );
+            } catch {
+              // CSS otiumThemeWaterfall fallback is active
+            }
+          })
+          .catch(() => {
+            document.documentElement.classList.remove('theme-transitioning');
+          });
 
-        transition.finished?.finally(() => {
-          document.documentElement.classList.remove('theme-transitioning');
-        });
+        transition.finished
+          ?.catch(() => {})
+          .finally(() => {
+            document.documentElement.classList.remove('theme-transitioning');
+          });
       } else {
         window.setTimeout(() => {
           document.documentElement.classList.remove('theme-transitioning');
