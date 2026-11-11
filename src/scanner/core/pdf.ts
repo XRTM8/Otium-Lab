@@ -1,4 +1,5 @@
-/* eslint-disable no-control-regex */
+import { stripControlChars } from '../../core/utils/textSanitize';
+
 export interface OcrWordToken {
   text: string;
   x: number; // percentage (0 to 1) or natural px
@@ -177,8 +178,7 @@ export async function createPdfFromCanvases(
       for (const w of spec.words) {
         if (!w || typeof w.text !== 'string') continue;
         // Sanitize control characters (\x00-\x1f, except space) and collapse newlines/tabs
-        const sanitized = w.text
-          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+        const sanitized = stripControlChars(w.text, { keepLineBreaks: true })
           .replace(/[\r\n\t]+/g, ' ')
           .trim();
         if (!sanitized) continue;

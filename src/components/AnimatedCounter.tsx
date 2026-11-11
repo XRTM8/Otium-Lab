@@ -5,6 +5,14 @@ interface AnimatedCounterProps {
   className?: string;
 }
 
+function computeDirection(prevValue: number | string, nextValue: number | string): 'up' | 'down' {
+  const numCurrent =
+    typeof prevValue === 'number' ? prevValue : Number.parseInt(String(prevValue), 10);
+  const numNext =
+    typeof nextValue === 'number' ? nextValue : Number.parseInt(String(nextValue), 10);
+  return !Number.isNaN(numCurrent) && !Number.isNaN(numNext) && numNext < numCurrent ? 'down' : 'up';
+}
+
 export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ value, className = '' }) => {
   const [state, setState] = useState<{
     current: number | string;
@@ -13,22 +21,13 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ value, classNa
   }>({ current: value, prev: null, direction: 'up' });
   const timerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    setState((prevState) => {
-      if (value === prevState.current) return prevState;
-      const numCurrent =
-        typeof prevState.current === 'number'
-          ? prevState.current
-          : Number.parseInt(String(prevState.current), 10);
-      const numNext =
-        typeof value === 'number' ? value : Number.parseInt(String(value), 10);
-      const direction: 'up' | 'down' =
-        !Number.isNaN(numCurrent) && !Number.isNaN(numNext) && numNext < numCurrent
-          ? 'down'
-          : 'up';
-      return { current: value, prev: prevState.current, direction };
+  if (value !== state.current) {
+    setState({
+      current: value,
+      prev: state.current,
+      direction: computeDirection(state.current, value)
     });
-  }, [value]);
+  }
 
   useEffect(() => {
     if (state.prev === null) return;

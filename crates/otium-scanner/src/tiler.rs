@@ -34,8 +34,8 @@ impl SpatialTileGrid {
     /// Creates a tile grid with custom tile dimensions
     pub fn new(image_width: u32, image_height: u32, tile_size: u32) -> Self {
         assert!(tile_size > 0, "Tile size must be greater than zero");
-        let num_cols = (image_width + tile_size - 1) / tile_size;
-        let num_rows = (image_height + tile_size - 1) / tile_size;
+        let num_cols = image_width.div_ceil(tile_size);
+        let num_rows = image_height.div_ceil(tile_size);
 
         Self {
             image_width,

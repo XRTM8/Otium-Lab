@@ -79,8 +79,8 @@ impl PointDecimator {
             let a = &points[start];
             let b = &points[end];
 
-            for i in start + 1..end {
-                let dist_sq = Self::perpendicular_distance_sq(&points[i], a, b);
+            for (i, point) in points.iter().enumerate().take(end).skip(start + 1) {
+                let dist_sq = Self::perpendicular_distance_sq(point, a, b);
                 if dist_sq > max_dist_sq {
                     max_dist_sq = dist_sq;
                     max_idx = i;

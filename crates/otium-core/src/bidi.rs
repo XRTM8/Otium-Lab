@@ -49,7 +49,7 @@ pub fn detect_text_direction(text: &str) -> Direction {
 
         // 1. Single-byte ASCII
         if b < 0x80 {
-            if (b >= b'a' && b <= b'z') || (b >= b'A' && b <= b'Z') {
+            if b.is_ascii_alphabetic() {
                 ltr_count += 1;
             }
             i += 1;

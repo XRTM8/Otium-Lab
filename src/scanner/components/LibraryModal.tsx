@@ -84,9 +84,18 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
-      loadDocs();
-    }
+    if (!isOpen) return;
+    let active = true;
+    void getAllLibraryDocuments()
+      .then((docs) => {
+        if (active) setDocuments(docs);
+      })
+      .catch((e) => {
+        console.warn('Failed to load library:', e);
+      });
+    return () => {
+      active = false;
+    };
   }, [isOpen]);
 
   const handleDelete = async (id: string) => {
@@ -138,7 +147,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       await loadDocs();
       setToastMsg(`Restored ${count} documents from backup!`);
       setTimeout(() => setToastMsg(''), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn('Backup restore error:', err);
       setToastMsg('Corrupted or invalid backup file');
       setTimeout(() => setToastMsg(''), 2500);
@@ -155,8 +164,9 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       const res = await checkForAppUpdates();
       setUpdateResult(res);
       triggerHaptic(25);
-    } catch (err: any) {
-      setUpdateError(err.message || 'تعذر الاتصال بـ GitHub للتحقق من التحديثات');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      setUpdateError(msg || 'تعذر الاتصال بـ GitHub للتحقق من التحديثات');
       triggerHaptic(40);
     } finally {
       setIsCheckingUpdate(false);

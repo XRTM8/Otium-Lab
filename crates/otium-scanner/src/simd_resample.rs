@@ -67,8 +67,7 @@ impl FastResampler {
             let row1_offset = y1 * src_stride;
             let dst_row_offset = dy * dst_stride;
 
-            for dx in 0..dst_w {
-                let col = &col_weights[dx];
+            for (dx, col) in col_weights.iter().enumerate() {
                 let dst_pixel_offset = dst_row_offset + dx * 4;
 
                 let idx00 = row0_offset + col.x0;

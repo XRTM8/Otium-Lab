@@ -104,7 +104,10 @@ export function registerIncomingDocumentHandler(handler: IncomingDocumentHandler
       } finally { if (started) { isReading = false; if (!cancelled) onReading(false, requestId); } }
     };
 
-    (window as any).__OTIUM_CHECK_INCOMING_PDF__ = checkIncomingFromNativeBridge;
+    const globalWin = window as unknown as {
+      __OTIUM_CHECK_INCOMING_PDF__?: () => Promise<void>;
+    };
+    globalWin.__OTIUM_CHECK_INCOMING_PDF__ = checkIncomingFromNativeBridge;
 
     // Probe native bridge immediately on mount and after brief delay for cold launch
     void checkIncomingFromNativeBridge();
@@ -114,7 +117,9 @@ export function registerIncomingDocumentHandler(handler: IncomingDocumentHandler
       cancelled = true;
       window.clearInterval(probeTimer);
       // Outstanding yield timers resolve so cancelled readers release buffers.
-      if ((window as any).__OTIUM_CHECK_INCOMING_PDF__ === checkIncomingFromNativeBridge) delete (window as any).__OTIUM_CHECK_INCOMING_PDF__;
+      if (globalWin.__OTIUM_CHECK_INCOMING_PDF__ === checkIncomingFromNativeBridge) {
+        delete globalWin.__OTIUM_CHECK_INCOMING_PDF__;
+      }
     };
   }
 

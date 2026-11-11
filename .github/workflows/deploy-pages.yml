@@ -59,13 +59,42 @@ jobs:
         with:
           path: ./dist
 
+  rust:
+    if: github.repository == 'XRTM8/Otium-Lab'
+    name: Verify Rust Core & Crates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo Workspace
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy Pure Rust Crates
+        run: >
+          cargo clippy --locked
+          -p otium-core -p otium-slides -p otium-scanner -p otium-ink
+          -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm
+          --all-targets -- -D warnings
+
+      - name: Run Rust Unit Tests
+        run: >
+          cargo test --locked
+          -p otium-core -p otium-slides -p otium-scanner -p otium-ink
+          -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm
+
   deploy:
     name: Deploy to GitHub Pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, rust]
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

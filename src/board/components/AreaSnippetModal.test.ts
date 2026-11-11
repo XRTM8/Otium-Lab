@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeCanvasCropRegion } from './AreaSnippetModal';
+import { computeCanvasCropRegion } from './areaSnippetGeometry';
 
 describe('AreaSnippetModal canvas crop clamping', () => {
   it('clips negative start overhang and right/bottom overhang strictly to canvas bounds', () => {

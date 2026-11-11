@@ -19,8 +19,9 @@ const localStorageMock: Storage = {
 };
 
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: localStorageMock });
-if (typeof (globalThis as any).window === 'undefined') {
-  (globalThis as any).window = {
+const globalWindowHost = globalThis as unknown as { window?: Partial<Window> };
+if (typeof globalWindowHost.window === 'undefined') {
+  globalWindowHost.window = {
     indexedDB: globalThis.indexedDB,
     localStorage: localStorageMock,
     setTimeout: globalThis.setTimeout.bind(globalThis),

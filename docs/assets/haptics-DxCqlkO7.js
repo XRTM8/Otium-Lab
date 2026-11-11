@@ -1,0 +1,1 @@
+var e={selection:8,light:14,medium:24,heavy:35,boundary:[15,45,18],success:[12,50,20]};function t(t=`light`){if(typeof navigator<`u`&&typeof navigator.vibrate==`function`)try{let n=e[t];navigator.vibrate(n)}catch{}}export{t};

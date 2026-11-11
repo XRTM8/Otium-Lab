@@ -1,4 +1,3 @@
-/* eslint-disable no-control-regex */
 import { labIndexedDB } from '../../../lab/storage';
 /**
  * Persistent Document Library Store for Otium Scan.
@@ -8,6 +7,7 @@ import { labIndexedDB } from '../../../lab/storage';
 
 import type { DocumentCategory } from '../types';
 import { isPdfBuffer } from '../../../core/pdf/document';
+import { stripControlChars } from '../../../core/utils/textSanitize';
 
 const DB_NAME = 'otium_scan_library';
 const STORE_NAME = 'documents';
@@ -65,7 +65,7 @@ async function getLibraryDB(): Promise<IDBDatabase> {
 }
 
 export async function saveDocumentToLibrary(
-  doc: Omit<LibraryDocument, 'createdAt'>
+  doc: Omit<LibraryDocument, 'createdAt'> & { createdAt?: number }
 ): Promise<void> {
   const db = await getLibraryDB();
   return new Promise((resolve, reject) => {
@@ -73,7 +73,7 @@ export async function saveDocumentToLibrary(
     const store = tx.objectStore(STORE_NAME);
     const item: LibraryDocument = {
       ...doc,
-      createdAt: (doc as any).createdAt ?? Date.now(),
+      createdAt: doc.createdAt ?? Date.now(),
     };
     const req = store.put(item);
     req.onsuccess = () => resolve();
@@ -221,13 +221,15 @@ export async function restoreVaultBackup(backupBlob: Blob): Promise<number> {
       }
 
       const pdfBlob = new Blob([byteNumbers], { type: 'application/pdf' });
-      const safeTitle = (typeof item.title === 'string' ? item.title : 'مستند مستعاد')
-        .replace(/[\x00-\x1f\x7f]/g, '')
+      const safeTitle = stripControlChars(typeof item.title === 'string' ? item.title : 'مستند مستعاد')
         .trim()
         .slice(0, 256) || 'مستند مستعاد';
 
-      const safeId = (typeof item.id === 'string' && item.id.trim() ? item.id : `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`)
-        .replace(/[\x00-\x1f\x7f]/g, '')
+      const safeId = stripControlChars(
+        typeof item.id === 'string' && item.id.trim()
+          ? item.id
+          : `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+      )
         .slice(0, 128);
 
       const safeThumb = typeof item.thumbnail === 'string' && item.thumbnail.startsWith('data:image/')

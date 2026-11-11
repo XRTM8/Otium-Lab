@@ -1,7 +1,8 @@
 import { localStorage } from '../../../lab/storage';
+import type { Worker } from 'tesseract.js';
 import type { OcrWordToken } from '../pdf';
 
-const workers = new Map<string, Promise<any>>();
+const workers = new Map<string, Promise<Worker>>();
 const OCR_CACHE_KEY_PREFIX = 'otium_ocr_cached_';
 
 export interface ExtractedPageTextResult {
@@ -57,7 +58,7 @@ export async function preloadOcrLanguage(
       ...workerOptions(),
       cacheMethod: 'write',
       gzip: true,
-      logger: (m: any) => {
+      logger: (m: { progress?: number; status?: string }) => {
         if (typeof m.progress === 'number') {
           onProgress?.(m.progress, m.status || '');
         }
@@ -125,13 +126,17 @@ export async function extractPageTextAndMetadata(
     try {
       const worker = await getWorker(lang);
       const ret = await worker.recognize(canvas);
-      const dataAny = ret.data as any;
-      const fullText = typeof dataAny.text === 'string' ? dataAny.text.trim() : '';
+      const pageData = ret.data as {
+        text?: string;
+        words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }>;
+        lines?: Array<{ words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> }>;
+      };
+      const fullText = typeof pageData.text === 'string' ? pageData.text.trim() : '';
 
       const words: OcrWordToken[] = [];
       const width = canvas.width;
       const height = canvas.height;
-      const rawWords: any[] = dataAny.words || dataAny.lines?.flatMap((l: any) => l.words || []) || [];
+      const rawWords = pageData.words || pageData.lines?.flatMap((l) => l.words || []) || [];
 
       for (const w of rawWords) {
         if (!w || !w.text || typeof w.text !== 'string' || w.text.trim().length === 0) continue;

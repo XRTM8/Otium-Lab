@@ -149,8 +149,8 @@ fn solve_gaussian_elimination_8x8(a: &mut [[f32; 8]; 8], b: &mut [f32; 8]) -> Op
         // Find pivot
         let mut max_row = i;
         let mut max_val = a[i][i].abs();
-        for k in (i + 1)..N {
-            let val = a[k][i].abs();
+        for (k, row_data) in a.iter().enumerate().skip(i + 1) {
+            let val = row_data[i].abs();
             if val > max_val {
                 max_val = val;
                 max_row = k;
@@ -170,17 +170,18 @@ fn solve_gaussian_elimination_8x8(a: &mut [[f32; 8]; 8], b: &mut [f32; 8]) -> Op
         // Eliminate
         let pivot = a[i][i];
         let inv_pivot = 1.0 / pivot;
-        for j in i..N {
-            a[i][j] *= inv_pivot;
+        for cell in a[i].iter_mut().skip(i) {
+            *cell *= inv_pivot;
         }
         b[i] *= inv_pivot;
 
-        for k in 0..N {
+        let pivot_row = a[i];
+        for (k, row_data) in a.iter_mut().enumerate() {
             if k != i {
-                let factor = a[k][i];
+                let factor = row_data[i];
                 if factor.abs() > 1e-9 {
-                    for j in i..N {
-                        a[k][j] -= factor * a[i][j];
+                    for (dst_cell, pivot_cell) in row_data[i..].iter_mut().zip(&pivot_row[i..]) {
+                        *dst_cell -= factor * *pivot_cell;
                     }
                     b[k] -= factor * b[i];
                 }

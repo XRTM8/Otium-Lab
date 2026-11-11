@@ -1,9 +1,10 @@
 import { localStorage } from '../lab/storage';
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TeachingProvider, useTeaching } from './TeachingContext';
+import { TeachingProvider } from './TeachingContext';
+import { useTeaching } from './teachingContextValue';
 import { DocumentInkProvider, DocumentInkLayer } from './DocumentInk';
 import { BoardCanvas } from '../board/components/BoardCanvas';
 import { readBoard, writeBoard } from '../board/utils/boardStorage';
@@ -15,7 +16,13 @@ import type { ReaderController } from '../app/useReaderController';
 let root: Root, host: HTMLDivElement;
 let teaching: ReturnType<typeof useTeaching>;
 const restore = vi.fn();
-function Probe() { teaching = useTeaching(); return null; }
+function Probe() {
+  const value = useTeaching();
+  useLayoutEffect(() => {
+    teaching = value;
+  });
+  return null;
+}
 const initialStroke = { id: 'line', tool: 'pen' as const, color: '#e11d48', width: 4, points: [{ x: 100, y: 100 }, { x: 400, y: 100 }] };
 function reader(id: string, linked = false) {
   return { doc: {}, docId: id, docTitle: 'Lesson', annotations: [], annotationSaveStatus: 'saved',

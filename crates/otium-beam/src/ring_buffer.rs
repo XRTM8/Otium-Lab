@@ -147,6 +147,12 @@ impl<T, const CAPACITY: usize> SpscRingBuffer<T, CAPACITY> {
     }
 }
 
+impl<T, const CAPACITY: usize> Default for SpscRingBuffer<T, CAPACITY> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Producer handle for convenient thread-safe split
 pub struct SpscProducer<T, const CAPACITY: usize> {
     inner: Arc<SpscRingBuffer<T, CAPACITY>>,

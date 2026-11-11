@@ -17,8 +17,11 @@ pub extern "C" fn otium_alloc(size: usize) -> *mut u8 {
 }
 
 /// Frees memory previously returned by `otium_alloc`.
+///
+/// # Safety
+/// `ptr` must be null or previously returned by `otium_alloc` with the matching `size`.
 #[no_mangle]
-pub extern "C" fn otium_dealloc(ptr: *mut u8, size: usize) {
+pub unsafe extern "C" fn otium_dealloc(ptr: *mut u8, size: usize) {
     if ptr.is_null() || size == 0 || size > MAX_PIXELS * 4 {
         return;
     }
@@ -402,8 +405,12 @@ pub fn apply_filter_rgba_slice(rgba: &mut [u8], width: usize, height: usize, fil
     }
 }
 
+/// Applies scanner enhancement filter `filter_id` in place on an RGBA buffer.
+///
+/// # Safety
+/// `ptr` must point to at least `width * height * 4` valid writable bytes.
 #[no_mangle]
-pub extern "C" fn otium_apply_filter_rgba(
+pub unsafe extern "C" fn otium_apply_filter_rgba(
     ptr: *mut u8,
     width: u32,
     height: u32,
@@ -457,8 +464,8 @@ fn compute_inverse_homography(dst_w: f64, dst_h: f64, corners: &[f32; 8]) -> Opt
     for col in 0..8 {
         let mut pivot = col;
         let mut max_val = a[col][col].abs();
-        for row in (col + 1)..8 {
-            let v = a[row][col].abs();
+        for (row, a_row) in a.iter().enumerate().skip(col + 1) {
+            let v = a_row[col].abs();
             if v > max_val {
                 max_val = v;
                 pivot = row;
@@ -472,11 +479,12 @@ fn compute_inverse_homography(dst_w: f64, dst_h: f64, corners: &[f32; 8]) -> Opt
             b.swap(col, pivot);
         }
         let diag = a[col][col];
+        let pivot_row = a[col];
         for row in (col + 1)..8 {
             let factor = a[row][col] / diag;
             if factor != 0.0 {
-                for k in col..8 {
-                    a[row][k] -= factor * a[col][k];
+                for (dst_cell, pivot_cell) in a[row][col..].iter_mut().zip(&pivot_row[col..]) {
+                    *dst_cell -= factor * *pivot_cell;
                 }
                 b[row] -= factor * b[col];
             }
@@ -567,8 +575,12 @@ pub fn warp_perspective_rgba_slice(
     true
 }
 
+/// Performs perspective warp from `src_ptr` onto `dst_ptr` using 4 quad corner coordinates.
+///
+/// # Safety
+/// `src_ptr`, `dst_ptr`, and `corners_ptr` must be valid for `src_w * src_h * 4`, `dst_w * dst_h * 4`, and `8` elements respectively.
 #[no_mangle]
-pub extern "C" fn otium_warp_perspective_rgba(
+pub unsafe extern "C" fn otium_warp_perspective_rgba(
     src_ptr: *const u8,
     src_w: u32,
     src_h: u32,
@@ -668,8 +680,12 @@ pub fn dewarp_spine_rgba_slice(
     true
 }
 
+/// Flattens curved book spine distortion vertically along `spine_pos`.
+///
+/// # Safety
+/// `src_ptr` and `dst_ptr` must be valid for `width * height * 4` bytes.
 #[no_mangle]
-pub extern "C" fn otium_dewarp_spine_rgba(
+pub unsafe extern "C" fn otium_dewarp_spine_rgba(
     src_ptr: *const u8,
     width: u32,
     height: u32,
@@ -695,8 +711,12 @@ pub extern "C" fn otium_dewarp_spine_rgba(
     }
 }
 
+/// Computes frame-to-frame motion delta and Laplacian sharpness score in `out_ptr`.
+///
+/// # Safety
+/// `rgba_ptr` must hold `width * height * 4` bytes, `prev_lum_ptr` must hold `width * height` bytes, and `out_ptr` must hold 2 `f32` values.
 #[no_mangle]
-pub extern "C" fn otium_motion_and_sharpness_rgba(
+pub unsafe extern "C" fn otium_motion_and_sharpness_rgba(
     rgba_ptr: *const u8,
     prev_lum_ptr: *mut u8,
     has_prev: i32,
@@ -708,7 +728,9 @@ pub extern "C" fn otium_motion_and_sharpness_rgba(
     {
         return -1;
     }
-    let pixels = (width as usize) * (height as usize);
+    let Some(pixels) = (width as usize).checked_mul(height as usize) else {
+        return -1;
+    };
     if pixels > MAX_PIXELS {
         return -1;
     }
@@ -718,16 +740,14 @@ pub extern "C" fn otium_motion_and_sharpness_rgba(
 
     let mut diff_sum = 0u64;
     let mut diff_count = 0u64;
-    for i in 0..pixels {
-        let p = i * 4;
-        let lum = ((rgba[p] as u32) * 77 + (rgba[p + 1] as u32) * 150 + (rgba[p + 2] as u32) * 29)
-            >> 8;
+    for (i, (px, prev_slot)) in rgba.as_chunks::<4>().0.iter().zip(prev_lum.iter_mut()).enumerate() {
+        let lum = ((px[0] as u32) * 77 + (px[1] as u32) * 150 + (px[2] as u32) * 29) >> 8;
         let lum_u8 = lum as u8;
         if has_prev != 0 && (i & 3) == 0 {
-            diff_sum += (lum_u8 as i32 - prev_lum[i] as i32).unsigned_abs() as u64;
+            diff_sum += (lum_u8 as i32 - *prev_slot as i32).unsigned_abs() as u64;
             diff_count += 1;
         }
-        prev_lum[i] = lum_u8;
+        *prev_slot = lum_u8;
     }
 
     let w = width as usize;
@@ -779,7 +799,7 @@ mod tests {
         let h = 8;
         let mut rgba = vec![255u8; w * h * 4];
         // Light gray paper (shadowed ~190) across whole buffer, dark ink pixel in center
-        for px in rgba.chunks_exact_mut(4) {
+        for px in rgba.as_chunks_mut::<4>().0 {
             px[0] = 190;
             px[1] = 190;
             px[2] = 190;
@@ -872,14 +892,16 @@ mod tests {
         let mut metrics = [0.0f32; 2];
 
         assert_eq!(
-            otium_motion_and_sharpness_rgba(
-                frame.as_ptr(),
-                prev_lum.as_mut_ptr(),
-                0,
-                w,
-                h,
-                metrics.as_mut_ptr()
-            ),
+            unsafe {
+                otium_motion_and_sharpness_rgba(
+                    frame.as_ptr(),
+                    prev_lum.as_mut_ptr(),
+                    0,
+                    w,
+                    h,
+                    metrics.as_mut_ptr(),
+                )
+            },
             0
         );
         assert_eq!(metrics[0], 0.0);
@@ -887,33 +909,37 @@ mod tests {
 
         // Second pass with identical frame has zero motion
         assert_eq!(
-            otium_motion_and_sharpness_rgba(
-                frame.as_ptr(),
-                prev_lum.as_mut_ptr(),
-                1,
-                w,
-                h,
-                metrics.as_mut_ptr()
-            ),
+            unsafe {
+                otium_motion_and_sharpness_rgba(
+                    frame.as_ptr(),
+                    prev_lum.as_mut_ptr(),
+                    1,
+                    w,
+                    h,
+                    metrics.as_mut_ptr(),
+                )
+            },
             0
         );
         assert!(metrics[0] < 0.01);
 
         // Inverted frame has large motion
-        for px in frame.chunks_exact_mut(4) {
+        for px in frame.as_chunks_mut::<4>().0 {
             px[0] = 255 - px[0];
             px[1] = 255 - px[1];
             px[2] = 255 - px[2];
         }
         assert_eq!(
-            otium_motion_and_sharpness_rgba(
-                frame.as_ptr(),
-                prev_lum.as_mut_ptr(),
-                1,
-                w,
-                h,
-                metrics.as_mut_ptr()
-            ),
+            unsafe {
+                otium_motion_and_sharpness_rgba(
+                    frame.as_ptr(),
+                    prev_lum.as_mut_ptr(),
+                    1,
+                    w,
+                    h,
+                    metrics.as_mut_ptr(),
+                )
+            },
             0
         );
         assert!(metrics[0] > 150.0);

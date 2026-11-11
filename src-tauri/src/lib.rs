@@ -1,10 +1,9 @@
 use std::env;
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use tauri::ipc::Response;
+use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::State;
 
 #[global_allocator]
@@ -49,8 +48,16 @@ fn get_rust_engine_status() -> RustEngineStatus {
   }
 }
 
+fn extract_raw_body(request: Request<'_>) -> Result<Vec<u8>, String> {
+  let InvokeBody::Raw(bytes) = request.body() else {
+    return Err("Expected raw binary IPC payload".into());
+  };
+  Ok(bytes.clone())
+}
+
 #[tauri::command]
-async fn rust_parse_pptx(bytes: Vec<u8>) -> Result<otium_slides::SlidePresentation, String> {
+async fn rust_parse_pptx(request: Request<'_>) -> Result<otium_slides::SlidePresentation, String> {
+  let bytes = extract_raw_body(request)?;
   tauri::async_runtime::spawn_blocking(move || {
     otium_slides::PptxParser::parse_bytes(&bytes).map_err(|e| e.to_string())
   })
@@ -69,7 +76,15 @@ fn rust_generate_pairing_pin() -> String {
 }
 
 #[tauri::command]
-async fn rust_clean_document_image(bytes: Vec<u8>, contrast_boost: f32) -> Result<Response, String> {
+async fn rust_clean_document_image(request: Request<'_>) -> Result<Response, String> {
+  let contrast_boost = request
+    .headers()
+    .get("x-contrast-boost")
+    .and_then(|v| v.to_str().ok())
+    .and_then(|s| s.parse::<f32>().ok())
+    .unwrap_or(1.2);
+  let bytes = extract_raw_body(request)?;
+
   let png_bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
     let rgba = img.to_rgba8();
@@ -85,7 +100,21 @@ async fn rust_clean_document_image(bytes: Vec<u8>, contrast_boost: f32) -> Resul
 }
 
 #[tauri::command]
-async fn rust_stitch_id_cards(front_bytes: Vec<u8>, back_bytes: Vec<u8>) -> Result<Response, String> {
+async fn rust_stitch_id_cards(request: Request<'_>) -> Result<Response, String> {
+  let front_len = request
+    .headers()
+    .get("x-front-length")
+    .and_then(|v| v.to_str().ok())
+    .and_then(|s| s.parse::<usize>().ok())
+    .ok_or_else(|| "Missing x-front-length header".to_string())?;
+  let bytes = extract_raw_body(request)?;
+  if front_len > bytes.len() {
+    return Err("Invalid front card payload length".into());
+  }
+  let (front_slice, back_slice) = bytes.split_at(front_len);
+  let front_bytes = front_slice.to_vec();
+  let back_bytes = back_slice.to_vec();
+
   let png_bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
     let front = image::load_from_memory(&front_bytes).map_err(|e| e.to_string())?.to_rgba8();
     let back = image::load_from_memory(&back_bytes).map_err(|e| e.to_string())?.to_rgba8();
@@ -138,6 +167,16 @@ fn rust_index_and_search_arabic(
 }
 
 #[tauri::command]
+fn rust_search_document_pages_arabic(
+  doc_key: String,
+  pages: Option<Vec<String>>,
+  query: String,
+  cache: State<'_, otium_core::PageSearchCache>,
+) -> Result<Vec<usize>, String> {
+  cache.search_or_build(doc_key, pages, &query)
+}
+
+#[tauri::command]
 fn get_initial_pdf() -> Option<InitialPdf> {
   for candidate in env::args().skip(1) {
     if candidate.starts_with('-') {
@@ -164,42 +203,12 @@ fn get_initial_pdf() -> Option<InitialPdf> {
   None
 }
 
-/// Validates PDF signature from only the first 1024 bytes before reading once into a binary Response.
+/// Validates symlink safety, canonical path, extension and `%PDF-` header before returning bytes.
 #[tauri::command]
 async fn read_pdf_bytes(path: String) -> Result<Response, String> {
   let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-    let p = Path::new(&path);
-    if !p.is_file() {
-      return Err("Target path is not a file".into());
-    }
-
-    let ext_matches = p
-      .extension()
-      .and_then(|e| e.to_str())
-      .map(|e| e.eq_ignore_ascii_case("pdf"))
-      .unwrap_or(false);
-    if !ext_matches {
-      return Err("Only .pdf files can be read".into());
-    }
-
-    let metadata = fs::metadata(p).map_err(|e| e.to_string())?;
-    let file_size = metadata.len();
-    if file_size == 0 {
-      return Err("File is empty (0 bytes)".into());
-    }
-    if file_size > MAX_SUPPORTED_PDF_SIZE {
-      return Err("File exceeds 1.5 GB maximum supported document size".into());
-    }
-
-    let mut file = fs::File::open(p).map_err(|e| e.to_string())?;
-    let mut header = [0u8; 1024];
-    let n = file.read(&mut header).map_err(|e| e.to_string())?;
-    if n < 5 || !header[..n].windows(5).any(|w| w == b"%PDF-") {
-      return Err("File is not a valid PDF document (missing %PDF- header)".into());
-    }
-    drop(file);
-
-    fs::read(p).map_err(|e| e.to_string())
+    let resolved = otium_core::validate_local_file(&path, &["pdf"], MAX_SUPPORTED_PDF_SIZE, true)?;
+    fs::read(resolved).map_err(|e| e.to_string())
   })
   .await
   .map_err(|e| e.to_string())??;
@@ -211,31 +220,8 @@ async fn read_pdf_bytes(path: String) -> Result<Response, String> {
 #[tauri::command]
 async fn read_media_file_bytes(path: String) -> Result<Response, String> {
   let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-    let p = Path::new(&path);
-    if !p.is_file() {
-      return Err("Target path is not a file".into());
-    }
-
-    let ext = p
-      .extension()
-      .and_then(|e| e.to_str())
-      .map(|e| e.to_ascii_lowercase())
-      .unwrap_or_default();
-
-    if !ALLOWED_MEDIA_EXTENSIONS.contains(&ext.as_str()) {
-      return Err("Unsupported file type for media workspace".into());
-    }
-
-    let metadata = fs::metadata(p).map_err(|e| e.to_string())?;
-    let file_size = metadata.len();
-    if file_size == 0 {
-      return Err("File is empty (0 bytes)".into());
-    }
-    if file_size > MAX_SUPPORTED_MEDIA_SIZE {
-      return Err("File exceeds 150 MB desktop drop limit".into());
-    }
-
-    fs::read(p).map_err(|e| e.to_string())
+    let resolved = otium_core::validate_local_file(&path, ALLOWED_MEDIA_EXTENSIONS, MAX_SUPPORTED_MEDIA_SIZE, false)?;
+    fs::read(resolved).map_err(|e| e.to_string())
   })
   .await
   .map_err(|e| e.to_string())??;
@@ -298,6 +284,7 @@ pub fn run() {
 
   let builder = tauri::Builder::default()
     .manage(SearchIndexCache::default())
+    .manage(otium_core::PageSearchCache::default())
     .plugin(tauri_plugin_opener::init());
 
   #[cfg(not(mobile))]
@@ -318,7 +305,8 @@ pub fn run() {
       rust_clean_document_image,
       rust_stitch_id_cards,
       rust_search_arabic_text,
-      rust_index_and_search_arabic
+      rust_index_and_search_arabic,
+      rust_search_document_pages_arabic
     ])
     .setup(|_app| {
       #[cfg(not(mobile))]

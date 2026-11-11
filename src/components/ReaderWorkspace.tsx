@@ -1,120 +1,17 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
-import type { TextAnnotation, ThemeMode } from '../core/types';
-import type { Language } from '../core/i18n/translations';
+import type { TextAnnotation } from '../core/types';
 import type { ReaderController } from '../app/useReaderController';
 import { markScrollActivity } from '../core/reader/renderScheduler';
 import { PdfPage } from './PdfPage';
 import { ErrorBoundary } from './ErrorBoundary';
+import { PageSlot } from './ReaderPageSlot';
 import { AnimatedCounter } from './AnimatedCounter';
 import { triggerHaptic } from '../core/utils/haptics';
-import { useDocumentInteraction } from './DocumentInk';
-import { useTeaching } from './TeachingContext';
+import { useDocumentInteraction } from './documentInkContext';
+import { useTeaching } from './teachingContextValue';
 import { useChromeTap } from '../core/reader/useChromeTap';
 import { computeOptimalPageScale } from '../core/reader/device';
-
-interface PageSlotProps {
-  pageNum: number;
-  isNear: boolean;
-  doc: PDFDocumentProxy;
-  scale: number;
-  theme: ThemeMode;
-  annotations: TextAnnotation[];
-  onDeleteAnnotation: (id: string) => void;
-  baseAspectRatio: number;
-  basePageWidth?: number;
-  basePageHeight?: number;
-  searchQuery?: string;
-  isCurrentSearchPage?: boolean;
-  lang: Language;
-  renderPriority: number;
-}
-
-const PageSlotView: React.FC<PageSlotProps> = ({
-  pageNum,
-  isNear,
-  doc,
-  scale,
-  theme,
-  annotations,
-  onDeleteAnnotation,
-  baseAspectRatio,
-  basePageWidth = 595,
-  basePageHeight = 842,
-  searchQuery,
-  isCurrentSearchPage,
-  lang,
-  renderPriority
-}) => {
-  const standardWidth = Math.round(basePageWidth * scale);
-  const standardHeight = Math.round(basePageHeight * scale);
-
-  return (
-    <div
-      id={`pdf-page-${pageNum}`}
-      dir="ltr"
-      data-page-slot={pageNum}
-      style={{
-        width: `${standardWidth}px`,
-        height: `${standardHeight}px`,
-        contain: 'layout paint'
-      }}
-      className="pdf-page-frame my-4 sm:my-5 mx-auto flex items-center justify-center"
-    >
-      {isNear ? (
-        <ErrorBoundary
-          resetKey={`${pageNum}-${scale}`}
-          fallback={(err, reset) => (
-            <div
-              style={{ width: `${standardWidth}px`, height: `${standardHeight}px` }}
-              className="flex flex-col items-center justify-center p-6 text-center border border-dashed border-danger-ink/30 bg-surface/50 rounded-xl select-none"
-            >
-              <AlertTriangle className="w-8 h-8 text-danger-ink mb-2 opacity-80" />
-              <span className="text-xs font-semibold text-ink mb-1">
-                {lang === 'ar' ? `تعذر عرض الصفحة ${pageNum}` : `Failed to render page ${pageNum}`}
-              </span>
-              <p className="text-[10px] text-ink-muted mb-3 max-w-[220px] truncate">
-                {err.message || (lang === 'ar' ? 'خطأ غير متوقع' : 'Unexpected error')}
-              </p>
-              <button
-                type="button"
-                onClick={reset}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium cursor-pointer active:scale-95 transition-transform"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</span>
-              </button>
-            </div>
-          )}
-        >
-          <PdfPage
-            doc={doc}
-            pageNumber={pageNum}
-            scale={scale}
-            theme={theme}
-            annotations={annotations}
-            onDeleteAnnotation={onDeleteAnnotation}
-            baseAspectRatio={baseAspectRatio}
-            searchQuery={searchQuery}
-            isCurrentSearchPage={isCurrentSearchPage}
-            lang={lang}
-            renderPriority={renderPriority}
-          />
-        </ErrorBoundary>
-      ) : (
-        <div
-          style={{ width: `${standardWidth}px`, height: `${standardHeight}px` }}
-          className="flex items-center justify-center rounded-sm border border-dashed border-line-subtle bg-hover-subtle font-mono text-xs opacity-25 select-none"
-        >
-          <span>{lang === 'ar' ? `صفحة ${pageNum}` : `Page ${pageNum}`}</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const PageSlot = React.memo(PageSlotView);
 
 interface ReaderWorkspaceProps {
   reader: ReaderController;
@@ -161,6 +58,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
 
   const [compactLandscape, setCompactLandscape] = useState(false);
   const [showScrubberPill, setShowScrubberPill] = useState(false);
+  const [settledPage, setSettledPage] = useState(currentPage);
   const scrubberTimeoutRef = useRef<number | null>(null);
   const isRtl = lang === 'ar';
   const docIsRtl = reader.docIsRtl;
@@ -217,15 +115,20 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
 
   useEffect(() => {
     if (!compact || typeof window === 'undefined') return;
-    const query = window.matchMedia('(orientation: landscape) and (max-height: 540px)');
+    type LegacyMediaQueryList = MediaQueryList & {
+      addListener?: (listener: () => void) => void;
+      removeListener?: (listener: () => void) => void;
+    };
+    const query = window.matchMedia('(orientation: landscape) and (max-height: 540px)') as LegacyMediaQueryList;
     const update = () => setCompactLandscape(query.matches);
     update();
     if (typeof query.addEventListener === 'function') {
       query.addEventListener('change', update);
       return () => query.removeEventListener('change', update);
-    } else if (typeof (query as any).addListener === 'function') {
-      (query as any).addListener(update);
-      return () => (query as any).removeListener(update);
+    }
+    if (typeof query.addListener === 'function') {
+      query.addListener(update);
+      return () => query.removeListener?.(update);
     }
   }, [compact]);
 
@@ -317,15 +220,12 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
   }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef]);
 
   useEffect(() => {
-    if (isImmersive) return;
-    setShowScrubberPill(true);
-    if (scrubberTimeoutRef.current !== null) {
-      window.clearTimeout(scrubberTimeoutRef.current);
-    }
-    scrubberTimeoutRef.current = window.setTimeout(() => {
-      setShowScrubberPill(false);
+    if (isImmersive || settledPage === currentPage) return;
+    const timer = window.setTimeout(() => {
+      setSettledPage(currentPage);
     }, 1600);
-  }, [currentPage, isImmersive]);
+    return () => window.clearTimeout(timer);
+  }, [currentPage, isImmersive, settledPage]);
 
   useEffect(() => {
     return () => {
@@ -801,7 +701,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
               ? 'top-4 end-4 sm:end-6'
               : 'bottom-6 start-6'
         } ${
-          isImmersive || showScrubberPill || Boolean(numberJumpDisplay)
+          isImmersive || showScrubberPill || (!isImmersive && settledPage !== currentPage) || Boolean(numberJumpDisplay)
             ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
             : 'opacity-0 translate-y-2 scale-90 pointer-events-none'
         }`}

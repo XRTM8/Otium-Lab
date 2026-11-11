@@ -14,6 +14,7 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
   const [internal, setInternal] = useState<InkStroke[]>([]);
   const [liveHeader, setLiveHeader] = useState<{ color: string; width: number; opacity: number; cx: number; cy: number; initialPoints: string } | null>(null);
   const strokes = controlled ?? internal;
+  const visibleLiveHeader = enabled ? liveHeader : null;
   const pointer = useRef<number | null>(null);
   const live = useRef<InkStroke | null>(null);
   const rectRef = useRef<DOMRect | null>(null);
@@ -26,7 +27,6 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
       live.current = null;
       rectRef.current = null;
       livePointsStrRef.current = '';
-      setLiveHeader(null);
     }
   }, [enabled]);
   const point = (event: Pick<PointerEvent<SVGSVGElement>, 'clientX' | 'clientY'>, rect: DOMRect): InkPoint => ({
@@ -83,10 +83,10 @@ export function Ink({ enabled, color, width, height, strokes: controlled, onChan
       if (finished) { const next = [...strokes, finished]; if (onChange) onChange(next); else setInternal(next); }
     }} onPointerCancel={cancel} onLostPointerCapture={cancel}>
     {strokes.map((stroke, index) => <StrokeShape key={index} stroke={stroke} width={width} height={height} />)}
-    {enabled && liveHeader && (
+    {visibleLiveHeader && (
       <g>
-        <circle ref={liveDotRef} cx={liveHeader.cx} cy={liveHeader.cy} r={liveHeader.width * width / 2} fill={liveHeader.color} opacity={liveHeader.opacity} />
-        <polyline ref={livePolylineRef} points={liveHeader.initialPoints} fill="none" stroke={liveHeader.color} opacity={liveHeader.opacity} strokeWidth={liveHeader.width * width} strokeLinecap="round" strokeLinejoin="round" />
+        <circle ref={liveDotRef} cx={visibleLiveHeader.cx} cy={visibleLiveHeader.cy} r={visibleLiveHeader.width * width / 2} fill={visibleLiveHeader.color} opacity={visibleLiveHeader.opacity} />
+        <polyline ref={livePolylineRef} points={visibleLiveHeader.initialPoints} fill="none" stroke={visibleLiveHeader.color} opacity={visibleLiveHeader.opacity} strokeWidth={visibleLiveHeader.width * width} strokeLinecap="round" strokeLinejoin="round" />
       </g>
     )}
   </svg>;

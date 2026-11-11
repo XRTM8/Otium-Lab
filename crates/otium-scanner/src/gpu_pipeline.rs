@@ -1,15 +1,15 @@
 use crate::geometry::{HomographyMatrix, QuadCorners};
 
-/// Static pre-compiled WGSL compute shaders embedded directly in `.rdata`
+/// Embedded WGSL compute shader manifests staged for optional GPU compute backends.
 pub const HOMOGRAPHY_WARP_WGSL: &str = include_str!("shaders/homography_warp.wgsl");
 pub const OTSU_BINARIZE_WGSL: &str = include_str!("shaders/otsu_binarize.wgsl");
 
-/// Hardware Compute Execution Mode
+/// Scanner Compute Execution Mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccelerationBackend {
-    /// Vulkan / DirectX 12 / Metal compute pipelines (sub-0.5ms on discrete/integrated GPU)
+    /// Staged compute shader backend variant (when a WGPU device is wired by the host)
     GpuCompute,
-    /// AVX2 / NEON fixed-point SIMD multi-threaded engine (< 1.2ms)
+    /// Fixed-point integer SIMD CPU engine (active default across Desktop and Android)
     CpuSimd,
 }
 

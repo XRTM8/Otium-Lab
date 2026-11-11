@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MediaWorkspace } from './MediaWorkspace';
 import type { ReaderController } from '../app/useReaderController';
 import type { ActiveMedia } from './useAppMedia';
-vi.mock('../components/TeachingContext', () => ({ useTeaching: () => ({ setLayout }) }));
+vi.mock('../components/teachingContextValue', () => ({ useTeaching: () => ({ setLayout }) }));
 const setLayout = vi.fn();
 vi.mock('./pptx', () => ({ openPptx: vi.fn(async () => ({ width: 1600, height: 900, slides: [{}, {}, {}] })) }));
 vi.mock('./SlideView', () => ({ Pptx: () => null }));

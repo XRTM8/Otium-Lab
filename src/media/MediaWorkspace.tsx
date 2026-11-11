@@ -4,7 +4,7 @@ import type { ReaderController } from '../app/useReaderController';
 import type { ThemeMode } from '../core/types';
 import { OtiumLogo } from '../components/OtiumLogo';
 import { registerBackHandler } from '../core/navigation/backHandler';
-import { useTeaching } from '../components/TeachingContext';
+import { useTeaching } from '../components/teachingContextValue';
 import { APP_FILE_ACCEPT, type MediaProgress } from './library';
 import type { ActiveMedia } from './useAppMedia';
 import { fitSize } from './media';

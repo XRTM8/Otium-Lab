@@ -111,3 +111,50 @@ impl PdfInspector {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::{dictionary, Document as LoDoc, Object, Stream};
+
+    #[test]
+    fn validate_header_rejects_short_and_non_pdf_buffers() {
+        assert!(PdfInspector::validate_header(b"%PDF").is_err());
+        assert!(PdfInspector::validate_header(b"NOT_A_PDF_DOCUMENT").is_err());
+        assert!(PdfInspector::validate_header(b"\x00\x00%PDF-1.7\n").is_ok());
+    }
+
+    #[test]
+    fn inspect_bytes_extracts_page_dimensions_and_version() {
+        let mut doc = LoDoc::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let content_id = doc.add_object(Stream::new(dictionary! {}, Vec::new()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+            "MediaBox" => vec![Object::Integer(0), Object::Integer(0), Object::Integer(612), Object::Integer(792)],
+        });
+        let pages = dictionary! {
+            "Type" => "Pages",
+            "Kids" => vec![page_id.into()],
+            "Count" => 1,
+        };
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        let mut buf = Vec::new();
+        doc.save_to(&mut buf).expect("serialize test PDF");
+
+        let info = PdfInspector::inspect_bytes(&buf).expect("parse minimal PDF");
+        assert_eq!(info.version, "1.5");
+        assert_eq!(info.page_count, 1);
+        assert_eq!(info.pages.len(), 1);
+        assert!((info.pages[0].width_pt - 612.0).abs() < 0.01);
+        assert!((info.pages[0].height_pt - 792.0).abs() < 0.01);
+    }
+}

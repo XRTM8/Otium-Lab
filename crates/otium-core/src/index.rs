@@ -112,6 +112,55 @@ impl ArabicTrigramIndex {
     }
 }
 
+/// Bounded LRU cache of per-page `ArabicTrigramIndex` tables for instant multi-page search.
+#[derive(Default)]
+pub struct PageSearchCache {
+    entries: std::sync::Mutex<Vec<(String, Vec<ArabicTrigramIndex>)>>,
+}
+
+impl PageSearchCache {
+    /// Looks up cached per-page indices for `doc_key` or builds them when `pages` is supplied.
+    /// Returns 1-based page numbers matching `query`, or `Err("MISS")` if not cached yet.
+    pub fn search_or_build(
+        &self,
+        doc_key: String,
+        pages: Option<Vec<String>>,
+        query: &str,
+    ) -> std::result::Result<Vec<usize>, String> {
+        let mut guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(pos) = guard.iter().position(|(key, _)| key == &doc_key) {
+            let entry = guard.remove(pos);
+            let matches = entry
+                .1
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, idxer)| (!idxer.search(query).is_empty()).then_some(idx + 1))
+                .collect();
+            guard.push(entry);
+            return Ok(matches);
+        }
+
+        let Some(page_texts) = pages else {
+            return Err("MISS".into());
+        };
+
+        let indices: Vec<ArabicTrigramIndex> = page_texts
+            .iter()
+            .map(|txt| ArabicTrigramIndex::build(txt))
+            .collect();
+        let matches = indices
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, idxer)| (!idxer.search(query).is_empty()).then_some(idx + 1))
+            .collect();
+        if guard.len() >= 3 {
+            guard.remove(0);
+        }
+        guard.push((doc_key, indices));
+        Ok(matches)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +191,27 @@ mod tests {
         // 2-character query
         let matches = index.search("في");
         assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn test_page_search_cache_handles_misses_and_arabic_normalization() {
+        let cache = PageSearchCache::default();
+        let miss = cache.search_or_build("doc-1".into(), None, "السلام");
+        assert_eq!(miss.unwrap_err(), "MISS");
+
+        let pages = vec![
+            "المقدمة العامة".to_string(),
+            "بِسْمِ اللَّهِ الرَّحْمَنِ".to_string(),
+            "أحكام القراءة والكتابة".to_string(),
+        ];
+        let first = cache
+            .search_or_build("doc-1".into(), Some(pages), "الرحمن")
+            .expect("initial indexed search");
+        assert_eq!(first, vec![2]);
+
+        let cached_followup = cache
+            .search_or_build("doc-1".into(), None, "احكام")
+            .expect("cached trigram search");
+        assert_eq!(cached_followup, vec![3]);
     }
 }

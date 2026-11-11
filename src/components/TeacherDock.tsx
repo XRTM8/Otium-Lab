@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { BookOpen, Presentation, Palette, EyeOff, Hand, MousePointer2, PenLine, Highlighter, Eraser, Undo2, Redo2, MoreHorizontal, ChevronLeft, ChevronRight, X, Type, SlidersHorizontal, Download, Trash2, type LucideIcon } from 'lucide-react';
 import type { ReaderController } from '../app/useReaderController';
-import { useTeaching, type SaveStatus } from './TeachingContext';
+import { useTeaching, type SaveStatus } from './teachingContextValue';
 import { computeOptimalPageScale } from '../core/reader/device';
 import { trapModalFocus } from '../core/utils/a11y';
 
@@ -16,8 +16,26 @@ export function TeacherDock({ reader, ink }: { reader: ReaderController; ink: Do
   const teaching = useTeaching();
   const { prefs, updatePrefs, target, board, mobile, presentation, setPresentation } = teaching;
   const ar = reader.lang === 'ar';
-  const [panel, setPanel] = useState<'more' | 'settings' | 'pen' | 'background' | null>(null);
-  const [confirm, setConfirm] = useState(false);
+  const dockScope = `${target}:${reader.docId ?? ''}:${presentation ? 1 : 0}`;
+  const [panelState, setPanelState] = useState<{ scope: string; value: 'more' | 'settings' | 'pen' | 'background' | null }>({
+    scope: dockScope,
+    value: null
+  });
+  const [confirmState, setConfirmState] = useState<{ scope: string; value: boolean }>({
+    scope: dockScope,
+    value: false
+  });
+  const panel = panelState.scope === dockScope ? panelState.value : null;
+  const confirm = confirmState.scope === dockScope ? confirmState.value : false;
+  const setPanel = useCallback(
+    (value: 'more' | 'settings' | 'pen' | 'background' | null) =>
+      setPanelState({ scope: dockScope, value }),
+    [dockScope]
+  );
+  const setConfirm = useCallback(
+    (value: boolean) => setConfirmState({ scope: dockScope, value }),
+    [dockScope]
+  );
   const confirmationTarget = useRef(target);
   const dialog = useRef<HTMLDivElement>(null);
   const dock = useRef<HTMLElement>(null);
@@ -33,7 +51,6 @@ export function TeacherDock({ reader, ink }: { reader: ReaderController; ink: Do
     else ink.setTool(tool);
     setPanel(tool === 'pen' || tool === 'highlighter' ? 'pen' : null);
   };
-  useEffect(() => { setPanel(null); setConfirm(false); }, [target, reader.docId, presentation]);
   useEffect(() => {
     if (!confirm || !dialog.current) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -44,7 +61,7 @@ export function TeacherDock({ reader, ink }: { reader: ReaderController; ink: Do
     };
     window.addEventListener('keydown', handler);
     return () => { window.removeEventListener('keydown', handler); previous?.focus(); };
-  }, [confirm]);
+  }, [confirm, setConfirm]);
   useEffect(() => {
     const element = dock.current;
     if (!element) return;
@@ -64,7 +81,7 @@ export function TeacherDock({ reader, ink }: { reader: ReaderController; ink: Do
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setPanel(null); };
     document.addEventListener('pointerdown', close); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', key); };
-  }, [panel]);
+  }, [panel, setPanel]);
   if (!reader.doc || (mobile && reader.isImmersive)) return null;
   const saved = active?.status || 'loading';
   const saveLabel = saved === 'saved' ? label('محفوظ على هذا الجهاز', 'Saved on this device') : saved === 'saving' ? label('جارٍ الحفظ…', 'Saving…') : saved === 'error' ? label('تعذر الحفظ — صدّر نسخة', 'Save failed — export a copy') : label('تحميل الشرح…', 'Loading annotations…');

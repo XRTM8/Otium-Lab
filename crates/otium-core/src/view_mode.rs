@@ -12,18 +12,13 @@ pub enum ViewMode {
     DualSpread,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum ZoomLevel {
+    #[default]
     FitWidth,
     FitPage,
     ActualSize,
     Scale(f32),
-}
-
-impl Default for ZoomLevel {
-    fn default() -> Self {
-        ZoomLevel::FitWidth
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

@@ -1,10 +1,11 @@
-/* eslint-disable no-control-regex */
 /**
  * Otium Native Bridge
  * Connects the web frontend to native Android capabilities in MainActivity.kt
  * via JavascriptInterface: FileProvider sharing, MediaStore/Downloads saving,
  * and seamless handoff to Otium Reader (com.otium.reader).
  */
+
+import { stripControlChars } from '../../core/utils/textSanitize';
 
 declare global {
   interface Window {
@@ -193,8 +194,7 @@ export async function nativePrintPdf(blob: Blob, filename: string): Promise<void
  */
 export function sanitizeFilename(filename: string, defaultName = 'document'): string {
   if (!filename || typeof filename !== 'string') return defaultName;
-  const clean = filename
-    .replace(/[\x00-\x1f\x7f]/g, '')
+  const clean = stripControlChars(filename)
     .replace(/[/\\]+/g, '_')
     .replace(/\.{2,}/g, '_')
     .replace(/[?%*:|"<>]/g, '_')
@@ -268,9 +268,9 @@ export function nativeOpenUrl(url: string): void {
     return;
   }
 
-  if (typeof window !== 'undefined' && window.OtiumNative && (window.OtiumNative as any).openExternalUrl) {
+  if (typeof window !== 'undefined' && window.OtiumNative?.openExternalUrl) {
     try {
-      (window.OtiumNative as any).openExternalUrl(url);
+      window.OtiumNative.openExternalUrl(url);
       return;
     } catch (e) {
       console.warn('Native openExternalUrl failed:', e);

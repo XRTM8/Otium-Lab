@@ -105,10 +105,20 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({
   onOpenSettings,
   onCloseDocument
 }) => {
-  const [showMenu, setShowMenu] = useState(false);
+  const [menuState, setMenuState] = useState<{ open: boolean; immersive: boolean }>({ open: false, immersive });
+  const showMenu = menuState.open && !immersive && menuState.immersive === immersive;
+  const setShowMenu = (next: boolean | ((open: boolean) => boolean)) => {
+    setMenuState((prev) => {
+      const current = prev.open && !immersive && prev.immersive === immersive;
+      const open = typeof next === 'function' ? next(current) : next;
+      return { open, immersive };
+    });
+  };
   const [showJump, setShowJump] = useState(false);
   const [jumpValue, setJumpValue] = useState('');
-  const [compactLandscape, setCompactLandscape] = useState(false);
+  const [compactLandscape, setCompactLandscape] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(orientation: landscape) and (max-height: 540px)').matches : false
+  );
   const t = getTranslations(currentLang);
   const ar = currentLang === 'ar';
   // The interface language can differ from the PDF's reading direction.
@@ -119,26 +129,17 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({
 
   useEffect(() => {
     if (!showMenu) return;
-    const timer = window.setTimeout(() => setShowMenu(false), 8000);
+    const timer = window.setTimeout(() => setMenuState({ open: false, immersive }), 8000);
     const handleBack = (e: Event) => {
       e.preventDefault();
-      setShowMenu(false);
+      setMenuState({ open: false, immersive });
     };
     window.addEventListener('otium:back', handleBack);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('otium:back', handleBack);
     };
-  }, [showMenu]);
-
-  useEffect(() => {
-    if (immersive) setShowMenu(false);
-  }, [immersive]);
-
-  useEffect(() => {
-    if (!showJump) return;
-    setJumpValue(String(currentPage));
-  }, [currentPage, showJump]);
+  }, [showMenu, immersive]);
 
   useEffect(() => {
     if (!showJump) return;
@@ -178,9 +179,14 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({
     if (typeof query.addEventListener === 'function') {
       query.addEventListener('change', update);
       return () => query.removeEventListener('change', update);
-    } else if (typeof (query as any).addListener === 'function') {
-      (query as any).addListener(update);
-      return () => (query as any).removeListener(update);
+    }
+    const legacyQuery = query as MediaQueryList & {
+      addListener?: (listener: () => void) => void;
+      removeListener?: (listener: () => void) => void;
+    };
+    if (typeof legacyQuery.addListener === 'function') {
+      legacyQuery.addListener(update);
+      return () => legacyQuery.removeListener?.(update);
     }
   }, []);
 
@@ -615,7 +621,10 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({
 
           <button
             type="button"
-            onClick={() => setShowJump(true)}
+            onClick={() => {
+              setJumpValue(String(currentPage));
+              setShowJump(true);
+            }}
             aria-label={ar ? `الانتقال إلى صفحة، الحالية ${currentPage} من ${totalPages}` : `Go to page, currently ${currentPage} of ${totalPages}`}
             title={ar ? 'الانتقال إلى صفحة' : 'Go to page'}
             className="fluid-press px-3 py-1.5 rounded-xl bg-hover-subtle font-mono text-[11px] text-ink active:bg-hover-strong cursor-pointer"

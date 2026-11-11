@@ -74,12 +74,26 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
   // =========================================================================
   try {
     const GITHUB_API_URL = 'https://api.github.com/repos/XRTM8/Otium-Lab/releases/latest';
-    let apiData: any = null;
+    interface GitHubReleaseApiAsset {
+      name: string;
+      size: number;
+      browser_download_url: string;
+    }
+    interface GitHubReleaseApiResponse {
+      tag_name?: string;
+      name?: string;
+      body?: string;
+      published_at?: string;
+      html_url?: string;
+      message?: string;
+      assets?: GitHubReleaseApiAsset[];
+    }
+    let apiData: GitHubReleaseApiResponse | null = null;
 
     const nativeResponse = await nativeFetchUrl(GITHUB_API_URL);
     if (nativeResponse && !nativeResponse.startsWith('ERROR:')) {
       try {
-        const parsed = JSON.parse(nativeResponse);
+        const parsed = JSON.parse(nativeResponse) as GitHubReleaseApiResponse | null;
         if (parsed && (parsed.tag_name || parsed.name) && !parsed.message) {
           apiData = parsed;
         }
@@ -92,18 +106,18 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
       }).catch(() => null);
 
       if (response && response.ok) {
-        apiData = await response.json().catch(() => null);
+        apiData = (await response.json().catch(() => null)) as GitHubReleaseApiResponse | null;
       }
     }
 
     if (apiData && (apiData.tag_name || apiData.name)) {
-      tag = (apiData.tag_name || apiData.name).replace(/^v/i, '').trim();
+      tag = (apiData.tag_name || apiData.name || '').replace(/^v/i, '').trim();
       releaseNotes = apiData.body || '';
       publishedAt = apiData.published_at;
       releaseUrl = apiData.html_url || releaseUrl;
 
       if (Array.isArray(apiData.assets)) {
-        allAssets = apiData.assets.map((a: any) => ({
+        allAssets = apiData.assets.map((a) => ({
           name: a.name,
           size: a.size,
           downloadUrl: a.browser_download_url,

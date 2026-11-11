@@ -41,17 +41,28 @@ function formatArabicPagesCount(count: number): string {
   return `${count} صفحة ممسوحة`;
 }
 
-export const ScannerModal: React.FC<ScannerModalProps> = ({
-  isOpen,
+export const ScannerModal: React.FC<ScannerModalProps> = (props) => {
+  if (!props.isOpen) return null;
+  return <ScannerModalContent {...props} />;
+};
+
+const ScannerModalContent: React.FC<Omit<ScannerModalProps, 'isOpen'>> = ({
   theme = 'midnight',
   lang = 'ar',
   onClose,
   onPdfGenerated,
 }) => {
-  const [step, setStep] = useState<ScanStep>('camera');
+  const [{ initialStep, initialPages }] = useState(() => {
+    const activeDraft = getActiveSessionPages();
+    if (activeDraft && activeDraft.length > 0) {
+      return { initialStep: 'review' as ScanStep, initialPages: activeDraft };
+    }
+    return { initialStep: 'camera' as ScanStep, initialPages: [] as ScannedPage[] };
+  });
+  const [step, setStep] = useState<ScanStep>(initialStep);
   const [currentRawImage, setCurrentRawImage] = useState<string>('');
   const [currentInitialQuad, setCurrentInitialQuad] = useState<Quad | null>(null);
-  const [pages, setPages] = useState<ScannedPage[]>([]);
+  const [pages, setPages] = useState<ScannedPage[]>(initialPages);
   const [retakeTargetIndex, setRetakeTargetIndex] = useState<number | null>(null);
 
   // Modals for Vault Archive & Settings
@@ -67,27 +78,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     };
   }, []);
 
-  // Restore active draft session upon opening
-  useEffect(() => {
-    if (isOpen) {
-      const activeDraft = getActiveSessionPages();
-      if (activeDraft && activeDraft.length > 0) {
-        setPages(activeDraft);
-        setStep('review');
-      } else {
-        setStep('camera');
-      }
-    }
-  }, [isOpen]);
-
   // Persist session pages on modification (debounced off interaction path)
   useEffect(() => {
-    if (!isOpen) return;
     const timer = window.setTimeout(() => {
       saveActiveSessionPages(pages);
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [pages, isOpen]);
+  }, [pages]);
 
   // Handle capture from camera or image file upload
   const handleCapture = (imageSrc: string, isBatchMode: boolean, detectedQuad?: Quad) => {
@@ -319,8 +316,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   };
 
   useEffect(() => {
-    if (!isOpen) return;
-
     const handleBack = (event?: Event) => {
       if (event && event.cancelable) {
         event.preventDefault();
@@ -370,9 +365,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       window.removeEventListener('otium:back', handleBack);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, isLibraryOpen, isSettingsOpen, showCloseConfirmModal, step, pages.length, handleCropCancel, handleRequestClose]);
-
-  if (!isOpen) return null;
+  }, [isLibraryOpen, isSettingsOpen, showCloseConfirmModal, step, pages.length, handleCropCancel, handleRequestClose]);
 
   return (
     <div

@@ -242,3 +242,56 @@ impl PptxParser {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipWriter};
+
+    #[test]
+    fn parse_bytes_reads_presentation_dimensions_and_slide_text() {
+        let mut buffer = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buffer));
+            let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+            zip.start_file("ppt/presentation.xml", opts).unwrap();
+            zip.write_all(
+                br#"<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldSz cx="12192000" cy="6858000"/></p:presentation>"#,
+            )
+            .unwrap();
+            zip.start_file("ppt/slides/slide1.xml", opts).unwrap();
+            zip.write_all(
+                br#"<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Hello Otium</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"#,
+            )
+            .unwrap();
+            zip.finish().unwrap();
+        }
+
+        let pres = PptxParser::parse_bytes(&buffer).expect("valid minimal PPTX");
+        assert!((pres.slide_width_pt - 960.0).abs() < 0.1);
+        assert!((pres.slide_height_pt - 540.0).abs() < 0.1);
+        assert_eq!(pres.slides.len(), 1);
+        assert_eq!(pres.slides[0].index, 1);
+        let texts: Vec<String> = pres.slides[0]
+            .elements
+            .iter()
+            .filter_map(|el| match el {
+                SlideElement::TextBox { paragraphs, .. } => Some(
+                    paragraphs
+                        .iter()
+                        .flat_map(|p| p.runs.iter().map(|r| r.text.as_str()))
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t.contains("Hello Otium")));
+    }
+
+    #[test]
+    fn parse_bytes_rejects_corrupt_archive() {
+        assert!(PptxParser::parse_bytes(b"not a zip").is_err());
+    }
+}

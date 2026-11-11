@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { Cast, Upload } from 'lucide-react';
 import { useReaderController } from '../app/useReaderController';
 import { getThemeBackground } from '../app/themeBackground';
@@ -10,7 +10,8 @@ import { Toolbar } from '../components/Toolbar';
 import { WelcomeScreen } from '../components/WelcomeScreen';
 import { ReaderWorkspace } from '../components/ReaderWorkspace';
 import { DocumentInkProvider } from '../components/DocumentInk';
-import { TeachingProvider, useTeaching } from '../components/TeachingContext';
+import { TeachingProvider } from '../components/TeachingContext';
+import { useTeaching } from '../components/teachingContextValue';
 import { useDeviceUsage } from '../platform/deviceUsage';
 import { useAppMedia } from '../media/useAppMedia';
 import { describeFile } from '../media/media';
@@ -28,14 +29,16 @@ const DesktopReader: React.FC = () => {
   const { role, receiver } = useDeviceUsage();
   const reader = useReaderController({ keyboard: true, dragDrop: false });
   const media = useAppMedia(reader);
-  const mediaRef = React.useRef(media);
-  mediaRef.current = media;
-  const readerRef = React.useRef(reader);
-  readerRef.current = reader;
-
   const teaching = useTeaching();
+  const mediaRef = React.useRef(media);
+  const readerRef = React.useRef(reader);
   const teachingRef = React.useRef(teaching);
-  teachingRef.current = teaching;
+
+  useLayoutEffect(() => {
+    mediaRef.current = media;
+    readerRef.current = reader;
+    teachingRef.current = teaching;
+  }, [media, reader, teaching]);
 
   const isBoardOpen = teaching.prefs.boardEnabled && teaching.layout !== 'document';
   const setIsBoardOpen = useCallback((value: boolean | ((previous: boolean) => boolean)) => {

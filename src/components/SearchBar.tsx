@@ -31,10 +31,34 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onQueryChange,
   onClose
 }) => {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isSearching, setIsSearching] = useState(false);
+  const initialKey = `${isOpen}:${initialQuery?.id ?? ''}:${initialQuery?.query ?? ''}`;
+  const [queryDraft, setQueryDraft] = useState<{ key: string; value: string }>(() => ({
+    key: initialKey,
+    value: initialQuery?.query ?? ''
+  }));
+  const query = isOpen
+    ? (queryDraft.key === initialKey ? queryDraft.value : (initialQuery?.query ?? ''))
+    : '';
+  const setQuery = (value: string) => setQueryDraft({ key: initialKey, value });
+
+  const trimmedQuery = query.trim();
+  const searchKey = `${isOpen}:${doc ? 'doc' : 'none'}:${trimmedQuery}`;
+  const canSearch = isOpen && Boolean(doc) && trimmedQuery.length >= 2;
+  const [searchState, setSearchState] = useState<{
+    key: string;
+    results: SearchResult[];
+    currentIndex: number;
+    done: boolean;
+  }>({ key: '', results: [], currentIndex: 0, done: false });
+
+  const results = canSearch && searchState.key === searchKey ? searchState.results : [];
+  const currentIndex = canSearch && searchState.key === searchKey ? searchState.currentIndex : 0;
+  const isSearching = canSearch && !(searchState.key === searchKey && searchState.done);
+  const setCurrentIndex = (next: number) =>
+    setSearchState((prev) =>
+      prev.key === searchKey ? { ...prev, currentIndex: next } : prev
+    );
+
   const inputRef = useRef<HTMLInputElement>(null);
   const onNavigateToPageRef = useRef(onNavigateToPage);
   const onQueryChangeRef = useRef(onQueryChange);
@@ -48,48 +72,27 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     onQueryChangeRef.current = onQueryChange;
   }, [onQueryChange]);
 
-  const wasOpenRef = useRef(isOpen);
   useEffect(() => {
-    if (wasOpenRef.current && !isOpen) {
-      setQuery('');
-      setResults([]);
-      setCurrentIndex(0);
-      setIsSearching(false);
-    }
-    wasOpenRef.current = isOpen;
-
-    if (isOpen) {
-      const timer = window.setTimeout(() => inputRef.current?.focus(), 50);
-      return () => window.clearTimeout(timer);
-    }
-  }, [isOpen]);
-
-  // Selecting text and choosing "Search" opens this bar with the quote already
-  // entered, so the user does not have to copy and paste it again.
-  useEffect(() => {
-    if (!isOpen || !initialQuery?.query) return;
-    setQuery(initialQuery.query);
+    if (!isOpen) return;
+    const delay = initialQuery?.query ? 40 : 50;
+    const selectText = Boolean(initialQuery?.query);
     const timer = window.setTimeout(() => {
       inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 40);
+      if (selectText) inputRef.current?.select();
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [isOpen, initialQuery]);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const trimmed = query.trim();
+    const trimmed = trimmedQuery;
     if (!doc || trimmed.length < 2) {
-      setResults([]);
-      setCurrentIndex(0);
-      setIsSearching(false);
       onQueryChangeRef.current('', null);
       return;
     }
 
     const controller = new AbortController();
-    setIsSearching(true);
 
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -97,8 +100,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           const matches = await searchDocumentPages(doc, trimmed, controller.signal);
           if (controller.signal.aborted) return;
 
-          setResults(matches.map((pageNumber) => ({ pageNumber })));
-          setCurrentIndex(0);
+          setSearchState({
+            key: searchKey,
+            results: matches.map((pageNumber) => ({ pageNumber })),
+            currentIndex: 0,
+            done: true
+          });
 
           if (matches.length > 0) {
             onNavigateToPageRef.current(matches[0]);
@@ -109,11 +116,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         } catch (error) {
           if (!controller.signal.aborted && !(error instanceof SearchCancelledError)) {
             console.warn('Search error:', error);
+            setSearchState({ key: searchKey, results: [], currentIndex: 0, done: true });
             onQueryChangeRef.current(trimmed, null);
-          }
-        } finally {
-          if (!controller.signal.aborted) {
-            setIsSearching(false);
           }
         }
       })();
@@ -123,7 +127,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [doc, isOpen, query]);
+  }, [doc, isOpen, searchKey, trimmedQuery]);
 
   const nextMatch = () => {
     if (results.length === 0) return;

@@ -1,14 +1,23 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Move, X } from 'lucide-react';
-import { useTeaching, type SaveStatus } from '../../components/TeachingContext';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTeaching, type SaveStatus } from '../../components/teachingContextValue';
 import { readBoard, writeBoard } from '../utils/boardStorage';
 
 import type { BoardBackground, BoardPageData, BoardSnippet, BoardStroke, BoardTool, StrokePoint } from '../types';
 import type { Language } from '../../core/i18n/translations';
-import { exportAllPagesToPdf, exportPageToPng, type ExportableBoardPage } from '../utils/boardExport';
+import { exportBoardPagesToPdf, exportCurrentBoardToPng } from '../utils/boardCanvasExport';
+import {
+  type CoalescedPointerLike,
+  computeDraggedSnippetCoords,
+  observeBoardStageResize,
+  sampleCoalescedBoardPoints,
+  startBoardLaserLoop,
+  syncBoardCanvasDimensions,
+} from '../utils/boardCanvasDom';
 import { recognizeGeometricShape } from '../utils/shapeRecognition';
-import { boardAppearance, boardRasterSize } from '../utils/boardAppearance';
+import { boardAppearance } from '../utils/boardAppearance';
 import { drawBoardInk } from '../utils/boardInk';
+import { type LaserPoint } from '../utils/laserTrail';
+import { BoardSnippetOverlay } from './BoardSnippetOverlay';
 import type { ThemeMode } from '../../core/types';
 
 interface BoardCanvasProps {
@@ -46,9 +55,29 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   const strokeRectRef = useRef<DOMRect | null>(null);
   const undoSnapshotRef = useRef<BoardStroke[] | null>(null);
   const { prefs, registerBoard, target, presentation } = useTeaching();
-  const [ready, setReady] = useState(false);
-  const [status, setStatus] = useState<SaveStatus>('loading');
-  const [error, setError] = useState('');
+  const [docSync, setDocSync] = useState<{ docId: string; ready: boolean; status: SaveStatus; error: string }>({
+    docId: documentId,
+    ready: false,
+    status: 'loading',
+    error: '',
+  });
+  const activeDocSync =
+    docSync.docId === documentId ? docSync : { docId: documentId, ready: false, status: 'loading' as SaveStatus, error: '' };
+  const ready = activeDocSync.ready;
+  const status = activeDocSync.status;
+  const error = activeDocSync.error;
+  const setStatus = useCallback(
+    (nextStatus: SaveStatus) => {
+      setDocSync((prev) => ({ docId: documentId, ready: prev.docId === documentId ? prev.ready : false, status: nextStatus, error: '' }));
+    },
+    [documentId]
+  );
+  const setError = useCallback(
+    (nextError: string) => {
+      setDocSync((prev) => ({ docId: documentId, ready: prev.docId === documentId ? prev.ready : false, status: 'error', error: nextError }));
+    },
+    [documentId]
+  );
   const saveQueue = useRef(Promise.resolve());
   const [drawingRevision, setDrawingRevision] = useState(0);
   const pointer = useRef<number | null>(null);
@@ -69,8 +98,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
   const [activeTool, setActiveTool] = useState<BoardTool>('hand');
   const [background, setBackground] = useState<BoardBackground>('white');
-  const [selectedColor, setSelectedColor] = useState<string>(prefs.color);
-  const [selectedWidth, setSelectedWidth] = useState<number>(prefs.width);
+  const [colorOverride, setColorOverride] = useState<{ base: string; value: string } | null>(null);
+  const [widthOverride, setWidthOverride] = useState<{ base: number; value: number } | null>(null);
 
   const [strokes, setStrokes] = useState<BoardStroke[]>([]);
   const [redoStack, setRedoStack] = useState<BoardStroke[][]>([]);
@@ -96,6 +125,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     ctx?.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
   }, []);
 
+  const appearance = boardAppearance(background, theme, prefs.boardFollowTheme, prefs.boardColor);
+  const isDarkBg = appearance.dark;
+
   const paintLiveStroke = useCallback(() => {
     const liveCanvas = liveCanvasRef.current;
     if (!liveCanvas) return;
@@ -106,9 +138,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     if (!liveStroke) return;
     ctx.save();
     ctx.scale(liveCanvas.width / 1920, liveCanvas.height / 1080);
-    drawBoardInk(ctx, [liveStroke], paintState.current.isDarkBg);
+    drawBoardInk(ctx, [liveStroke], isDarkBg);
     ctx.restore();
-  }, []);
+  }, [isDarkBg]);
 
   const scheduleLivePaint = useCallback(() => {
     if (livePaintRafRef.current !== null) return;
@@ -153,50 +185,41 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   }, [cancelShapeHoldTimer]);
 
   // Laser pointer trailing particles
-  const laserTrailRef = useRef<{ x: number; y: number; time: number }[]>([]);
-  const laserAnimFrameRef = useRef<number | null>(null);
+  const laserTrailRef = useRef<LaserPoint[]>([]);
 
   // Dragging snippets on canvas
   const [draggingSnippetId, setDraggingSnippetId] = useState<string | null>(null);
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const appearance = boardAppearance(background, theme, prefs.boardFollowTheme, prefs.boardColor);
-  const isDarkBg = appearance.dark;
-  const paintState = useRef({ strokes, isDarkBg });
-  useLayoutEffect(() => { paintState.current = { strokes, isDarkBg }; }, [strokes, isDarkBg]);
-  useEffect(() => {
-    setSelectedColor((prev) => (prev !== prefs.color ? prefs.color : prev));
-    setSelectedWidth((prev) => (prev !== prefs.width ? prefs.width : prev));
-  }, [prefs.color, prefs.width]);
+  const rawSelectedColor = colorOverride?.base === prefs.color ? colorOverride.value : prefs.color;
+  const selectedColor =
+    isDarkBg && rawSelectedColor === '#111827'
+      ? '#f8fafc'
+      : !isDarkBg && rawSelectedColor === '#f8fafc'
+        ? '#111827'
+        : rawSelectedColor;
+  const selectedWidth = widthOverride?.base === prefs.width ? widthOverride.value : prefs.width;
 
+  const setSelectedColor = useCallback((color: string) => {
+    setColorOverride({ base: prefs.color, value: color });
+  }, [prefs.color]);
 
-  // Auto-tune selected color when switching between light and dark backgrounds
-  useEffect(() => {
-    if (isDarkBg && selectedColor === '#111827') {
-      setSelectedColor('#f8fafc');
-    } else if (!isDarkBg && selectedColor === '#f8fafc') {
-      setSelectedColor('#111827');
-    }
-  }, [isDarkBg, selectedColor]);
+  const setSelectedWidth = useCallback((width: number) => {
+    setWidthOverride({ base: prefs.width, value: width });
+  }, [prefs.width]);
 
-  // Keep pages array synced with active drawing state
-  useEffect(() => {
-    setPages((prev) => {
-      if (!prev[currentPageIndex]) return prev;
-      const cur = prev[currentPageIndex];
-      if (cur.strokes === strokes && cur.redoStack === redoStack && cur.background === background) {
-        return prev;
-      }
-      const next = [...prev];
-      next[currentPageIndex] = {
-        ...cur,
-        strokes,
-        redoStack,
-        background
-      };
-      return next;
-    });
-  }, [strokes, redoStack, background, currentPageIndex]);
+  const paintStrokesRef = useRef<BoardStroke[]>([]);
+  useLayoutEffect(() => {
+    paintStrokesRef.current = strokes;
+  }, [strokes]);
+
+  const syncedPages = useMemo(
+    () =>
+      pages.map((page, index) =>
+        index === currentPageIndex ? { ...page, strokes, redoStack, undoStack, background } : page
+      ),
+    [pages, currentPageIndex, strokes, redoStack, undoStack, background]
+  );
 
   // Repaint all vector strokes with Bézier curves
   const repaintAllStrokes = useCallback(() => {
@@ -209,7 +232,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     ctx.save();
     ctx.scale(canvas.width / 1920, canvas.height / 1080);
-    drawBoardInk(ctx, paintState.current.strokes, paintState.current.isDarkBg);
+    drawBoardInk(ctx, paintStrokesRef.current, isDarkBg);
 
     ctx.restore();
     if (!liveStrokeRef.current) {
@@ -217,66 +240,28 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     } else {
       paintLiveStroke();
     }
-  }, [clearLiveCanvas, paintLiveStroke]);
+  }, [clearLiveCanvas, paintLiveStroke, isDarkBg]);
 
   // Sync canvas size with high DPI pixel ratio and observe container resizing
   const syncCanvasDimensions = useCallback(() => {
-    const canvas = canvasRef.current;
-    const liveCanvas = liveCanvasRef.current;
-    const laserCanvas = laserCanvasRef.current;
-    const container = stageRef.current;
-    if (!canvas || !laserCanvas || !container) return;
-
-    strokeRectRef.current = null;
-    const rect = container.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const raster = boardRasterSize(rect.width, rect.height, window.devicePixelRatio || 1);
-
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
-    if (liveCanvas) {
-      liveCanvas.style.width = `${rect.width}px`;
-      liveCanvas.style.height = `${rect.height}px`;
-    }
-    laserCanvas.style.width = `${rect.width}px`;
-    laserCanvas.style.height = `${rect.height}px`;
-    if (canvas.width === raster.width && canvas.height === raster.height) return;
-    canvas.width = raster.width;
-    canvas.height = raster.height;
-    if (liveCanvas) {
-      liveCanvas.width = raster.width;
-      liveCanvas.height = raster.height;
-    }
-    laserCanvas.width = raster.width;
-    laserCanvas.height = raster.height;
-
-    repaintAllStrokes();
+    syncBoardCanvasDimensions({
+      canvas: canvasRef.current,
+      liveCanvas: liveCanvasRef.current,
+      laserCanvas: laserCanvasRef.current,
+      container: stageRef.current,
+      dpr: window.devicePixelRatio || 1,
+      onClearRectCache: () => {
+        strokeRectRef.current = null;
+      },
+      onRepaintAll: repaintAllStrokes,
+    });
   }, [repaintAllStrokes]);
 
   useLayoutEffect(() => {
     syncCanvasDimensions();
     const container = stageRef.current;
     if (!container) return;
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        syncCanvasDimensions();
-      });
-      resizeObserver.observe(container);
-    }
-
-    const handleResize = () => {
-      syncCanvasDimensions();
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-    };
+    return observeBoardStageResize(container, syncCanvasDimensions);
   }, [syncCanvasDimensions]);
 
   useLayoutEffect(() => {
@@ -284,80 +269,13 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     return () => cancelAnimationFrame(frame);
   }, [strokes, isDarkBg, repaintAllStrokes]);
 
-  // Laser loop animation
+  // Laser loop animation (only runs while laser tool is active)
   useEffect(() => {
-    const laserCanvas = laserCanvasRef.current;
-    if (!laserCanvas) return;
-    const ctx = laserCanvas.getContext('2d');
-    if (!ctx) return;
-
-    // Do not redraw an idle board at 60fps. The animation exists only while
-    // the laser is actually in use.
-    if (activeTool !== 'laser' || target !== 'board' || presentation) {
-      ctx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
-      return;
-    }
-
-    const renderLaser = () => {
-      const now = performance.now();
-      const trail = laserTrailRef.current;
-
-      while (trail.length > 0 && now - trail[0].time > 1100) {
-        trail.shift();
-      }
-
-      ctx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
-
-      if (trail.length > 0) {
-        ctx.save();
-        ctx.scale(laserCanvas.width / 1920, laserCanvas.height / 1080);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Draw glowing fading trail
-        for (let i = 1; i < trail.length; i++) {
-          const p1 = trail[i - 1];
-          const p2 = trail[i];
-          const age = now - p2.time;
-          const alpha = Math.max(0, 1 - age / 1100);
-
-          ctx.beginPath();
-          ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.75})`;
-          ctx.lineWidth = Math.max(2, 8 * (1 - age / 1100));
-          ctx.shadowColor = '#ef4444';
-          ctx.shadowBlur = 10;
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-        }
-
-        // Draw bright laser dot at latest point
-        const latest = trail[trail.length - 1];
-        ctx.beginPath();
-        ctx.arc(latest.x, latest.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#ef4444';
-        ctx.shadowColor = '#f87171';
-        ctx.shadowBlur = 16;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(latest.x, latest.y, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-
-        ctx.restore();
-      }
-
-      laserAnimFrameRef.current = requestAnimationFrame(renderLaser);
-    };
-
-    laserAnimFrameRef.current = requestAnimationFrame(renderLaser);
-
-    return () => {
-      if (laserAnimFrameRef.current) {
-        cancelAnimationFrame(laserAnimFrameRef.current);
-      }
-    };
+    return startBoardLaserLoop(
+      laserCanvasRef.current,
+      activeTool === 'laser' && target === 'board' && !presentation,
+      laserTrailRef
+    );
   }, [activeTool, target, presentation]);
 
   // Stroke erasure intersection checker
@@ -485,22 +403,13 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       }
     }
 
-    // Capture coalesced events if available (high-precision smartboard pens)
-    const samples = (e.nativeEvent as any).getCoalescedEvents
-      ? ((e.nativeEvent as any).getCoalescedEvents() as PointerEvent[])
-      : [e.nativeEvent];
-
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const cached = strokeRectRef.current;
-    const rect = cached && cached.width > 0 && cached.height > 0 ? cached : canvas.getBoundingClientRect();
-
-    const coalesced = samples.length ? samples : [e.nativeEvent];
-    const newPoints: StrokePoint[] = coalesced.map((pe) => ({
-      x: (pe.clientX - rect.left) * 1920 / rect.width,
-      y: (pe.clientY - rect.top) * 1080 / rect.height,
-      pressure: pe.pressure || 0.5
-    }));
+    const newPoints = sampleCoalescedBoardPoints(
+      e.nativeEvent as CoalescedPointerLike,
+      canvas,
+      strokeRectRef.current
+    );
 
     currentPointsRef.current.push(...newPoints);
     liveStrokeRef.current.points.push(...newPoints);
@@ -546,29 +455,34 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   };
 
   // Full snapshots make erasing and clear-all undoable as one action.
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     if (!undoStack.length) return;
     setStatus('saving');
-    setRedoStack(prev => [strokes, ...prev].slice(0, 60));
-    setStrokes(undoStack[undoStack.length - 1]); setUndoStack(prev => prev.slice(0, -1));
-  };
-  const handleRedo = () => {
+    setRedoStack((prev) => [strokes, ...prev].slice(0, 60));
+    setStrokes(undoStack[undoStack.length - 1]);
+    setUndoStack((prev) => prev.slice(0, -1));
+  }, [setStatus, strokes, undoStack]);
+
+  const handleRedo = useCallback(() => {
     if (!redoStack.length) return;
     setStatus('saving');
-    setUndoStack(prev => [...prev, strokes].slice(-60));
-    setStrokes(redoStack[0]); setRedoStack(prev => prev.slice(1));
-  };
-  const handleClearAll = () => {
+    setUndoStack((prev) => [...prev, strokes].slice(-60));
+    setStrokes(redoStack[0]);
+    setRedoStack((prev) => prev.slice(1));
+  }, [setStatus, redoStack, strokes]);
+
+  const handleClearAll = useCallback(() => {
     if (!strokes.length) return;
     setStatus('saving');
-    setUndoStack(prev => [...prev, strokes].slice(-60)); setRedoStack([]); setStrokes([]);
-  };
+    setUndoStack((prev) => [...prev, strokes].slice(-60));
+    setRedoStack([]);
+    setStrokes([]);
+  }, [setStatus, strokes]);
 
   // Multi-Page Navigation Handlers
-  const handleSwitchPage = (targetIndex: number) => {
+  const handleSwitchPage = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= pages.length || targetIndex === currentPageIndex) return;
 
-    // 1. Sync current page
     const updatedPages = [...pages];
     updatedPages[currentPageIndex] = {
       ...updatedPages[currentPageIndex],
@@ -579,17 +493,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     };
     setPages(updatedPages);
 
-    // 2. Load target page
-    const target = updatedPages[targetIndex];
-    setStrokes(target.strokes);
-    setRedoStack(target.redoStack);
-    setUndoStack(target.undoStack || []);
-    setBackground(target.background);
+    const nextPage = updatedPages[targetIndex];
+    setStrokes(nextPage.strokes);
+    setRedoStack(nextPage.redoStack);
+    setUndoStack(nextPage.undoStack || []);
+    setBackground(nextPage.background);
     setCurrentPageIndex(targetIndex);
     laserTrailRef.current = [];
-  };
+  }, [pages, currentPageIndex, strokes, redoStack, undoStack, background]);
 
-  const handleAddPage = () => {
+  const handleAddPage = useCallback(() => {
     if (pages.length >= 10) return;
 
     const updatedPages = [...pages];
@@ -615,49 +528,46 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     setUndoStack([]);
     setRedoStack([]);
     laserTrailRef.current = [];
-  };
+  }, [pages, currentPageIndex, strokes, redoStack, undoStack, background]);
 
   // Export Handlers
-  const handleExportPdf = async () => {
+  const handleExportPdf = useCallback(async () => {
     setIsExporting(true);
     try {
-      const w = 1920;
-      const h = 1080;
-
-      const pagesToExport: ExportableBoardPage[] = pages.map((p, idx) =>
-        idx === currentPageIndex ? { ...p, strokes, background } : p
-      );
-
-      await exportAllPagesToPdf(pagesToExport.map(page => ({ ...page, backgroundColor: boardAppearance(page.background, theme, prefs.boardFollowTheme, prefs.boardColor).color })), w, h, snippets);
+      await exportBoardPagesToPdf({
+        pages,
+        currentPageIndex,
+        strokes,
+        background,
+        theme,
+        boardFollowTheme: prefs.boardFollowTheme,
+        boardColor: prefs.boardColor,
+        snippets,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PDF export failed');
     } finally {
       setIsExporting(false);
-
     }
-  };
+  }, [pages, currentPageIndex, strokes, background, theme, prefs.boardFollowTheme, prefs.boardColor, snippets, setError]);
 
-  const handleExportPng = async () => {
+  const handleExportPng = useCallback(async () => {
     setIsExporting(true);
     try {
-      const w = 1920;
-      const h = 1080;
-
-      const currentPage: ExportableBoardPage = {
-        id: pages[currentPageIndex]?.id || 'page-1',
+      await exportCurrentBoardToPng({
+        pages,
+        currentPageIndex,
         strokes,
         background,
-        backgroundColor: appearance.color
-      };
-
-      await exportPageToPng(currentPage, w, h, snippets, currentPageIndex + 1);
+        backgroundColor: appearance.color,
+        snippets,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Image export failed');
     } finally {
       setIsExporting(false);
-
     }
-  };
+  }, [pages, currentPageIndex, strokes, background, appearance.color, snippets, setError]);
 
   // Snippet Card Dragging
   const handleSnippetPointerDown = (id: string, e: React.PointerEvent) => {
@@ -675,11 +585,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
   const handleSnippetPointerMove = (id: string, e: React.PointerEvent) => {
     if (draggingSnippetId !== id) return;
-    const rect = stageRef.current!.getBoundingClientRect();
-    const snip = snippets.find(s => s.id === id);
-    const newX = Math.max(10, Math.min(1920 - (snip?.width || 300), (e.clientX - rect.left) * 1920 / rect.width - dragOffsetRef.current.x));
-    const newY = Math.max(10, Math.min(1000, (e.clientY - rect.top) * 1080 / rect.height - dragOffsetRef.current.y));
-    onUpdateSnippetPosition(id, newX, newY);
+    const { x, y } = computeDraggedSnippetCoords({
+      stageRect: stageRef.current!.getBoundingClientRect(),
+      clientX: e.clientX,
+      clientY: e.clientY,
+      offset: dragOffsetRef.current,
+      snippet: snippets.find((s) => s.id === id),
+    });
+    onUpdateSnippetPosition(id, x, y);
   };
 
   const handleSnippetPointerUp = (id: string, e: React.PointerEvent) => {
@@ -693,36 +606,115 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
   useEffect(() => {
     let alive = true;
-    setReady(false); setStatus('loading');
-    void readBoard(documentId).then(snapshot => {
-      if (!alive) return;
-      if (snapshot) {
-        const current = snapshot.pages[snapshot.currentPage];
-        setPages(snapshot.pages); setCurrentPageIndex(snapshot.currentPage);
-        setStrokes(current.strokes); setRedoStack(current.redoStack); setUndoStack(current.undoStack || []); setBackground(current.background);
-      }
-      onRestoreSnippets(snapshot?.snippets || []);
-      setReady(true); setStatus('saved');
-    }).catch(() => { if (alive) { setStatus('error'); setError(lang === 'ar' ? 'تعذر تحميل السبورة المحفوظة. أعد فتح الملف.' : 'Saved board could not be loaded. Reopen the document.'); } });
-    return () => { alive = false; };
+    void readBoard(documentId)
+      .then((snapshot) => {
+        if (!alive) return;
+        if (snapshot) {
+          const current = snapshot.pages[snapshot.currentPage];
+          setPages(snapshot.pages);
+          setCurrentPageIndex(snapshot.currentPage);
+          setStrokes(current.strokes);
+          setRedoStack(current.redoStack);
+          setUndoStack(current.undoStack || []);
+          setBackground(current.background);
+        }
+        onRestoreSnippets(snapshot?.snippets || []);
+        setDocSync({ docId: documentId, ready: true, status: 'saved', error: '' });
+      })
+      .catch(() => {
+        if (alive) {
+          setDocSync({
+            docId: documentId,
+            ready: false,
+            status: 'error',
+            error:
+              lang === 'ar'
+                ? 'تعذر تحميل السبورة المحفوظة. أعد فتح الملف.'
+                : 'Saved board could not be loaded. Reopen the document.',
+          });
+        }
+      });
+    return () => {
+      alive = false;
+    };
   }, [documentId, onRestoreSnippets, lang]);
+
   useEffect(() => {
     if (!ready || isDrawingRef.current || draggingSnippetId) return;
     let alive = true;
-    const snapshot = { pages: pages.map((page, index) => index === currentPageIndex ? { ...page, strokes, redoStack, undoStack, background } : page), currentPage: currentPageIndex, snippets };
-    setStatus('saving');
-    saveQueue.current = saveQueue.current.catch(() => {}).then(() => writeBoard(documentId, snapshot));
-    void saveQueue.current.then(() => { if (alive) setStatus('saved'); }).catch(() => { if (alive) setStatus('error'); });
-    return () => { alive = false; };
-  }, [ready, documentId, pages, currentPageIndex, strokes, redoStack, undoStack, background, snippets, drawingRevision, draggingSnippetId]);
+    const snapshot = { pages: syncedPages, currentPage: currentPageIndex, snippets };
+    saveQueue.current = saveQueue.current
+      .catch(() => {})
+      .then(() => {
+        if (alive) setStatus('saving');
+        return writeBoard(documentId, snapshot);
+      });
+    void saveQueue.current
+      .then(() => {
+        if (alive) setDocSync({ docId: documentId, ready: true, status: 'saved', error: '' });
+      })
+      .catch(() => {
+        if (alive) setStatus('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [ready, documentId, syncedPages, currentPageIndex, snippets, drawingRevision, draggingSnippetId, setStatus]);
+
   useLayoutEffect(() => {
-    registerBoard({ ready, tool: activeTool, color: selectedColor, width: selectedWidth, background, isDark: isDarkBg,
-      page: currentPageIndex + 1, pages: pages.length, canUndo: !!undoStack.length, canRedo: !!redoStack.length,
-      exporting: isExporting, status, error,
-      setTool: setActiveTool, setColor: setSelectedColor, setWidth: setSelectedWidth, setBackground,
-      undo: handleUndo, redo: handleRedo, clear: handleClearAll, addPage: handleAddPage,
-      goToPage: page => handleSwitchPage(page - 1), exportPdf: () => void handleExportPdf(), exportPng: () => void handleExportPng(), clip: () => onRequestAreaClip?.() });
-  }, [ready, activeTool, selectedColor, selectedWidth, background, currentPageIndex, pages, strokes, undoStack, redoStack, isExporting, status, error, snippets, registerBoard, onRequestAreaClip, isDarkBg, appearance.color, theme, prefs.boardFollowTheme, prefs.boardColor]);
+    registerBoard({
+      ready,
+      tool: activeTool,
+      color: selectedColor,
+      width: selectedWidth,
+      background,
+      isDark: isDarkBg,
+      page: currentPageIndex + 1,
+      pages: syncedPages.length,
+      canUndo: !!undoStack.length,
+      canRedo: !!redoStack.length,
+      exporting: isExporting,
+      status,
+      error,
+      setTool: setActiveTool,
+      setColor: setSelectedColor,
+      setWidth: setSelectedWidth,
+      setBackground,
+      undo: handleUndo,
+      redo: handleRedo,
+      clear: handleClearAll,
+      addPage: handleAddPage,
+      goToPage: (page) => handleSwitchPage(page - 1),
+      exportPdf: () => void handleExportPdf(),
+      exportPng: () => void handleExportPng(),
+      clip: () => onRequestAreaClip?.(),
+    });
+  }, [
+    ready,
+    activeTool,
+    selectedColor,
+    selectedWidth,
+    background,
+    currentPageIndex,
+    syncedPages.length,
+    undoStack.length,
+    redoStack.length,
+    isExporting,
+    status,
+    error,
+    registerBoard,
+    setSelectedColor,
+    setSelectedWidth,
+    handleUndo,
+    handleRedo,
+    handleClearAll,
+    handleAddPage,
+    handleSwitchPage,
+    handleExportPdf,
+    handleExportPng,
+    onRequestAreaClip,
+    isDarkBg,
+  ]);
   useEffect(() => () => registerBoard(null), [registerBoard]);
 
 
@@ -761,56 +753,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       />
 
       {/* Pinned PDF Snippets (Cards & Diagrams) */}
-      <div className="absolute inset-0 pointer-events-none z-15">
-        {snippets.map((snip) => (
-          <div
-            key={snip.id}
-            style={{
-              left: `${snip.x / 1920 * 100}%`, top: `${snip.y / 1080 * 100}%`,
-              width: `${snip.width / 1920 * 100}%`
-            }}
-            className="absolute top-0 left-0 pointer-events-auto rounded-2xl border border-line bg-surface/95 backdrop-blur-md shadow-xl overflow-hidden transition-shadow hover:shadow-2xl flex flex-col"
-          >
-            {/* Snippet Header */}
-            <div
-              onPointerDown={(e) => handleSnippetPointerDown(snip.id, e)}
-              onPointerMove={(e) => handleSnippetPointerMove(snip.id, e)}
-              onPointerUp={(e) => handleSnippetPointerUp(snip.id, e)}
-              className="flex items-center justify-between px-3 py-1.5 bg-hover-subtle border-b border-line cursor-grab active:cursor-grabbing text-ink-muted text-xs select-none"
-            >
-              <div className="flex items-center gap-1.5 font-semibold text-[11px] text-accent">
-                <Move className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? `اقتباس صفحة ${snip.pageNumber}` : `Page ${snip.pageNumber} Clip`}</span>
-              </div>
-              <button
-                type="button"
-                hidden={presentation}
-                onClick={() => onRemoveSnippet(snip.id)}
-                className="p-1 rounded-lg hover:bg-hover hover:text-danger-ink text-ink-muted transition-colors cursor-pointer"
-                title={lang === 'ar' ? 'إزالة الاقتباس' : 'Remove Snippet'}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Snippet Content */}
-            <div className="p-3 text-xs leading-relaxed max-h-72 overflow-y-auto">
-              {snip.type === 'image' ? (
-                <img
-                  src={snip.content}
-                  alt={lang === 'ar' ? 'مخطط من الكتاب' : 'Book Diagram'}
-                  className="w-full h-auto rounded-lg border border-line-subtle object-contain select-none pointer-events-none"
-                  draggable={false}
-                />
-              ) : (
-                <blockquote className="border-r-2 rtl:border-r-2 ltr:border-l-2 border-accent/60 pr-2 rtl:pr-2 ltr:pl-2 italic text-ink font-serif">
-                  {snip.content}
-                </blockquote>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <BoardSnippetOverlay
+        lang={lang}
+        snippets={snippets}
+        presentation={presentation}
+        onRemoveSnippet={onRemoveSnippet}
+        onPointerDown={handleSnippetPointerDown}
+        onPointerMove={handleSnippetPointerMove}
+        onPointerUp={handleSnippetPointerUp}
+      />
     </div>
   );
 };

@@ -151,9 +151,7 @@ impl InkTessellator {
             normals.push((nx, ny));
         }
 
-        for i in 0..n {
-            let p = &stroke.points[i];
-            let (nx, ny) = normals[i];
+        for (i, (p, &(nx, ny))) in stroke.points.iter().zip(normals.iter()).enumerate() {
             let width = stroke.base_width * p.pressure.clamp(0.2, 1.5);
             let half_w = width / 2.0;
 

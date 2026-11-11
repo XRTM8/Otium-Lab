@@ -112,8 +112,8 @@ impl DocumentScanner {
 
         // 2. Otsu threshold calculation
         let mut sum = 0f64;
-        for i in 0..256 {
-            sum += (i as f64) * (histogram[i] as f64);
+        for (i, &count) in histogram.iter().enumerate() {
+            sum += (i as f64) * (count as f64);
         }
 
         let total = total_pixels as f64;
@@ -122,8 +122,8 @@ impl DocumentScanner {
         let mut max_variance = 0f64;
         let mut optimal_threshold = 128u8;
 
-        for i in 0..256 {
-            w_b += histogram[i] as f64;
+        for (i, &count) in histogram.iter().enumerate() {
+            w_b += count as f64;
             if w_b == 0.0 {
                 continue;
             }
@@ -132,7 +132,7 @@ impl DocumentScanner {
                 break;
             }
 
-            sum_b += (i as f64) * (histogram[i] as f64);
+            sum_b += (i as f64) * (count as f64);
             let m_b = sum_b / w_b;
             let m_f = (sum - sum_b) / w_f;
 

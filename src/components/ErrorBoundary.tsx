@@ -6,28 +6,34 @@ interface Props {
   children: ReactNode;
   fallback?: ReactNode | ((error: Error, reset: () => void) => ReactNode);
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
-  resetKey?: any;
+  resetKey?: unknown;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+  prevResetKey?: unknown;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
+    prevResetKey: this.props.resetKey
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
-  public componentDidUpdate(prevProps: Props) {
-    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
-      this.setState({ hasError: false, error: null });
+  public static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+    if (state.prevResetKey !== props.resetKey) {
+      return {
+        prevResetKey: props.resetKey,
+        ...(state.hasError ? { hasError: false, error: null } : {})
+      };
     }
+    return null;
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {

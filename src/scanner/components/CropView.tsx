@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import type { Point, Quad } from '../core/types';
 import { getDefaultQuad, getFullFrameQuad, warpPerspectiveAsync, isQuadConvex } from '../core/geometry';
 import { detectDocumentCorners } from '../core/edgeDetection';
@@ -26,8 +26,33 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
   const [edgeDragStart, setEdgeDragStart] = useState<{ client: Point; quad: Quad } | null>(null);
   const [pointerPos, setPointerPos] = useState<Point | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [imageRect, setImageRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const hasInitializedRef = useRef(false);
+
+  const syncImageRect = useCallback(() => {
+    const img = imageRef.current;
+    if (!img) return;
+    const rect = img.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setImageRect({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    }
+  }, []);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    const onResize = () => syncImageRect();
+    window.addEventListener('resize', onResize);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && img) {
+      observer = new ResizeObserver(onResize);
+      observer.observe(img);
+    }
+    return () => {
+      window.removeEventListener('resize', onResize);
+      observer?.disconnect();
+    };
+  }, [syncImageRect, currentSrc]);
 
   // Undo / Redo History Stack
   const [undoStack, setUndoStack] = useState<Quad[]>([]);
@@ -98,6 +123,7 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
     if (!imageRef.current) return;
     const { naturalWidth, naturalHeight } = imageRef.current;
     setImageSize({ width: naturalWidth, height: naturalHeight });
+    syncImageRect();
 
     // Use passed initialQuad or default to safe full frame
     if (!hasInitializedRef.current) {
@@ -157,21 +183,21 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
     [imageSize]
   );
 
-  // Map natural image coords to viewport client coords
+  // Map natural image coords to viewport client coords (pure render lookup via imageRect state)
   const imageToClientCoords = useCallback(
     (point: Point): Point => {
-      if (!imageRef.current || imageSize.width <= 0 || imageSize.height <= 0) return { x: 0, y: 0 };
-      const rect = imageRef.current.getBoundingClientRect();
-      if (!rect || rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
-      const scaleX = rect.width / imageSize.width;
-      const scaleY = rect.height / imageSize.height;
+      if (!imageRect || imageSize.width <= 0 || imageSize.height <= 0 || imageRect.width <= 0 || imageRect.height <= 0) {
+        return { x: 0, y: 0 };
+      }
+      const scaleX = imageRect.width / imageSize.width;
+      const scaleY = imageRect.height / imageSize.height;
 
       return {
-        x: rect.left + point.x * scaleX,
-        y: rect.top + point.y * scaleY,
+        x: imageRect.left + point.x * scaleX,
+        y: imageRect.top + point.y * scaleY,
       };
     },
-    [imageSize]
+    [imageRect, imageSize]
   );
 
   const handleCornerPointerDown = (corner: CornerKey, e: React.PointerEvent) => {

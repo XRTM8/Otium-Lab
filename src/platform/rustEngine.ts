@@ -48,12 +48,12 @@ export async function fetchRustEngineStatus(): Promise<RustEngineStatus> {
 }
 
 /**
- * Fast native Rust PPTX parsing via otium-slides
+ * Fast native Rust PPTX parsing via otium-slides (raw binary IPC)
  */
 export async function parsePptxWithRust(bytes: Uint8Array): Promise<unknown | null> {
   if (!isTauriRuntime()) return null;
   try {
-    return await invoke('rust_parse_pptx', { bytes: Array.from(bytes) });
+    return await invoke('rust_parse_pptx', bytes);
   } catch (error) {
     console.warn('Rust PPTX parser fallback:', error);
     return null;
@@ -86,15 +86,16 @@ export async function generatePinWithRust(): Promise<string | null> {
 }
 
 /**
- * Native Rust Document Cleaner (Integer BT.601 + Otsu Adaptive Binarization)
+ * Native Rust Document Cleaner via raw binary IPC (Integer BT.601 + Otsu Adaptive Binarization)
  */
 export async function cleanDocumentWithRust(bytes: Uint8Array, contrastBoost = 1.2): Promise<Uint8Array | null> {
   if (!isTauriRuntime()) return null;
   try {
-    const cleaned = await invoke<ArrayBuffer | number[]>('rust_clean_document_image', {
-      bytes: Array.from(bytes),
-      contrastBoost,
-    });
+    const cleaned = await invoke<ArrayBuffer | number[]>(
+      'rust_clean_document_image',
+      bytes,
+      { headers: { 'x-contrast-boost': String(contrastBoost) } }
+    );
     return toUint8Array(cleaned);
   } catch (error) {
     console.warn('Rust document cleaner fallback:', error);
@@ -103,15 +104,19 @@ export async function cleanDocumentWithRust(bytes: Uint8Array, contrastBoost = 1
 }
 
 /**
- * Native Rust ID Card Stitcher (Combines Front + Back on A4 300 DPI)
+ * Native Rust ID Card Stitcher via raw binary IPC (Combines Front + Back on A4 300 DPI)
  */
 export async function stitchIdCardWithRust(frontBytes: Uint8Array, backBytes: Uint8Array): Promise<Uint8Array | null> {
   if (!isTauriRuntime()) return null;
   try {
-    const stitched = await invoke<ArrayBuffer | number[]>('rust_stitch_id_cards', {
-      frontBytes: Array.from(frontBytes),
-      backBytes: Array.from(backBytes),
-    });
+    const combined = new Uint8Array(frontBytes.byteLength + backBytes.byteLength);
+    combined.set(frontBytes, 0);
+    combined.set(backBytes, frontBytes.byteLength);
+    const stitched = await invoke<ArrayBuffer | number[]>(
+      'rust_stitch_id_cards',
+      combined,
+      { headers: { 'x-front-length': String(frontBytes.byteLength) } }
+    );
     return toUint8Array(stitched);
   } catch (error) {
     console.warn('Rust ID card stitcher fallback:', error);
@@ -141,6 +146,26 @@ export async function searchArabicWithTrigramIndexRust(text: string, query: stri
     return await invoke<RustSearchMatch[]>('rust_index_and_search_arabic', { text, query });
   } catch (error) {
     console.warn('Rust Trigram Index search fallback:', error);
+    return null;
+  }
+}
+
+/**
+ * Native cached multi-page Arabic Trigram Index search returning 1-based matching page numbers.
+ */
+export async function searchDocumentPagesWithRust(
+  docKey: string,
+  query: string,
+  pages: string[] | null
+): Promise<number[] | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    return await invoke<number[]>('rust_search_document_pages_arabic', {
+      docKey,
+      pages,
+      query,
+    });
+  } catch {
     return null;
   }
 }

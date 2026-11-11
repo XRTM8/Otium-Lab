@@ -9,7 +9,8 @@ import { ReaderOverlays } from '../components/ReaderOverlays';
 import { ReaderWorkspace } from '../components/ReaderWorkspace';
 import { TextSelectionMenu } from '../components/TextSelectionMenu';
 import { WelcomeScreen } from '../components/WelcomeScreen';
-import { TeachingProvider, useTeaching } from '../components/TeachingContext';
+import { TeachingProvider } from '../components/TeachingContext';
+import { useTeaching } from '../components/teachingContextValue';
 import { DocumentInkProvider } from '../components/DocumentInk';
 import { useMobileFullscreen } from '../platform/useMobileFullscreen';
 import { useDeviceUsage } from '../platform/deviceUsage';
@@ -89,19 +90,21 @@ const MobileReader: React.FC = () => {
 
   // Preload scanner chunk during idle moments so opening is 100% instant and lag-free
   React.useEffect(() => {
-    let timer: any = null;
+    let timer: number | null = null;
     if (typeof window !== 'undefined') {
-      const win = window as any;
+      const win = window as Window & {
+        requestIdleCallback?: (cb: () => void) => number;
+      };
       if (typeof win.requestIdleCallback === 'function') {
         win.requestIdleCallback(() => {
           void preloadScanner();
         });
       } else {
-        timer = win.setTimeout(() => void preloadScanner(), 1200);
+        timer = window.setTimeout(() => void preloadScanner(), 1200);
       }
     }
     return () => {
-      if (timer !== null) clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, []);
 

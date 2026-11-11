@@ -98,6 +98,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     };
   }, [showTopThemeMenu]);
 
+  const [referenceNow] = useState(() => Date.now());
+
   const loadRecents = async () => {
     const [docs, media] = await Promise.allSettled([getRecentDocumentsList(), listMedia()]);
     setLibraryLoadFailed(docs.status === 'rejected' || media.status === 'rejected');
@@ -108,7 +110,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   };
 
   useEffect(() => {
-    loadRecents();
+    let cancelled = false;
+    void Promise.allSettled([getRecentDocumentsList(), listMedia()]).then(([docs, media]) => {
+      if (cancelled) return;
+      setLibraryLoadFailed(docs.status === 'rejected' || media.status === 'rejected');
+      setRecents(previous => [
+        ...(docs.status === 'fulfilled' ? docs.value : previous.filter(item => !item.mediaKind)),
+        ...(media.status === 'fulfilled' ? media.value : previous.filter(item => !!item.mediaKind))
+      ].sort((a, b) => b.lastOpened - a.lastOpened));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -179,7 +192,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const formatDate = (timestamp: number) => {
     if (!timestamp) return '—';
     const date = new Date(timestamp);
-    const now = new Date();
+    const now = new Date(referenceNow);
 
     const isToday =
       date.getDate() === now.getDate() &&

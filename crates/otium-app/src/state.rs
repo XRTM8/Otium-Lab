@@ -289,6 +289,44 @@ impl AppState {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_state_cycles_themes_and_view_modes_cleanly() {
+        let mut state = AppState::new();
+        assert_eq!(state.current_theme, ThemeMode::OledBlack);
+        state.cycle_theme();
+        assert_eq!(state.current_theme, ThemeMode::WarmSepia);
+        state.cycle_theme();
+        assert_eq!(state.current_theme, ThemeMode::DayPaper);
+        state.cycle_theme();
+        assert_eq!(state.current_theme, ThemeMode::EInkMono);
+        state.cycle_theme();
+        assert_eq!(state.current_theme, ThemeMode::OledBlack);
+
+        assert_eq!(state.view_mode, ViewMode::SinglePage);
+        state.cycle_view_mode();
+        assert_eq!(state.view_mode, ViewMode::ContinuousScroll);
+        state.cycle_view_mode();
+        assert_eq!(state.view_mode, ViewMode::DualSpread);
+    }
+
+    #[test]
+    fn app_state_pagination_respects_bounds() {
+        let mut state = AppState::new();
+        state.total_pages = 3;
+        assert_eq!(state.current_page, 1);
+        assert!(state.next_page());
+        assert_eq!(state.current_page, 2);
+        assert!(state.next_page());
+        assert_eq!(state.current_page, 3);
+        assert!(!state.next_page());
+        assert_eq!(state.current_page, 3);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum OpenedFileType {
     Pdf {

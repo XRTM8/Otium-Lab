@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { TextLayer } from 'pdfjs-dist';
 import { AlertTriangle, RefreshCw, StickyNote, Trash2, X } from 'lucide-react';
@@ -6,8 +6,14 @@ import type { ThemeMode, TextAnnotation } from '../core/types';
 import type { Language } from '../core/i18n/translations';
 import { getCanvasPixelRatio } from '../core/reader/device';
 import { scheduleIdleWork, scheduleRender } from '../core/reader/renderScheduler';
-import { normalizeAnnotationRects } from '../core/annotations/geometry';
-import { DocumentInkLayer, useDocumentInteraction } from './DocumentInk';
+import { DocumentInkLayer } from './DocumentInk';
+import { useDocumentInteraction } from './documentInkContext';
+import {
+  drawAnnotationLayer,
+  PAGE_BACKGROUND,
+  supportsCanvasFilter,
+  themeFilter
+} from './pdfPageCanvas';
 
 interface PdfPageProps {
   doc: PDFDocumentProxy;
@@ -33,153 +39,6 @@ interface ActiveAnnotation {
   y: number;
 }
 
-const PAGE_BACKGROUND: Record<ThemeMode, string> = {
-  amoled: '#000000',
-  midnight: '#06090f',
-  amber: '#18130e',
-  parchment: '#fbf6ea',
-  eink: '#eaeaea',
-  pure: '#ffffff',
-  paper: '#f7f4ee',
-  sakura: '#fdf6f7',
-  forest: '#0c1813',
-  nordic: '#15181e'
-};
-
-const THEME_FILTERS: Partial<Record<ThemeMode, string>> = {
-  // 1. OLED Black: Invert white canvas, calibrate text to soft silver-white (#E6E6E6) to prevent darkroom glare
-  amoled: 'invert(1) hue-rotate(180deg) contrast(1.04) brightness(0.92)',
-  // 2. Warm Sepia: Deep candlelit amber warmth with 100% blue-light suppression for late night reading
-  amber: 'invert(0.92) sepia(0.72) hue-rotate(-22deg) contrast(1.04) brightness(0.88)',
-  // 3. Day Paper: Authentic warm paper texture tint, softens stark digital white PDFs into comfortable daylight book paper
-  paper: 'sepia(0.20) contrast(0.98) brightness(0.98)',
-  // 4. E-Ink Mono: Pristine grayscale contrast mirroring Kindle Paperwhite
-  eink: 'grayscale(1) contrast(1.15) brightness(0.96)',
-  // Legacy aliases for backward compatibility
-  midnight: 'invert(0.92) hue-rotate(185deg) contrast(1.02) brightness(0.96)',
-  forest: 'invert(0.92) sepia(0.35) hue-rotate(90deg) contrast(1.02) brightness(0.96)',
-  nordic: 'invert(0.92) hue-rotate(175deg) contrast(1.02) brightness(0.94)'
-};
-
-function themeFilter(theme: ThemeMode): string | null {
-  return THEME_FILTERS[theme] ?? null;
-}
-
-/**
- * A full-page CSS filter is repainted on every scroll frame in Android's
- * WebView and is the main reason dark themes felt like 30 fps. Applying the
- * same filter once while copying the finished raster into the visible canvas
- * gives identical colours with no per-frame cost. The CSS path remains as a
- * fallback for a WebView whose Canvas2D implementation ignores `filter`.
- */
-let canvasFilterSupport: boolean | null = null;
-
-function supportsCanvasFilter(): boolean {
-  if (canvasFilterSupport !== null) return canvasFilterSupport;
-
-  try {
-    const probe = document.createElement('canvas');
-    probe.width = 1;
-    probe.height = 1;
-    const context = probe.getContext('2d');
-    if (!context) {
-      canvasFilterSupport = false;
-      return false;
-    }
-    context.filter = 'invert(1)';
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, 1, 1);
-    canvasFilterSupport = context.getImageData(0, 0, 1, 1).data[0] < 64;
-  } catch {
-    canvasFilterSupport = false;
-  }
-
-  return canvasFilterSupport;
-}
-
-
-function hexToRgb(hex: string): [number, number, number] {
-  const value = hex.replace('#', '').trim();
-  const full = value.length === 3
-    ? value.split('').map((character) => character + character).join('')
-    : value;
-  if (/^[0-9a-f]{6}$/i.test(full)) {
-    return [
-      Number.parseInt(full.slice(0, 2), 16),
-      Number.parseInt(full.slice(2, 4), 16),
-      Number.parseInt(full.slice(4, 6), 16)
-    ];
-  }
-  return [253, 224, 71];
-}
-
-function drawAnnotationLayer(
-  canvas: HTMLCanvasElement,
-  annotations: TextAnnotation[],
-  width: number,
-  height: number,
-  dark: boolean
-): void {
-  const ratio = Math.min(
-    getCanvasPixelRatio(),
-    Math.sqrt(3_600_000 / Math.max(1, width * height))
-  );
-  const backingWidth = Math.max(1, Math.round(width * ratio));
-  const backingHeight = Math.max(1, Math.round(height * ratio));
-
-  if (canvas.width !== backingWidth) canvas.width = backingWidth;
-  if (canvas.height !== backingHeight) canvas.height = backingHeight;
-
-  const context = canvas.getContext('2d');
-  if (!context) return;
-
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
-
-  for (const annotation of annotations) {
-    const [red, green, blue] = hexToRgb(annotation.color);
-    const rects = normalizeAnnotationRects(annotation.rects);
-
-    if (annotation.type === 'underline') {
-      context.strokeStyle = `rgba(${red}, ${green}, ${blue}, 0.92)`;
-      context.lineWidth = 2.2;
-      context.lineCap = 'round';
-      for (const rect of rects) {
-        const x = rect.xPct * width;
-        const y = (rect.yPct + rect.heightPct) * height - 1;
-        context.beginPath();
-        context.moveTo(x, y);
-        context.lineTo(x + rect.widthPct * width, y);
-        context.stroke();
-      }
-      continue;
-    }
-
-    for (const rect of rects) {
-      const x = rect.xPct * width;
-      const y = rect.yPct * height;
-      const rectWidth = rect.widthPct * width;
-      const rectHeight = rect.heightPct * height;
-
-      // Clean physical highlighter gradient without blur or muddy halos
-      const gradient = context.createLinearGradient(0, y, 0, y + rectHeight);
-      gradient.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${dark ? 0.65 : 0.48})`);
-      gradient.addColorStop(0.65, `rgba(${red}, ${green}, ${blue}, ${dark ? 0.55 : 0.40})`);
-      gradient.addColorStop(1, `rgba(${red}, ${green}, ${blue}, ${dark ? 0.45 : 0.32})`);
-      context.fillStyle = gradient;
-
-      const radius = Math.min(3, rectHeight / 2);
-      context.beginPath();
-      if (typeof context.roundRect === 'function') {
-        context.roundRect(x, y, rectWidth, rectHeight, radius);
-      } else {
-        context.rect(x, y, rectWidth, rectHeight);
-      }
-      context.fill();
-    }
-  }
-}
-
 const PdfPageView: React.FC<PdfPageProps> = ({
   doc,
   pageNumber,
@@ -202,19 +61,21 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   const renderedKeyRef = useRef('');
   const priorityRef = useRef(renderPriority);
 
-  const [isVisible, setIsVisible] = useState(false);
-  const [hasRenderedOnce, setHasRenderedOnce] = useState(false);
-  const [rasterScale, setRasterScale] = useState(scale);
-  const [renderError, setRenderError] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+  const [renderedTarget, setRenderedTarget] = useState<{ doc: PDFDocumentProxy; page: number } | null>(null);
+  const [rasterState, setRasterState] = useState<{ doc: PDFDocumentProxy; page: number; scale: number }>(() => ({ doc, page: pageNumber, scale }));
+  const [errorTarget, setErrorTarget] = useState<{ doc: PDFDocumentProxy; page: number; message: string } | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [textLayerVersion, setTextLayerVersion] = useState(0);
   const [activeAnno, setActiveAnno] = useState<ActiveAnnotation | null>(null);
+
+  const hasRenderedOnce = renderedTarget?.doc === doc && renderedTarget?.page === pageNumber;
+  const renderError = errorTarget?.doc === doc && errorTarget?.page === pageNumber ? errorTarget.message : null;
+  const rasterScale = rasterState.doc === doc && rasterState.page === pageNumber ? rasterState.scale : scale;
+
   const scaleRef = useRef(scale);
-  scaleRef.current = scale;
   const rasterScaleRef = useRef(rasterScale);
-  rasterScaleRef.current = rasterScale;
-  const hasRenderedOnceRef = useRef(false);
-  hasRenderedOnceRef.current = hasRenderedOnce;
+  const hasRenderedOnceRef = useRef(hasRenderedOnce);
   const wasVisibleRef = useRef(false);
   const isDark = theme === 'amoled' || theme === 'midnight' || theme === 'amber' || theme === 'forest' || theme === 'nordic';
   const cssThemeFilter = useMemo(() => {
@@ -222,9 +83,12 @@ const PdfPageView: React.FC<PdfPageProps> = ({
     return filter && !supportsCanvasFilter() ? filter : undefined;
   }, [theme]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     priorityRef.current = renderPriority;
-  }, [renderPriority]);
+    scaleRef.current = scale;
+    rasterScaleRef.current = rasterScale;
+    hasRenderedOnceRef.current = hasRenderedOnce;
+  }, [renderPriority, scale, rasterScale, hasRenderedOnce]);
 
   // The PDF page's unscaled size is fixed; scaling it synchronously keeps
   // gesture zoom anchored to the fingers instead of waiting for a render.
@@ -269,9 +133,6 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   useEffect(() => {
     renderedKeyRef.current = '';
     hasRenderedOnceRef.current = false;
-    setHasRenderedOnce(false);
-    setRenderError(null);
-    setRasterScale(scaleRef.current);
     if (textLayerRef.current) {
       delete textLayerRef.current.dataset.pageRendered;
     }
@@ -286,16 +147,21 @@ const PdfPageView: React.FC<PdfPageProps> = ({
     }
     const justBecameVisible = !wasVisibleRef.current;
     wasVisibleRef.current = true;
+    const syncScale = () => {
+      setRasterState((prev) =>
+        prev.doc === doc && prev.page === pageNumber && Math.abs(prev.scale - scale) < 0.0001
+          ? prev
+          : { doc, page: pageNumber, scale }
+      );
+    };
     if (justBecameVisible || !hasRenderedOnceRef.current) {
-      setRasterScale((prev) => (Math.abs(prev - scale) < 0.0001 ? prev : scale));
-      return;
+      const frame = window.requestAnimationFrame(syncScale);
+      return () => window.cancelAnimationFrame(frame);
     }
     if (Math.abs(rasterScaleRef.current - scale) < 0.0001) return;
-    const timer = window.setTimeout(() => {
-      setRasterScale(scale);
-    }, 90);
+    const timer = window.setTimeout(syncScale, 90);
     return () => window.clearTimeout(timer);
-  }, [scale, isVisible]);
+  }, [doc, pageNumber, scale, isVisible]);
 
   // Auto-heal canvas on GPU context restoration (e.g. after low-memory resume)
   useEffect(() => {
@@ -317,7 +183,6 @@ const PdfPageView: React.FC<PdfPageProps> = ({
     if (!element) return;
 
     if (typeof IntersectionObserver === 'undefined') {
-      setIsVisible(true);
       return;
     }
 
@@ -446,8 +311,8 @@ const PdfPageView: React.FC<PdfPageProps> = ({
 
         currentRenderTaskRef.current = null;
         renderedKeyRef.current = renderKey;
-        setHasRenderedOnce(true);
-        setRenderError(null);
+        setRenderedTarget({ doc, page: pageNumber });
+        setErrorTarget(null);
 
         // Keep the CSS viewport values on record for debugging and for the
         // text layer, which must match the raster at every scale.
@@ -457,7 +322,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         const name = (error as { name?: string } | null)?.name;
         if (!cancelled && name !== 'RenderingCancelledException') {
           console.warn(`Render notice on page ${pageNumber}:`, error);
-          setRenderError((error as Error)?.message || 'Render failed');
+          setErrorTarget({ doc, page: pageNumber, message: (error as Error)?.message || 'Render failed' });
         }
       } finally {
         if (staging) {
@@ -487,7 +352,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
         currentRenderTaskRef.current = null;
       }
     };
-  }, [doc, pageNumber, rasterScale, theme, isVisible, retryKey]);
+  }, [doc, pageNumber, rasterScale, pageSize.width, pageSize.height, theme, isVisible, retryKey]);
 
   // The text layer is laid out once at the page's natural size and scaled with
   // a CSS transform. Rebuilding it on every zoom step destroyed any selection
@@ -810,7 +675,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
           <button
             type="button"
             onClick={() => {
-              setRenderError(null);
+              setErrorTarget(null);
               setRetryKey((k) => k + 1);
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-hover border border-line text-xs font-medium text-ink hover:bg-hover-strong active:scale-95 transition-all cursor-pointer shadow-xs"

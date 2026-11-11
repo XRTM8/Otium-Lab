@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReaderController } from '../../app/useReaderController';
 import { ReaderWorkspace } from '../../components/ReaderWorkspace';
-import { useTeaching } from '../../components/TeachingContext';
+import { useTeaching } from '../../components/teachingContextValue';
 import { ResizeDivider } from './ResizeDivider';
 import type { BoardSnippet } from '../types';
 import { computeOptimalPageScale } from '../../core/reader/device';
@@ -24,20 +24,34 @@ export const BoardSplitWorkspace: React.FC<BoardSplitWorkspaceProps> = ({ reader
   const teaching = useTeaching();
   const containerRef = useRef<HTMLDivElement>(null);
   const { layout, setLayout, setTarget } = teaching;
-  const [splitPercent, setSplitPercent] = useState(() => layout === 'document' ? 100 : layout === 'board' ? 0 : 50);
-  const [boardMounted, setBoardMounted] = useState(() => layout !== 'document');
+  const [splitPercentState, setSplitPercentState] = useState<{ layout: string; percent: number }>({
+    layout,
+    percent: layout === 'document' ? 100 : layout === 'board' ? 0 : 50,
+  });
+  const [lastSplitPercent, setLastSplitPercent] = useState(50);
+  const [boardEverOpened, setBoardEverOpened] = useState(() => layout !== 'document');
   const [isDragging, setIsDragging] = useState(false);
   const [isAreaClipOpen, setIsAreaClipOpen] = useState(false);
   const requestAreaClip = useCallback(() => setIsAreaClipOpen(true), []);
-  useEffect(() => {
-    setSplitPercent(previous => {
-      const next = layout === 'document' ? 100 : layout === 'board' ? 0 : previous > 0 && previous < 100 ? previous : 50;
-      return previous === next ? previous : next;
-    });
+
+  const splitPercent =
+    splitPercentState.layout === layout
+      ? splitPercentState.percent
+      : layout === 'document'
+        ? 100
+        : layout === 'board'
+          ? 0
+          : lastSplitPercent > 0 && lastSplitPercent < 100
+            ? lastSplitPercent
+            : 50;
+
+  const setSplitPercent = useCallback((value: number) => {
+    setSplitPercentState({ layout, percent: value });
+    if (value > 0 && value < 100) setLastSplitPercent(value);
+    if (value < 100) setBoardEverOpened(true);
   }, [layout]);
-  useEffect(() => {
-    if (splitPercent < 100 || isDragging) setBoardMounted(true);
-  }, [splitPercent, isDragging]);
+
+  const boardMounted = boardEverOpened || splitPercent < 100 || isDragging;
   useEffect(() => { setLayout('document'); }, [reader.docId, setLayout]);
   const { doc, scrollContainerRef, setZoom, basePageSize, viewMode } = reader;
   const wasDraggingRef = useRef(false);
