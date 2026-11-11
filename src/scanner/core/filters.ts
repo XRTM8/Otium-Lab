@@ -1,11 +1,23 @@
 import type { FilterType } from './types';
+import { canvasToPngBytes, cleanDocumentWithRust, drawPngBytesOnCanvas } from '../../platform/rustEngine';
 import { runWasmFilter } from './wasmEngine';
+
+async function tryNativeCleanFilter(
+  destCanvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D
+): Promise<boolean> {
+  const pngBytes = await canvasToPngBytes(destCanvas);
+  if (!pngBytes) return false;
+  const cleaned = await cleanDocumentWithRust(pngBytes, 1.2);
+  if (!cleaned || cleaned.byteLength === 0) return false;
+  return drawPngBytesOnCanvas(cleaned, destCanvas, ctx, false);
+}
 
 /**
  * Asynchronous Document Enhancement Engine.
  * Dispatches pixel math to the Rust WebAssembly Web Worker (`otium_wasm.wasm`)
- * with transferable RGBA buffers and falls back transparently to pure JS if
- * Workers/WASM are unavailable in the current environment.
+ * with transferable RGBA buffers and falls back to native Rust Tauri IPC (`clean`)
+ * or pure JS if Workers/WASM are unavailable in the current environment.
  */
 export async function applyFilterAsync(
   sourceCanvas: HTMLCanvasElement,
@@ -33,6 +45,9 @@ export async function applyFilterAsync(
         const outImg = ctx.createImageData(width, height);
         outImg.data.set(wasmFiltered);
         ctx.putImageData(outImg, 0, 0);
+        return destCanvas;
+      }
+      if (filter === 'clean' && (await tryNativeCleanFilter(destCanvas, ctx))) {
         return destCanvas;
       }
     }

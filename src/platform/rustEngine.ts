@@ -7,13 +7,52 @@ export interface RustEngineStatus {
   modules: string[];
 }
 
-export interface RustSearchMatch {
-  start_offset: number;
-  end_offset: number;
-}
-
 function toUint8Array(payload: ArrayBuffer | number[]): Uint8Array {
   return payload instanceof ArrayBuffer ? new Uint8Array(payload) : new Uint8Array(payload);
+}
+
+/**
+ * Encodes an HTMLCanvasElement to raw PNG bytes for native binary IPC transfer.
+ */
+export async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array | null> {
+  if (typeof canvas.toBlob !== 'function') return null;
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return null;
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/**
+ * Decodes raw PNG bytes returned from Rust IPC onto a destination canvas context.
+ */
+export async function drawPngBytesOnCanvas(
+  pngBytes: Uint8Array,
+  target: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  resizeToImage = false
+): Promise<boolean> {
+  if (typeof URL === 'undefined' || typeof Image === 'undefined') return false;
+  const copy = new Uint8Array(pngBytes.byteLength);
+  copy.set(pngBytes);
+  const url = URL.createObjectURL(new Blob([copy.buffer], { type: 'image/png' }));
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('PNG decode failed'));
+      el.src = url;
+    });
+    if (resizeToImage) {
+      target.width = img.naturalWidth || target.width;
+      target.height = img.naturalHeight || target.height;
+    }
+    ctx.clearRect(0, 0, target.width, target.height);
+    ctx.drawImage(img, 0, 0, target.width, target.height);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export async function fetchRustEngineStatus(): Promise<RustEngineStatus> {
@@ -74,18 +113,6 @@ export async function generateQrWithRust(payload: string): Promise<string | null
 }
 
 /**
- * Native Rust pairing PIN generation via otium-beam
- */
-export async function generatePinWithRust(): Promise<string | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    return await invoke<string>('rust_generate_pairing_pin');
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Native Rust Document Cleaner via raw binary IPC (Integer BT.601 + Otsu Adaptive Binarization)
  */
 export async function cleanDocumentWithRust(bytes: Uint8Array, contrastBoost = 1.2): Promise<Uint8Array | null> {
@@ -120,32 +147,6 @@ export async function stitchIdCardWithRust(frontBytes: Uint8Array, backBytes: Ui
     return toUint8Array(stitched);
   } catch (error) {
     console.warn('Rust ID card stitcher fallback:', error);
-    return null;
-  }
-}
-
-/**
- * Native Rust Arabic-aware search matching (Sub-millisecond diacritic & letter folding)
- */
-export async function searchArabicTextWithRust(haystack: string, query: string): Promise<RustSearchMatch[] | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    return await invoke<RustSearchMatch[]>('rust_search_arabic_text', { haystack, query });
-  } catch (error) {
-    console.warn('Rust Arabic search fallback:', error);
-    return null;
-  }
-}
-
-/**
- * Cached Sub-Millisecond Arabic Trigram Inverted Index Search
- */
-export async function searchArabicWithTrigramIndexRust(text: string, query: string): Promise<RustSearchMatch[] | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    return await invoke<RustSearchMatch[]>('rust_index_and_search_arabic', { text, query });
-  } catch (error) {
-    console.warn('Rust Trigram Index search fallback:', error);
     return null;
   }
 }

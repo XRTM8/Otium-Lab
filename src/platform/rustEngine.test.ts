@@ -4,7 +4,6 @@ import {
   fetchRustEngineStatus,
   parsePptxWithRust,
   generateQrWithRust,
-  generatePinWithRust,
   cleanDocumentWithRust,
   stitchIdCardWithRust,
   searchDocumentPagesWithRust,
@@ -33,7 +32,6 @@ describe('rustEngine platform integration', () => {
     const dummyBytes = new Uint8Array([1, 2, 3]);
     expect(await parsePptxWithRust(dummyBytes)).toBeNull();
     expect(await generateQrWithRust('OTM-1234')).toBeNull();
-    expect(await generatePinWithRust()).toBeNull();
     expect(await cleanDocumentWithRust(dummyBytes)).toBeNull();
     expect(await stitchIdCardWithRust(dummyBytes, dummyBytes)).toBeNull();
     expect(await searchDocumentPagesWithRust('doc-1', 'تجربة', ['محتوى تجربة'])).toBeNull();

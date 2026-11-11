@@ -1,7 +1,6 @@
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::State;
@@ -17,9 +16,6 @@ const ALLOWED_MEDIA_EXTENSIONS: &[&str] = &[
   "mp4", "m4v", "webm", "mov", "mkv", "ogv", "mp3", "wav", "m4a", "ogg",
   "opus", "flac", "txt", "md",
 ];
-
-#[derive(Default)]
-struct SearchIndexCache(Mutex<Vec<(String, Arc<otium_core::ArabicTrigramIndex>)>>);
 
 #[derive(serde::Serialize, Clone)]
 struct InitialPdf {
@@ -68,11 +64,6 @@ async fn rust_parse_pptx(request: Request<'_>) -> Result<otium_slides::SlidePres
 #[tauri::command]
 fn rust_generate_beam_qr(payload: String) -> Result<String, String> {
   otium_beam::BeamPairing::generate_qr_svg(&payload).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn rust_generate_pairing_pin() -> String {
-  otium_beam::BeamPairing::generate_pin()
 }
 
 #[tauri::command]
@@ -127,43 +118,6 @@ async fn rust_stitch_id_cards(request: Request<'_>) -> Result<Response, String> 
   .map_err(|e| e.to_string())??;
 
   Ok(Response::new(png_bytes))
-}
-
-#[tauri::command]
-fn rust_search_arabic_text(haystack: String, query: String) -> Vec<otium_core::SearchMatch> {
-  otium_core::find_arabic_matches(&haystack, &query)
-}
-
-#[tauri::command]
-fn rust_index_and_search_arabic(
-  text: String,
-  query: String,
-  cache: State<'_, SearchIndexCache>,
-) -> Vec<otium_core::SearchMatch> {
-  let cached_index = {
-    let mut entries = cache.0.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(pos) = entries.iter().position(|(cached_text, _)| cached_text == &text) {
-      let item = entries.remove(pos);
-      let index = Arc::clone(&item.1);
-      entries.push(item);
-      Some(index)
-    } else {
-      None
-    }
-  };
-
-  if let Some(index) = cached_index {
-    return index.search(&query);
-  }
-
-  let built = Arc::new(otium_core::ArabicTrigramIndex::build(&text));
-  let results = built.search(&query);
-  let mut entries = cache.0.lock().unwrap_or_else(|e| e.into_inner());
-  if entries.len() >= 4 {
-    entries.remove(0);
-  }
-  entries.push((text, built));
-  results
 }
 
 #[tauri::command]
@@ -283,7 +237,6 @@ pub fn run() {
   clear_legacy_service_worker();
 
   let builder = tauri::Builder::default()
-    .manage(SearchIndexCache::default())
     .manage(otium_core::PageSearchCache::default())
     .plugin(tauri_plugin_opener::init());
 
@@ -301,11 +254,8 @@ pub fn run() {
       get_rust_engine_status,
       rust_parse_pptx,
       rust_generate_beam_qr,
-      rust_generate_pairing_pin,
       rust_clean_document_image,
       rust_stitch_id_cards,
-      rust_search_arabic_text,
-      rust_index_and_search_arabic,
       rust_search_document_pages_arabic
     ])
     .setup(|_app| {
@@ -321,4 +271,70 @@ pub fn run() {
     })
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn rust_engine_status_lists_active_modules() {
+    let status = get_rust_engine_status();
+    assert!(status.is_active);
+    assert!(status.version.contains("2.0.0-lab"));
+    assert_eq!(status.modules.len(), 4);
+  }
+
+  #[test]
+  fn beam_qr_command_generates_valid_svg_output() {
+    let svg = rust_generate_beam_qr("https://xrtm8.github.io/Otium-Lab/?room=OTM-TEST".into())
+      .expect("qr svg generation");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("</svg>"));
+  }
+
+  #[test]
+  fn tauri_fs_guard_blocks_invalid_files_and_accepts_pdf_magic() {
+    let dir = std::env::temp_dir().join(format!("otium-tauri-test-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("temp dir");
+
+    let good_pdf = dir.join("valid.pdf");
+    fs::write(&good_pdf, b"%PDF-1.6\n1 0 obj\n<<>>\nendobj\n").expect("write pdf");
+    let verified = otium_core::validate_local_file(
+      good_pdf.to_str().expect("utf8 path"),
+      &["pdf"],
+      MAX_SUPPORTED_PDF_SIZE,
+      true,
+    );
+    assert!(verified.is_ok());
+
+    let disallowed = dir.join("script.ps1");
+    fs::write(&disallowed, b"Write-Host 1").expect("write ps1");
+    let rejected = otium_core::validate_local_file(
+      disallowed.to_str().expect("utf8 path"),
+      ALLOWED_MEDIA_EXTENSIONS,
+      MAX_SUPPORTED_MEDIA_SIZE,
+      false,
+    );
+    assert!(rejected.is_err());
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn page_search_cache_normalizes_arabic_queries() {
+    let cache = otium_core::PageSearchCache::default();
+    let hits = cache
+      .search_or_build(
+        "doc-tauri-test".into(),
+        Some(vec![
+          "مقدمة في الرياضيات".into(),
+          "الشبكات والإدارة الحديثة".into(),
+        ]),
+        "الادارة",
+      )
+      .expect("search should succeed");
+    assert_eq!(hits, vec![2]);
+  }
 }

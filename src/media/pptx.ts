@@ -1,4 +1,5 @@
 import { LocalZip, resolvePart } from './zip';
+import { parsePptxWithRust } from '../platform/rustEngine';
 const all = (node: Document | Element, name: string) => [...node.getElementsByTagName('*')].filter(item => item.localName === name);
 const first = (node: Document | Element | undefined, name: string) => node ? all(node, name)[0] : undefined;
 const num = (node: Element | undefined, key: string, fallback = 0) => {
@@ -114,7 +115,7 @@ export type SlideElement = { x: number; y: number; width: number; height: number
   fill: string; stroke: string; strokeWidth: number; parentTransform: string; insets: number[]; anchor: string;
   paragraphs: { align: string; rtl: boolean; runs: SlideRun[] }[]; image?: Blob };
 export type Slide = { background: string; elements: SlideElement[]; limited: boolean };
-export type Deck = { zip: LocalZip; slides: string[]; width: number; height: number; theme: Record<string, string> };
+export type Deck = { zip: LocalZip; slides: string[]; width: number; height: number; theme: Record<string, string>; nativeSummary?: unknown };
 const child = (node: Element | undefined, name: string) => node ? [...node.children].find(item => item.localName === name) : undefined;
 const geometries = new Set(['rect', 'roundRect', 'ellipse', 'triangle', 'rtTriangle', 'diamond', 'line']);
 function placeholderShape(doc: Document | undefined, placeholder: Element | undefined) {
@@ -144,7 +145,9 @@ export async function openPptx(buffer: ArrayBuffer, signal?: AbortSignal): Promi
     if (scheme) for (const item of scheme.children) theme[item.localName] = color(item, theme, '#000000');
     theme.tx1 = theme.dk1; theme.bg1 = theme.lt1;
   }
-  return { zip, slides, width: width / 12700, height: height / 12700, theme };
+  const nativeSummary = await parsePptxWithRust(new Uint8Array(buffer));
+  signal?.throwIfAborted();
+  return { zip, slides, width: width / 12700, height: height / 12700, theme, ...(nativeSummary ? { nativeSummary } : {}) };
 }
 
 export async function readSlide(deck: Deck, page: number, signal?: AbortSignal): Promise<Slide> {

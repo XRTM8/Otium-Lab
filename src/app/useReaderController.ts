@@ -3,21 +3,15 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type {
   FontFamilyId,
   ReadingDirection,
-  TextAnnotation,
   ViewMode,
 } from '../core/types';
 import type { Language } from '../core/i18n/translations';
-import { validSelectionRects } from '../core/annotations/textSync';
-import { renameStoredDocument } from '../core/storage/documents';
-import { executeBackStep } from '../core/navigation/backHandler';
-import { applyFontFamily, getSavedFont, saveFont } from '../core/settings/fonts';
+import { applyFontFamily, getSavedFont } from '../core/settings/fonts';
 import {
   loadLanguage,
   loadMobileNavVisible,
   loadReadingDirection,
   loadViewMode,
-  saveLanguage,
-  saveMobileNavVisible,
   saveReadingDirection,
   saveViewMode,
 } from '../core/settings/preferences';
@@ -28,10 +22,8 @@ import { beamService } from '../board/beam/beamService';
 import { useAutoBeamDocument } from '../board/beam/useAutoBeamDocument';
 import {
   EMPTY_PASSWORD_MODAL,
-  observeDocumentFullscreen,
   type PasswordModalState,
   type ReaderCapabilities,
-  toggleDocumentFullscreen,
 } from './readerControllerHelpers';
 import { useReaderThemeAndWake } from './useReaderThemeAndWake';
 import { useReaderViewportAndZoom } from './useReaderViewportAndZoom';
@@ -40,8 +32,28 @@ import { useReaderBookmarksAndAnnotations } from './useReaderBookmarksAndAnnotat
 import { useReaderDocumentLoader } from './useReaderDocumentLoader';
 import { useReaderBeamSync } from './useReaderBeamSync';
 import { useReaderKeyboardShortcuts } from './useReaderKeyboardShortcuts';
+import { useReaderBackNavigation } from './useReaderBackNavigation';
+import { useReaderBeamState } from './useReaderBeamState';
+import { useReaderDocumentActions } from './useReaderDocumentActions';
 
 export type { ReaderCapabilities } from './readerControllerHelpers';
+
+function useOverlayFlag(onOpen: () => void) {
+  const [value, setRaw] = useState(false);
+  const ref = useRef(value);
+  useLayoutEffect(() => {
+    ref.current = value;
+  }, [value]);
+  const setValue = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolved = typeof next === 'function' ? next(ref.current) : next;
+      setRaw(resolved);
+      if (resolved) onOpen();
+    },
+    [onOpen]
+  );
+  return [value, setValue] as const;
+}
 
 export function useReaderController(capabilities: ReaderCapabilities) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
@@ -75,37 +87,10 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     saveReadingDirection(dir);
   }, []);
 
-  const [isSidebarOpen, setIsSidebarOpenRaw] = useState(false);
-  const [isSearchOpen, setIsSearchOpenRaw] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpenRaw] = useState(false);
-  const isSidebarOpenRef = useRef(isSidebarOpen);
-  const isSearchOpenRef = useRef(isSearchOpen);
-  const isSettingsOpenRef = useRef(isSettingsOpen);
-  useLayoutEffect(() => {
-    isSidebarOpenRef.current = isSidebarOpen;
-    isSearchOpenRef.current = isSearchOpen;
-    isSettingsOpenRef.current = isSettingsOpen;
-  }, [isSidebarOpen, isSearchOpen, isSettingsOpen]);
-
-  const setIsSidebarOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
-    const value = typeof next === 'function' ? next(isSidebarOpenRef.current) : next;
-    setIsSidebarOpenRaw(value);
-    if (value) setIsImmersive(false);
-  }, []);
-
-  const setIsSearchOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
-    const value = typeof next === 'function' ? next(isSearchOpenRef.current) : next;
-    setIsSearchOpenRaw(value);
-    if (value) setIsImmersive(false);
-  }, []);
-
-  const setIsSettingsOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
-    const value = typeof next === 'function' ? next(isSettingsOpenRef.current) : next;
-    setIsSettingsOpenRaw(value);
-    if (value) setIsImmersive(false);
-  }, []);
-
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const exitImmersive = useCallback(() => setIsImmersive(false), []);
+  const [isSidebarOpen, setIsSidebarOpen] = useOverlayFlag(exitImmersive);
+  const [isSearchOpen, setIsSearchOpen] = useOverlayFlag(exitImmersive);
+  const [isSettingsOpen, setIsSettingsOpen] = useOverlayFlag(exitImmersive);
   const [isLoading, setIsLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState<number | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
@@ -116,39 +101,12 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   const [passwordModal, setPasswordModal] = useState<PasswordModalState>(EMPTY_PASSWORD_MODAL);
   const [fileSizeBytes, setFileSizeBytes] = useState<number>(0);
 
-  const [beamState, setBeamState] = useState<{ room: string | null; role: 'receiver' | 'sender' | null }>({
-    room: beamService.getConnectedRoom(),
-    role: beamService.getRole(),
-  });
-  const [beamPeerConnected, setBeamPeerConnected] = useState(beamService.getPeerState().connected);
-  const beamSelectionKey = `${docId ?? ''}:${beamPeerConnected ? 1 : 0}`;
-  const [beamSelectionState, setBeamSelectionState] = useState<{
-    key: string;
-    value: TextAnnotation | null;
-  }>({ key: beamSelectionKey, value: null });
-  const beamSelection = beamSelectionState.key === beamSelectionKey ? beamSelectionState.value : null;
-  const beamSelectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const receiveBeamSelection = useCallback(
-    (page: number, rects: import('../core/types').AnnotationRect[]) => {
-      if (beamSelectionTimer.current) clearTimeout(beamSelectionTimer.current);
-      if (!Number.isInteger(page) || page < 1 || !validSelectionRects(rects)) return;
-      const value: TextAnnotation | null = rects.length
-        ? { id: '__beam_selection', pageNumber: page, rects, type: 'highlight', color: '#38bdf8', text: '', createdAt: Date.now() }
-        : null;
-      setBeamSelectionState({ key: beamSelectionKey, value });
-      beamSelectionTimer.current = setTimeout(() => {
-        setBeamSelectionState((prev) => (prev.key === beamSelectionKey ? { key: beamSelectionKey, value: null } : prev));
-      }, 6000);
-    },
-    [beamSelectionKey]
-  );
-
-  useEffect(() => {
-    return () => {
-      if (beamSelectionTimer.current) clearTimeout(beamSelectionTimer.current);
-    };
-  }, [beamSelectionKey]);
+  const {
+    beamState,
+    beamPeerConnected,
+    beamSelection,
+    receiveBeamSelection,
+  } = useReaderBeamState(docId);
 
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const docIdRef = useRef('');
@@ -201,9 +159,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     peerConnected: beamPeerConnected,
     loading: isLoading,
   });
-
-  useEffect(() => beamService.onPeerChange((peer) => setBeamPeerConnected(peer.connected)), []);
-  useEffect(() => beamService.onStateChange((state) => setBeamState(state)), []);
 
   useEffect(() => {
     syncNativeImmersive(!capabilities.keyboard || isImmersive);
@@ -291,27 +246,12 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     root.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
 
-  useEffect(() => observeDocumentFullscreen(setIsFullscreen), []);
-
   useEffect(() => {
     return () => {
       stopTts();
       cancelPendingPageSave();
     };
   }, [cancelPendingPageSave]);
-
-  const changeLanguage = useCallback(() => {
-    setLang((current) => {
-      const next = current === 'ar' ? 'en' : 'ar';
-      saveLanguage(next);
-      return next;
-    });
-  }, []);
-
-  const changeFont = useCallback((nextFont: FontFamilyId) => {
-    setFontFamily(nextFont);
-    saveFont(nextFont);
-  }, []);
 
   const changeViewMode = useCallback(
     (nextMode: ViewMode) => {
@@ -337,6 +277,33 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     },
     [basePageSize, chromeInset, currentPage, lastFitScaleRef, scrollContainerRef, setFitScaleState, setZoom]
   );
+
+  const {
+    changeLanguage,
+    changeFont,
+    handleSearchQueryChange,
+    openSearchWithText,
+    closeSearch,
+    changeMobileNavVisibility,
+    resetDefaults,
+    renameCurrentDocument,
+  } = useReaderDocumentActions({
+    docId,
+    setLang,
+    setFontFamily,
+    setDocTitle,
+    setSearchQuery,
+    setActiveSearchPage,
+    setSearchSeed,
+    setIsSearchOpen,
+    setShowMobileNavBar,
+    changeTheme,
+    changeThemeSchedule,
+    changeDayTheme,
+    changeNightTheme,
+    changeRememberDocTheme,
+    changeViewMode,
+  });
 
   const {
     annotations,
@@ -421,92 +388,22 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     changeTheme,
   });
 
-  const handleBackStep = useCallback((): boolean => {
-    if (executeBackStep()) return true;
-
-    if (typeof window !== 'undefined') {
-      const backEvent = new CustomEvent('otium:back', { cancelable: true });
-      window.dispatchEvent(backEvent);
-      if (backEvent.defaultPrevented) return true;
-    }
-
-    const selection = typeof window !== 'undefined' ? window.getSelection() : null;
-    if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
-      selection.removeAllRanges();
-      return true;
-    }
-    if (passwordModal.isOpen) {
-      handlePasswordCancel();
-      return true;
-    }
-    if (isImmersive) {
-      setIsImmersive(false);
-      return true;
-    }
-    if (isSettingsOpen) {
-      setIsSettingsOpen(false);
-      return true;
-    }
-    if (isSearchOpen) {
-      setIsSearchOpen(false);
-      setSearchQuery('');
-      setActiveSearchPage(null);
-      return true;
-    }
-    if (isSidebarOpen) {
-      setIsSidebarOpen(false);
-      return true;
-    }
-    if (doc) {
-      closeDocument();
-      return true;
-    }
-    return false;
-  }, [
-    closeDocument,
+  const { isFullscreen, handleToggleFullscreen } = useReaderBackNavigation({
     doc,
-    handlePasswordCancel,
+    passwordModalOpen: passwordModal.isOpen,
     isImmersive,
-    isSearchOpen,
     isSettingsOpen,
+    isSearchOpen,
     isSidebarOpen,
-    passwordModal.isOpen,
-    setIsSearchOpen,
+    handlePasswordCancel,
+    setIsImmersive,
     setIsSettingsOpen,
+    setIsSearchOpen,
     setIsSidebarOpen,
-  ]);
-
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__OTIUM_HANDLE_BACK__ = handleBackStep;
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (handleBackStep()) event.preventDefault();
-    };
-    window.addEventListener('keydown', handleEscape);
-
-    let isPopping = false;
-    const handlePopState = () => {
-      if (isPopping) return;
-      isPopping = true;
-      const stepped = handleBackStep();
-      if (stepped) {
-        window.history.pushState(null, '', window.location.href);
-      }
-      setTimeout(() => {
-        isPopping = false;
-      }, 50);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    window.history.pushState(null, '', window.location.href);
-
-    return () => {
-      delete (window as unknown as Record<string, unknown>).__OTIUM_HANDLE_BACK__;
-      window.removeEventListener('keydown', handleEscape);
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [handleBackStep]);
+    setSearchQuery,
+    setActiveSearchPage,
+    closeDocument,
+  });
 
   useReaderBeamSync({
     doc,
@@ -528,10 +425,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     setIsLoading,
     setDocumentError,
   });
-
-  const handleToggleFullscreen = useCallback(() => {
-    toggleDocumentFullscreen();
-  }, []);
 
   const numberJumpDisplay = useReaderKeyboardShortcuts({
     enabled: capabilities.keyboard,
@@ -556,64 +449,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     setIsSearchOpen,
     setIsSidebarOpen,
   });
-
-  const handleSearchQueryChange = useCallback((query: string, page: number | null) => {
-    setSearchQuery(query);
-    setActiveSearchPage(page);
-  }, []);
-
-  const openSearchWithText = useCallback(
-    (text: string) => {
-      const query = text.replace(/\s+/g, ' ').trim().slice(0, 96);
-      setIsSearchOpen(true);
-      setSearchSeed(query ? { query, id: Date.now() } : null);
-    },
-    [setIsSearchOpen]
-  );
-
-  const closeSearch = useCallback(() => {
-    setIsSearchOpen(false);
-    setSearchQuery('');
-    setActiveSearchPage(null);
-    setSearchSeed(null);
-  }, [setIsSearchOpen]);
-
-  const changeMobileNavVisibility = useCallback((visible: boolean) => {
-    setShowMobileNavBar(visible);
-    saveMobileNavVisible(visible);
-  }, []);
-
-  const resetDefaults = useCallback(() => {
-    changeFont('tajawal');
-    changeViewMode('continuous');
-    changeTheme('paper');
-    changeThemeSchedule('manual');
-    changeDayTheme('paper');
-    changeNightTheme('amoled');
-    changeRememberDocTheme(true);
-    setShowMobileNavBar(true);
-    saveMobileNavVisible(true);
-  }, [
-    changeDayTheme,
-    changeFont,
-    changeNightTheme,
-    changeRememberDocTheme,
-    changeTheme,
-    changeThemeSchedule,
-    changeViewMode,
-  ]);
-
-  const renameCurrentDocument = useCallback(
-    (newTitle: string) => {
-      const trimmed = newTitle.trim();
-      if (!trimmed) return;
-      setDocTitle(trimmed);
-      if (docId) {
-        void renameStoredDocument(docId, trimmed);
-      }
-    },
-    [docId]
-  );
 
   return {
     doc,

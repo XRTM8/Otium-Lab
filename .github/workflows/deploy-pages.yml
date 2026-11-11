@@ -71,6 +71,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
 
       - name: Cache Cargo Workspace
         uses: Swatinem/rust-cache@v2
@@ -82,11 +83,43 @@ jobs:
           -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm
           --all-targets -- -D warnings
 
+      - name: Clippy and Build Rust WASM Target
+        run: |
+          cargo clippy --locked -p otium-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+          cargo build --locked --release -p otium-wasm --target wasm32-unknown-unknown
+
       - name: Run Rust Unit Tests
         run: >
           cargo test --locked
           -p otium-core -p otium-slides -p otium-scanner -p otium-ink
           -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm
+
+  tauri-windows:
+    if: github.repository == 'XRTM8/Otium-Lab'
+    name: Verify Tauri Host (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo Workspace
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-tauri-host
+
+      - name: Prepare Frontend Dist Stub
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force dist | Out-Null
+
+      - name: Clippy and Test Tauri Host Library
+        run: |
+          cargo clippy --locked -p otium --lib --all-targets -- -D warnings
+          cargo test --locked -p otium --lib
 
   deploy:
     name: Deploy to GitHub Pages
@@ -94,7 +127,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: [build, rust]
+    needs: [build, rust, tauri-windows]
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

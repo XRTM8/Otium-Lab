@@ -4,6 +4,8 @@
  * onto a single standardized ISO A4 page ready for official submission.
  */
 
+import { canvasToPngBytes, drawPngBytesOnCanvas, stitchIdCardWithRust } from '../../platform/rustEngine';
+
 export async function mergeIdCardSidesToA4(
   frontCanvas: HTMLCanvasElement,
   backCanvas: HTMLCanvasElement
@@ -17,6 +19,22 @@ export async function mergeIdCardSidesToA4(
 
   const ctx = canvas.getContext('2d');
   if (!ctx) return frontCanvas;
+
+  // Prefer native multi-threaded Rust compositor when running under Tauri Desktop/Android.
+  try {
+    const [frontPng, backPng] = await Promise.all([
+      canvasToPngBytes(frontCanvas),
+      canvasToPngBytes(backCanvas),
+    ]);
+    if (frontPng && backPng) {
+      const nativeA4 = await stitchIdCardWithRust(frontPng, backPng);
+      if (nativeA4 && nativeA4.byteLength > 0 && (await drawPngBytesOnCanvas(nativeA4, canvas, ctx, true))) {
+        return canvas;
+      }
+    }
+  } catch {
+    // Fall back transparently to Canvas 2D compositor.
+  }
 
   // 1. Crisp white background
   ctx.fillStyle = '#FFFFFF';

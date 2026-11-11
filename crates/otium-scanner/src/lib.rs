@@ -1,11 +1,9 @@
 pub mod geometry;
-pub mod gpu_pipeline;
 pub mod processor;
 pub mod simd_resample;
 pub mod tiler;
 
 pub use geometry::*;
-pub use gpu_pipeline::*;
 pub use processor::*;
 pub use simd_resample::*;
 pub use tiler::*;
