@@ -41,7 +41,7 @@ pub fn detect_text_direction(text: &str) -> Direction {
     let mut ltr_count = 0usize;
     let mut i = 0;
 
-    // Fast-path: scan up to the first 512 bytes for paragraph layout decision
+    // Fast-path: scan up to the first 1024 bytes for paragraph layout decision
     let scan_len = len.min(1024);
 
     while i < scan_len {

@@ -8,6 +8,7 @@ members = [
     "crates/otium-pdf",
     "crates/otium-vault",
     "crates/otium-beam",
+    "crates/otium-wasm",
     "crates/otium-app",
     "src-tauri",
 ]
@@ -27,7 +28,6 @@ thiserror = "2.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
 image = "0.25"
-imageproc = "0.25"
 quick-xml = { version = "0.37", features = ["serialize"] }
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 redb = "2.3"
@@ -36,13 +36,10 @@ argon2 = "0.5"
 rand = "0.8"
 zeroize = { version = "1.8", features = ["derive"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
-tokio = { version = "1.40", features = ["full"] }
 log = "0.4"
 lopdf = "0.34"
 memmap2 = "0.9"
 mimalloc = { version = "0.1", default-features = false }
-parking_lot = "0.12"
-crossbeam-channel = "0.5"
 bytemuck = { version = "1.18", features = ["derive"] }
 bumpalo = { version = "3.16", features = ["collections"] }
 

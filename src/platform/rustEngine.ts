@@ -12,17 +12,8 @@ export interface RustSearchMatch {
   end_offset: number;
 }
 
-export interface RustInkVertex {
-  position: [number, number];
-  normal: [number, number];
-  width: number;
-  opacity: number;
-}
-
-export interface RustInkMesh {
-  vertices: RustInkVertex[];
-  indices: number[];
-  color_rgba: [number, number, number, number];
+function toUint8Array(payload: ArrayBuffer | number[]): Uint8Array {
+  return payload instanceof ArrayBuffer ? new Uint8Array(payload) : new Uint8Array(payload);
 }
 
 export async function fetchRustEngineStatus(): Promise<RustEngineStatus> {
@@ -32,10 +23,8 @@ export async function fetchRustEngineStatus(): Promise<RustEngineStatus> {
       isActive: true,
       modules: [
         'otium-core (Bilingual Typography, Search Normalization & 8 OLED Themes)',
+        'otium-wasm (Web Worker Perspective Warp, Document Filters & Camera CV)',
         'otium-slides (PPTX Slide Presentation Engine)',
-        'otium-scanner (Perspective Warp & Clean Filter)',
-        'otium-ink (Hardware GPU Mesh Tessellation & 120 FPS Splines)',
-        'otium-vault (Sovereign Storage & Encryption)',
         'otium-beam (Smart Beam P2P Sync)',
       ],
     };
@@ -53,7 +42,7 @@ export async function fetchRustEngineStatus(): Promise<RustEngineStatus> {
     return {
       version: '2.0.0-lab (Core Native)',
       isActive: true,
-      modules: ['otium-core', 'otium-slides', 'otium-ink'],
+      modules: ['otium-core', 'otium-wasm', 'otium-slides'],
     };
   }
 }
@@ -102,11 +91,11 @@ export async function generatePinWithRust(): Promise<string | null> {
 export async function cleanDocumentWithRust(bytes: Uint8Array, contrastBoost = 1.2): Promise<Uint8Array | null> {
   if (!isTauriRuntime()) return null;
   try {
-    const cleaned = await invoke<number[]>('rust_clean_document_image', {
+    const cleaned = await invoke<ArrayBuffer | number[]>('rust_clean_document_image', {
       bytes: Array.from(bytes),
       contrastBoost,
     });
-    return new Uint8Array(cleaned);
+    return toUint8Array(cleaned);
   } catch (error) {
     console.warn('Rust document cleaner fallback:', error);
     return null;
@@ -119,11 +108,11 @@ export async function cleanDocumentWithRust(bytes: Uint8Array, contrastBoost = 1
 export async function stitchIdCardWithRust(frontBytes: Uint8Array, backBytes: Uint8Array): Promise<Uint8Array | null> {
   if (!isTauriRuntime()) return null;
   try {
-    const stitched = await invoke<number[]>('rust_stitch_id_cards', {
+    const stitched = await invoke<ArrayBuffer | number[]>('rust_stitch_id_cards', {
       frontBytes: Array.from(frontBytes),
       backBytes: Array.from(backBytes),
     });
-    return new Uint8Array(stitched);
+    return toUint8Array(stitched);
   } catch (error) {
     console.warn('Rust ID card stitcher fallback:', error);
     return null;
@@ -144,7 +133,7 @@ export async function searchArabicTextWithRust(haystack: string, query: string):
 }
 
 /**
- * Ultra-fast Sub-Millisecond Arabic Trigram Inverted Index Search (< 0.04ms)
+ * Cached Sub-Millisecond Arabic Trigram Inverted Index Search
  */
 export async function searchArabicWithTrigramIndexRust(text: string, query: string): Promise<RustSearchMatch[] | null> {
   if (!isTauriRuntime()) return null;
@@ -152,33 +141,6 @@ export async function searchArabicWithTrigramIndexRust(text: string, query: stri
     return await invoke<RustSearchMatch[]>('rust_index_and_search_arabic', { text, query });
   } catch (error) {
     console.warn('Rust Trigram Index search fallback:', error);
-    return null;
-  }
-}
-
-/**
- * Native Rust GPU Inking Mesh Tessellation (Zero DOM/SVG overhead)
- */
-export async function tessellateInkMeshWithRust(strokes: unknown[], width: number, height: number): Promise<RustInkMesh[] | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    return await invoke<RustInkMesh[]>('rust_tessellate_ink_mesh', { strokes, width, height });
-  } catch (error) {
-    console.warn('Rust GPU mesh tessellation fallback:', error);
-    return null;
-  }
-}
-
-/**
- * Native Rust Ramer-Douglas-Peucker (RDP) Stroke Simplification
- * Discards 70-80% of redundant micro-jitter points from 120-240Hz stylus input
- */
-export async function simplifyInkStrokesWithRust(strokes: unknown[], tolerance = 0.5): Promise<unknown[] | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    return await invoke<unknown[]>('rust_simplify_ink_strokes', { strokes, tolerance });
-  } catch (error) {
-    console.warn('Rust stroke simplifier fallback:', error);
     return null;
   }
 }

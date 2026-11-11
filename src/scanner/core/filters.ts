@@ -1,16 +1,44 @@
 import type { FilterType } from './types';
+import { runWasmFilter } from './wasmEngine';
 
 /**
  * Asynchronous Document Enhancement Engine.
- * Yields briefly to event loop to keep UI responsive, then executes
- * high-performance adaptive filter directly on canvas.
- * 100% reliable across all Android WebViews without WebWorker IPC hang risks.
+ * Dispatches pixel math to the Rust WebAssembly Web Worker (`otium_wasm.wasm`)
+ * with transferable RGBA buffers and falls back transparently to pure JS if
+ * Workers/WASM are unavailable in the current environment.
  */
 export async function applyFilterAsync(
   sourceCanvas: HTMLCanvasElement,
   filter: FilterType
 ): Promise<HTMLCanvasElement> {
   if (filter === 'original') return sourceCanvas;
+
+  try {
+    const maxDim = 2400;
+    const currentMax = Math.max(sourceCanvas.width, sourceCanvas.height);
+    const scale = currentMax > maxDim ? maxDim / currentMax : 1;
+    const width = Math.max(1, Math.round(sourceCanvas.width * scale));
+    const height = Math.max(1, Math.round(sourceCanvas.height * scale));
+
+    const destCanvas = document.createElement('canvas');
+    destCanvas.width = width;
+    destCanvas.height = height;
+    const ctx = destCanvas.getContext('2d', { willReadFrequently: true });
+
+    if (ctx) {
+      ctx.drawImage(sourceCanvas, 0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const wasmFiltered = await runWasmFilter(imageData.data, width, height, filter);
+      if (wasmFiltered && wasmFiltered.length === width * height * 4) {
+        const outImg = ctx.createImageData(width, height);
+        outImg.data.set(wasmFiltered);
+        ctx.putImageData(outImg, 0, 0);
+        return destCanvas;
+      }
+    }
+  } catch (err) {
+    console.warn('WASM filter failed, falling back to JS filter:', err);
+  }
 
   return new Promise((resolve) => {
     setTimeout(() => {

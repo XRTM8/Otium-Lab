@@ -261,32 +261,46 @@ class MainActivity : TauriActivity() {
 
     @JavascriptInterface
     fun shareFile(base64Data: String, filename: String, mimeType: String) {
-      runOnUiThread {
+      Thread {
         try {
           val safeName = sanitizeFilename(filename, "scan.pdf")
+          val decodedBytes = decodeBase64(base64Data)
           val file = File(cacheDir, safeName)
-          file.writeBytes(decodeBase64(base64Data))
+          file.writeBytes(decodedBytes)
 
+          val resolvedMime = resolveMime(safeName, mimeType)
           val uri = FileProvider.getUriForFile(
             this@MainActivity,
             "${packageName}.fileprovider",
             file
           )
-          val intent = Intent(Intent.ACTION_SEND).apply {
-            type = resolveMime(safeName, mimeType)
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, safeName)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+          runOnUiThread {
+            try {
+              val intent = Intent(Intent.ACTION_SEND).apply {
+                type = resolvedMime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, safeName)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+              }
+              startActivity(Intent.createChooser(intent, "Share document"))
+            } catch (error: Exception) {
+              Toast.makeText(
+                this@MainActivity,
+                "Could not share the file: ${error.message}",
+                Toast.LENGTH_LONG
+              ).show()
+            }
           }
-          startActivity(Intent.createChooser(intent, "Share document"))
         } catch (error: Exception) {
-          Toast.makeText(
-            this@MainActivity,
-            "Could not share the file: ${error.message}",
-            Toast.LENGTH_LONG
-          ).show()
+          runOnUiThread {
+            Toast.makeText(
+              this@MainActivity,
+              "Could not share the file: ${error.message}",
+              Toast.LENGTH_LONG
+            ).show()
+          }
         }
-      }
+      }.start()
     }
 
     @JavascriptInterface

@@ -137,11 +137,32 @@ impl Stroke {
 
         let r_sq = (radius + self.base_width / 2.0).powi(2);
 
-        // Segment distance check
-        for p in &self.points {
-            let dx = p.x - target_x;
-            let dy = p.y - target_y;
-            if dx * dx + dy * dy <= r_sq {
+        if self.points.is_empty() {
+            return false;
+        }
+        if self.points.len() == 1 {
+            let dx = self.points[0].x - target_x;
+            let dy = self.points[0].y - target_y;
+            return dx * dx + dy * dy <= r_sq;
+        }
+
+        // Exact point-to-segment distance check across every segment
+        for seg in self.points.windows(2) {
+            let ax = seg[0].x;
+            let ay = seg[0].y;
+            let bx = seg[1].x;
+            let by = seg[1].y;
+            let abx = bx - ax;
+            let aby = by - ay;
+            let ab_len_sq = abx * abx + aby * aby;
+            let t = if ab_len_sq > 1e-9 {
+                (((target_x - ax) * abx + (target_y - ay) * aby) / ab_len_sq).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let px = ax + abx * t - target_x;
+            let py = ay + aby * t - target_y;
+            if px * px + py * py <= r_sq {
                 return true;
             }
         }

@@ -1,4 +1,5 @@
 import type { Point, Quad } from './types';
+import { runWasmDewarpSpine, runWasmWarpPerspective } from './wasmEngine';
 
 function distance(p1: Point, p2: Point): number {
   return Math.hypot(p2.x - p1.x, p2.y - p1.y);
@@ -74,7 +75,7 @@ export function isQuadConvex(quad: Quad): boolean {
 
 export function computeQuadArea(tl: Point, tr: Point, br: Point, bl: Point): number {
   return 0.5 * Math.abs(
-    tl.x * tr.y + tr.x * br.y + br.x * bl.y + bl.y * tl.y -
+    tl.x * tr.y + tr.x * br.y + br.x * bl.y + bl.x * tl.y -
     (tl.y * tr.x + tr.y * br.x + br.y * bl.x + bl.y * tl.x)
   );
 }
@@ -184,6 +185,78 @@ export function warpPerspective(
 }
 
 /**
+ * Asynchronous Rust WASM Perspective Rectification Engine.
+ * Uses projective homography + bilinear interpolation inside the WASM Web Worker
+ * with transparent fallback to the Canvas 2D fast path or triangle subdivision.
+ */
+export async function warpPerspectiveAsync(
+  source: HTMLImageElement | HTMLCanvasElement,
+  quad: Quad,
+  targetWidth?: number,
+  targetHeight?: number
+): Promise<HTMLCanvasElement> {
+  const { topLeft, topRight, bottomRight, bottomLeft } = quad;
+
+  const isRectangular =
+    Math.abs(topLeft.y - topRight.y) < 8 &&
+    Math.abs(bottomLeft.y - bottomRight.y) < 8 &&
+    Math.abs(topLeft.x - bottomLeft.x) < 8 &&
+    Math.abs(topRight.x - bottomRight.x) < 8;
+
+  if (isRectangular) {
+    return warpPerspective(source, quad, targetWidth, targetHeight);
+  }
+
+  const widthTop = distance(topLeft, topRight);
+  const widthBottom = distance(bottomLeft, bottomRight);
+  const heightLeft = distance(topLeft, bottomLeft);
+  const heightRight = distance(topRight, bottomRight);
+
+  const outW = Math.max(Math.round(targetWidth || Math.max(widthTop, widthBottom)), 100);
+  const outH = Math.max(Math.round(targetHeight || Math.max(heightLeft, heightRight)), 100);
+
+  const srcW = 'naturalWidth' in source ? source.naturalWidth : source.width;
+  const srcH = 'naturalHeight' in source ? source.naturalHeight : source.height;
+
+  if (srcW >= 2 && srcH >= 2 && srcW * srcH <= 16_000_000 && outW * outH <= 16_000_000) {
+    try {
+      let srcCanvas: HTMLCanvasElement;
+      if (source instanceof HTMLCanvasElement) {
+        srcCanvas = source;
+      } else {
+        srcCanvas = document.createElement('canvas');
+        srcCanvas.width = srcW;
+        srcCanvas.height = srcH;
+        const sCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+        sCtx?.drawImage(source, 0, 0, srcW, srcH);
+      }
+
+      const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+      if (srcCtx) {
+        const srcData = srcCtx.getImageData(0, 0, srcW, srcH).data;
+        const warpedRgba = await runWasmWarpPerspective(srcData, srcW, srcH, outW, outH, quad);
+        if (warpedRgba && warpedRgba.length === outW * outH * 4) {
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = outW;
+          outCanvas.height = outH;
+          const outCtx = outCanvas.getContext('2d');
+          if (outCtx) {
+            const outImg = outCtx.createImageData(outW, outH);
+            outImg.data.set(warpedRgba);
+            outCtx.putImageData(outImg, 0, 0);
+            return outCanvas;
+          }
+        }
+      }
+    } catch {
+      // Fall back to synchronous Canvas warp below.
+    }
+  }
+
+  return warpPerspective(source, quad, targetWidth, targetHeight);
+}
+
+/**
  * Enterprise 3D Book Spine Curvature Dewarping Engine.
  * Supports asymmetric book spines (left page vs right page vs center gutter).
  * @param curvature 0 to 1 intensity of spine curvature correction
@@ -233,6 +306,49 @@ export function dewarpBookCurvature(
   }
 
   return destCanvas;
+}
+
+/**
+ * Asynchronous Rust WASM Spine Curvature Dewarping Engine.
+ * Executes continuous per-pixel vertical Gaussian dewarping off the main thread
+ * without 64-strip aliasing seams, falling back cleanly to 2D Canvas strips.
+ */
+export async function dewarpBookCurvatureAsync(
+  sourceCanvas: HTMLCanvasElement,
+  curvature: number = 0.25,
+  spinePosition: number = 0.5
+): Promise<HTMLCanvasElement> {
+  if (curvature <= 0.02) return sourceCanvas;
+
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  if (w <= 0 || h < 2 || w * h > 16_000_000) {
+    return dewarpBookCurvature(sourceCanvas, curvature, spinePosition);
+  }
+
+  try {
+    const srcCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (srcCtx) {
+      const srcData = srcCtx.getImageData(0, 0, w, h).data;
+      const dewarpedRgba = await runWasmDewarpSpine(srcData, w, h, curvature, spinePosition);
+      if (dewarpedRgba && dewarpedRgba.length === w * h * 4) {
+        const destCanvas = document.createElement('canvas');
+        destCanvas.width = w;
+        destCanvas.height = h;
+        const outCtx = destCanvas.getContext('2d');
+        if (outCtx) {
+          const outImg = outCtx.createImageData(w, h);
+          outImg.data.set(dewarpedRgba);
+          outCtx.putImageData(outImg, 0, 0);
+          return destCanvas;
+        }
+      }
+    }
+  } catch {
+    // Fall back to synchronous Canvas strips below.
+  }
+
+  return dewarpBookCurvature(sourceCanvas, curvature, spinePosition);
 }
 
 function renderQuadSubdivision(

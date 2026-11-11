@@ -13,17 +13,11 @@ declare global {
       shareFile?: (base64Data: string, filename: string, mimeType: string) => void;
       savePdfToDownloads?: (base64Data: string, filename: string) => boolean;
       saveFileToDownloads?: (base64Data: string, filename: string, mimeType: string) => boolean;
-      openInOtiumReader?: (base64Data: string, filename: string) => void;
       printPdf?: (base64Data: string, filename: string) => void;
       openExternalUrl?: (url: string) => void;
-      downloadAndInstallApk?: (apkUrl: string, filename: string) => void;
       fetchUrl?: (url: string) => string;
     };
   }
-}
-
-export function isNativeAndroid(): boolean {
-  return typeof window !== 'undefined' && Boolean(window.OtiumNative);
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -95,10 +89,6 @@ export async function nativeSharePdf(blob: Blob, filename: string, title?: strin
   return nativeShareFile(blob, cleanFilename, title, 'application/pdf');
 }
 
-export async function nativeShareImage(blob: Blob, filename: string, title?: string): Promise<void> {
-  return nativeShareFile(blob, filename, title, 'image/jpeg');
-}
-
 /**
  * Save file directly to Android Downloads or Pictures directory with system toast
  */
@@ -143,22 +133,10 @@ export async function nativeSaveImage(blob: Blob, filename: string): Promise<boo
 }
 
 /**
- * Open PDF directly in Otium Reader (com.otium.reader) or system PDF viewer
+ * Share/open PDF via native Android Share Sheet or system PDF viewer.
  */
 export async function nativeOpenInOtium(blob: Blob, filename: string): Promise<void> {
   const cleanFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
-
-  if (window.OtiumNative?.openInOtiumReader) {
-    try {
-      const base64 = await blobToBase64(blob);
-      window.OtiumNative.openInOtiumReader(base64, cleanFilename);
-      return;
-    } catch (e) {
-      console.warn('Native open in Otium Reader failed:', e);
-    }
-  }
-
-  // Fallback to sharing
   await nativeSharePdf(blob, cleanFilename, 'فتح بواسطة');
 }
 
@@ -271,21 +249,12 @@ export function isSafeUrl(rawUrl: string): boolean {
 }
 
 /**
- * Downloads and installs APK directly via native Android DownloadManager & PackageInstaller
+ * Opens the verified APK download in the system browser/installer.
  */
-export function nativeInstallApk(apkUrl: string, filename: string): void {
+export function nativeInstallApk(apkUrl: string, _filename: string): void {
   if (!isSafeUrl(apkUrl)) {
     console.warn('Blocked unsafe APK URL:', apkUrl);
     return;
-  }
-  const safeFilename = sanitizeFilename(filename, 'update.apk');
-  if (typeof window !== 'undefined' && window.OtiumNative && (window.OtiumNative as any).downloadAndInstallApk) {
-    try {
-      (window.OtiumNative as any).downloadAndInstallApk(apkUrl, safeFilename);
-      return;
-    } catch (e) {
-      console.warn('Native downloadAndInstallApk failed, falling back to browser:', e);
-    }
   }
   nativeOpenUrl(apkUrl);
 }

@@ -135,8 +135,18 @@ impl PptxParser {
                     let local_name = e.local_name();
                     match local_name.as_ref() {
                         b"txBody" => in_text_body = true,
+                        b"r" => {
+                            is_bold = false;
+                            is_italic = false;
+                            font_size_pt = 14.0;
+                            color_hex = None;
+                        }
                         b"p" => {
                             current_runs.clear();
+                            is_bold = false;
+                            is_italic = false;
+                            font_size_pt = 14.0;
+                            color_hex = None;
                         }
                         b"rPr" => {
                             for attr in e.attributes().flatten() {

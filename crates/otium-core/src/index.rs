@@ -6,9 +6,13 @@ use crate::search::{normalize_arabic_text, SearchMatch};
 pub struct ArabicTrigramIndex {
     /// Normalized full text
     normalized_text: String,
+    /// Cached normalized characters (eliminates per-search `.chars().collect()` heap allocations)
+    text_chars: Vec<char>,
+    /// Precomputed byte offset for each char index (`len == char_count + 1`) for O(1) match slicing
+    char_byte_offsets: Vec<usize>,
     /// Maps 3-char unicode trigram hashes to sorted list of char offsets
     postings: HashMap<u32, Vec<u32>>,
-    /// Original to normalized character index map for exact highlight bounding
+    /// Total character count in `normalized_text`
     char_count: usize,
 }
 
@@ -25,26 +29,35 @@ impl ArabicTrigramIndex {
     /// Build an index from a raw Arabic or multilingual document string
     pub fn build(raw_text: &str) -> Self {
         let normalized_text = normalize_arabic_text(raw_text);
-        let chars: Vec<char> = normalized_text.chars().collect();
-        let char_count = chars.len();
+        let approx_chars = normalized_text.len();
+        let mut text_chars = Vec::with_capacity(approx_chars);
+        let mut char_byte_offsets = Vec::with_capacity(approx_chars + 1);
+        for (byte_idx, ch) in normalized_text.char_indices() {
+            text_chars.push(ch);
+            char_byte_offsets.push(byte_idx);
+        }
+        char_byte_offsets.push(normalized_text.len());
+        let char_count = text_chars.len();
 
         let mut postings: HashMap<u32, Vec<u32>> = HashMap::new();
 
         if char_count >= 3 {
             for i in 0..char_count - 2 {
-                let hash = Self::trigram_hash(chars[i], chars[i + 1], chars[i + 2]);
+                let hash = Self::trigram_hash(text_chars[i], text_chars[i + 1], text_chars[i + 2]);
                 postings.entry(hash).or_default().push(i as u32);
             }
         }
 
         Self {
             normalized_text,
+            text_chars,
+            char_byte_offsets,
             postings,
             char_count,
         }
     }
 
-    /// Searches the index with sub-40 microsecond latency (< 0.04ms).
+    /// Searches the index with O(1) byte offset lookup and zero normalized-text re-allocation.
     pub fn search(&self, query: &str) -> Vec<SearchMatch> {
         let norm_query = normalize_arabic_text(query);
         let q_chars: Vec<char> = norm_query.chars().collect();
@@ -56,11 +69,10 @@ impl ArabicTrigramIndex {
         // 1. Fallback for short 1-2 character queries: direct substring scan on normalized text
         if q_chars.len() < 3 {
             let mut matches = Vec::new();
-            let query_str: String = q_chars.into_iter().collect();
-            for (idx, _) in self.normalized_text.match_indices(&query_str) {
+            for (idx, _) in self.normalized_text.match_indices(&norm_query) {
                 matches.push(SearchMatch {
                     start_offset: idx,
-                    end_offset: idx + query_str.len(),
+                    end_offset: idx + norm_query.len(),
                 });
             }
             return matches;
@@ -68,45 +80,21 @@ impl ArabicTrigramIndex {
 
         // 2. Trigram intersection for queries >= 3 characters
         let first_hash = Self::trigram_hash(q_chars[0], q_chars[1], q_chars[2]);
-        let candidates = match self.postings.get(&first_hash) {
-            Some(list) => list,
-            None => return Vec::new(),
+        let Some(candidates) = self.postings.get(&first_hash) else {
+            return Vec::new();
         };
 
         let mut results = Vec::new();
         let q_len = q_chars.len();
-        let text_chars: Vec<char> = self.normalized_text.chars().collect();
 
         for &start_idx in candidates {
             let start = start_idx as usize;
-            if start + q_len <= self.char_count {
-                // Verify candidate against the rest of query characters
-                let mut matched = true;
-                for j in 3..q_len {
-                    if text_chars[start + j] != q_chars[j] {
-                        matched = false;
-                        break;
-                    }
-                }
-
-                if matched {
-                    // Convert char offsets to byte indices in normalized_text
-                    let byte_start = self.normalized_text
-                        .char_indices()
-                        .nth(start)
-                        .map(|(idx, _)| idx)
-                        .unwrap_or(0);
-                    let byte_end = self.normalized_text
-                        .char_indices()
-                        .nth(start + q_len)
-                        .map(|(idx, _)| idx)
-                        .unwrap_or(self.normalized_text.len());
-
-                    results.push(SearchMatch {
-                        start_offset: byte_start,
-                        end_offset: byte_end,
-                    });
-                }
+            let end = start + q_len;
+            if end <= self.char_count && self.text_chars[start + 3..end] == q_chars[3..] {
+                results.push(SearchMatch {
+                    start_offset: self.char_byte_offsets[start],
+                    end_offset: self.char_byte_offsets[end],
+                });
             }
         }
 

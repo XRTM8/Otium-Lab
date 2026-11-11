@@ -50,13 +50,12 @@ impl SovereignVault {
         self.key.is_some()
     }
 
-    /// Store an encrypted document payload
+    /// Store an encrypted document payload (fail-closed when locked)
     pub fn put_document(&self, doc_id: &str, data: &[u8]) -> Result<()> {
-        let payload = if let Some(ref key) = self.key {
-            VaultCrypto::encrypt(key, data)?
-        } else {
-            data.to_vec()
+        let Some(ref key) = self.key else {
+            return Err(OtiumError::AuthFailed("Vault is locked".into()));
         };
+        let payload = VaultCrypto::encrypt(key, data)?;
 
         let write_txn = self
             .db
@@ -88,12 +87,10 @@ impl SovereignVault {
             .map_err(|e| OtiumError::Vault(e.to_string()))?;
 
         if let Some(entry) = table.get(doc_id).map_err(|e| OtiumError::Vault(e.to_string()))? {
-            let val = entry.value();
-            let decrypted = if let Some(ref key) = self.key {
-                VaultCrypto::decrypt(key, val)?
-            } else {
-                val.to_vec()
+            let Some(ref key) = self.key else {
+                return Err(OtiumError::AuthFailed("Vault is locked".into()));
             };
+            let decrypted = VaultCrypto::decrypt(key, entry.value())?;
             Ok(Some(decrypted))
         } else {
             Ok(None)

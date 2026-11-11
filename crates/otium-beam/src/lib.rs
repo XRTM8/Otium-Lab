@@ -24,6 +24,7 @@ mod tests {
     fn test_qr_code_svg_generation() {
         let svg = BeamPairing::generate_qr_svg("otium://beam?pin=123456").unwrap();
         assert!(svg.contains("<svg"));
+        assert!(svg.contains("xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(svg.contains("</svg>"));
     }
 

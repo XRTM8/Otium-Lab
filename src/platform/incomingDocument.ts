@@ -14,22 +14,6 @@ interface AndroidFileBridge {
   getPendingDocumentInfo(): string;
   readPendingDocumentChunkV2?: (id: string, offset: number, size: number) => string;
   acknowledgeDocument?: (id: string) => boolean;
-  readPendingDocumentChunk?: (offset: number, size: number) => string;
-  clearPendingDocument?: () => boolean;
-}
-
-function decodeBase64(base64: string): ArrayBuffer {
-  let cleaned = base64.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-  const remainder = cleaned.length % 4;
-  if (remainder === 2) cleaned += '==';
-  else if (remainder === 3) cleaned += '=';
-
-  const binary = atob(cleaned);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
 }
 
 /**
@@ -95,7 +79,7 @@ export function registerIncomingDocumentHandler(handler: IncomingDocumentHandler
           const count = Math.min(CHUNK_SIZE, totalSize - offset);
           const chunkBase64 = info.id && otiumFile.readPendingDocumentChunkV2
             ? otiumFile.readPendingDocumentChunkV2(info.id, offset, count)
-            : otiumFile.readPendingDocumentChunk?.(offset, count);
+            : '';
           if (!chunkBase64) throw new Error('توقفت قراءة ملف PDF قبل اكتماله. أعد فتح الملف من تلغرام.');
           const binary = atob(chunkBase64);
           const chunkLen = binary.length;
@@ -111,9 +95,8 @@ export function registerIncomingDocumentHandler(handler: IncomingDocumentHandler
         if (info.id && latest.id !== info.id) return;
         if (!new TextDecoder('latin1').decode(uint8.subarray(0, 1024)).includes('%PDF-')) throw new Error('الملف المستلم ليس PDF صالحاً أو لم يكتمل تنزيله.');
         const accepted = await handler({ data: buffer, name, id: info.id });
-        if (!cancelled && accepted !== false) {
-          if (info.id) otiumFile.acknowledgeDocument?.(info.id);
-          else otiumFile.clearPendingDocument?.();
+        if (!cancelled && accepted !== false && info.id) {
+          otiumFile.acknowledgeDocument?.(info.id);
         }
       } catch (err) {
         if (!cancelled) { onReading(false, requestId); onError(err instanceof Error ? err.message : 'تعذر قراءة ملف PDF القادم من التطبيق الآخر.'); }
@@ -121,18 +104,7 @@ export function registerIncomingDocumentHandler(handler: IncomingDocumentHandler
       } finally { if (started) { isReading = false; if (!cancelled) onReading(false, requestId); } }
     };
 
-    const legacyBridge = (base64: string, name: string) => {
-      try {
-        if (!base64 || typeof base64 !== 'string' || cancelled) return;
-        if (base64.length > MAX_INCOMING_PDF_BYTES * 4 / 3 + 4) throw new Error('ملف PDF أكبر من حد الفتح المباشر.');
-        void Promise.resolve(handler({ data: decodeBase64(base64), name: name || 'document.pdf' })).catch(error => onError(String(error)));
-      } catch (error) {
-        console.error('Failed to decode an incoming Android document:', error);
-      }
-    };
-
     (window as any).__OTIUM_CHECK_INCOMING_PDF__ = checkIncomingFromNativeBridge;
-    (window as any).__OTIUM_LOAD_PDF_BASE64__ = legacyBridge;
 
     // Probe native bridge immediately on mount and after brief delay for cold launch
     void checkIncomingFromNativeBridge();
@@ -143,7 +115,6 @@ export function registerIncomingDocumentHandler(handler: IncomingDocumentHandler
       window.clearInterval(probeTimer);
       // Outstanding yield timers resolve so cancelled readers release buffers.
       if ((window as any).__OTIUM_CHECK_INCOMING_PDF__ === checkIncomingFromNativeBridge) delete (window as any).__OTIUM_CHECK_INCOMING_PDF__;
-      if ((window as any).__OTIUM_LOAD_PDF_BASE64__ === legacyBridge) delete (window as any).__OTIUM_LOAD_PDF_BASE64__;
     };
   }
 

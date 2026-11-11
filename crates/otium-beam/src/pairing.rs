@@ -22,8 +22,8 @@ impl BeamPairing {
         let svg_image = code
             .render()
             .min_dimensions(200, 200)
-            .dark_color(svg::Color("#10B981"))
-            .light_color(svg::Color("#000000"))
+            .dark_color(svg::Color("#0f172a"))
+            .light_color(svg::Color("#ffffff"))
             .build();
 
         Ok(svg_image)

@@ -13,23 +13,26 @@ pub enum AccelerationBackend {
     CpuSimd,
 }
 
-/// Parameters passed to the GPU projective warp compute shader
+/// Parameters passed to the GPU projective warp compute shader (`WarpUniforms` in `homography_warp.wgsl`)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GpuWarpUniforms {
     pub h00: f32,
     pub h01: f32,
     pub h02: f32,
+    pub _pad0: f32,
     pub h10: f32,
     pub h11: f32,
     pub h12: f32,
+    pub _pad1: f32,
     pub h20: f32,
     pub h21: f32,
     pub h22: f32,
-    pub src_width: u32,
-    pub src_height: u32,
+    pub _pad2: f32,
     pub dst_width: u32,
     pub dst_height: u32,
+    pub src_width: u32,
+    pub src_height: u32,
 }
 
 impl GpuWarpUniforms {
@@ -41,16 +44,19 @@ impl GpuWarpUniforms {
             h00: matrix[0],
             h01: matrix[1],
             h02: matrix[2],
+            _pad0: 0.0,
             h10: matrix[3],
             h11: matrix[4],
             h12: matrix[5],
+            _pad1: 0.0,
             h20: matrix[6],
             h21: matrix[7],
             h22: matrix[8],
-            src_width: src_w,
-            src_height: src_h,
+            _pad2: 0.0,
             dst_width: dst_w,
             dst_height: dst_h,
+            src_width: src_w,
+            src_height: src_h,
         }
     }
 }
