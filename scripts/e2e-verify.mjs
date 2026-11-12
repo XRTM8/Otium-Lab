@@ -7,7 +7,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 const DIST_DIR = path.resolve(process.cwd(), 'dist');
-if (!fs.existsSync(DIST_DIR)) {
+const liveOfflineAudit = process.argv.includes('--live-offline');
+if (!liveOfflineAudit && !fs.existsSync(DIST_DIR)) {
   console.error('[e2e-verify] dist/ does not exist. Build the web app first.');
   process.exit(1);
 }
@@ -338,7 +339,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const { port } = server.address();
-const appUrl = `http://127.0.0.1:${port}/Otium-Lab/`;
+const appUrl = liveOfflineAudit ? 'https://xrtm8.github.io/Otium-Lab/' : `http://127.0.0.1:${port}/Otium-Lab/`;
 
 const browser = spawn(
   browserPath,
@@ -399,7 +400,8 @@ async function runAudit(name, mobileMode, scenarioFn) {
       });
     }
     await cdp.send('Emulation.setEmitTouchEventsForMouse', { enabled: mobileMode });
-    await cdp.send('Page.navigate', { url: appUrl });
+    const navigation = await cdp.send('Page.navigate', { url: appUrl });
+    if (navigation.errorText) throw new Error(`Navigation failed: ${navigation.errorText}`);
     await wait(1600);
 
     const out = await scenarioFn(cdp);
@@ -432,7 +434,61 @@ async function runAudit(name, mobileMode, scenarioFn) {
   }
 }
 
-try {
+async function waitForBrowser(cdp, expression, description) {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (await cdp.evalJs(expression)) return;
+    await wait(250);
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
+async function auditOffline(cdp) {
+  const appReady = "!!document.querySelector('#root button')";
+  await waitForBrowser(cdp, `navigator.serviceWorker?.controller?.state === 'activated' && ${appReady}`, 'active Service Worker');
+  const registration = await cdp.evalJs(`(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    return { scope: registration.scope, script: registration.active.scriptURL };
+  })()`);
+  if (registration.scope !== appUrl || registration.script !== new URL('sw.js', appUrl).href) {
+    throw new Error(`Unexpected Service Worker registration: ${JSON.stringify(registration)}`);
+  }
+  const online = cdp.events.find(({ method, params }) =>
+    method === 'Network.responseReceived' && params.type === 'Document' && params.response.url === appUrl);
+  if (online?.params.response.status !== 200) throw new Error('Initial navigation did not return HTTP 200');
+
+  await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
+  await cdp.send('Page.reload');
+  await waitForBrowser(cdp, `(async () => {
+    if (!(${appReady}) || !navigator.serviceWorker.controller) return false;
+    const scripts = Array.from(document.querySelectorAll('script[type=module][src]'), node => node.src);
+    return scripts.length > 0 && (await Promise.all(scripts.map(url => caches.match(url)))).every(Boolean);
+  })()`, 'application scripts in Cache Storage');
+
+  const eventOffset = cdp.events.length;
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
+  });
+  try {
+    await cdp.send('Page.reload');
+    for (let attempt = 0; attempt < 60; attempt++) {
+      if (cdp.events.slice(eventOffset).some(({ method }) => method === 'Page.loadEventFired')) break;
+      await wait(250);
+    }
+    await waitForBrowser(cdp, `!navigator.onLine && ${appReady}`, 'application UI after offline reload');
+    const offline = cdp.events.slice(eventOffset).find(({ method, params }) =>
+      method === 'Network.responseReceived' && params.type === 'Document' && params.response.url === appUrl);
+    if (!offline?.params.response.fromServiceWorker || offline.params.response.status !== 200) {
+      throw new Error('Offline navigation did not receive HTTP 200 from the Service Worker');
+    }
+    return { ...registration, onlineHttpStatus: 200, offlineHttpStatus: 200, offlineUiLoaded: true };
+  } finally {
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+    });
+  }
+}
+
+async function auditLocalBuild() {
   await runAudit('DESKTOP FULL VERIFICATION', false, async (cdp) => {
     const res = {};
     await cdp.evalJs(`(() => {
@@ -607,6 +663,11 @@ try {
     if (!res.ocrMatchedHello || !res.ocrMatchedTime) allPassed = false;
     return res;
   });
+}
+
+try {
+  if (liveOfflineAudit) await runAudit('LIVE PAGES OFFLINE RELOAD', false, auditOffline);
+  else await auditLocalBuild();
 } finally {
   browser.kill();
   server.close();
@@ -622,4 +683,6 @@ if (!allPassed) {
   console.error('\n[e2e-verify] E2E VERIFICATION FAILED');
   process.exit(1);
 }
-console.log('\n[e2e-verify] ALL DESKTOP + MOBILE + WASM + REAL OCR E2E VERIFICATIONS PASSED');
+console.log(liveOfflineAudit
+  ? '\n[e2e-verify] LIVE OFFLINE RELOAD PASSED'
+  : '\n[e2e-verify] ALL DESKTOP + MOBILE + WASM + REAL OCR E2E VERIFICATIONS PASSED');

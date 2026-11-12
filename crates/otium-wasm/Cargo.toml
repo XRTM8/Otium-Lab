@@ -10,3 +10,4 @@ description = "Pure-Rust WebAssembly acceleration kernels for Otium Scanner (hom
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+otium-scan-math = { path = "../otium-scan-math" }

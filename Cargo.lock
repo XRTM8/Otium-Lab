@@ -5093,11 +5093,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "otium-scan-math"
+version = "2.0.0-lab"
+
+[[package]]
 name = "otium-scanner"
 version = "2.0.0-lab"
 dependencies = [
  "image",
  "otium-core",
+ "otium-scan-math",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -5133,6 +5138,9 @@ dependencies = [
 [[package]]
 name = "otium-wasm"
 version = "2.0.0-lab"
+dependencies = [
+ "otium-scan-math",
+]
 
 [[package]]
 name = "owned_ttf_parser"

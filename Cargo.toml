@@ -4,6 +4,7 @@ members = [
     "crates/otium-core",
     "crates/otium-slides",
     "crates/otium-scanner",
+    "crates/otium-scan-math",
     "crates/otium-ink",
     "crates/otium-pdf",
     "crates/otium-vault",

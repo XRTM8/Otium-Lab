@@ -109,87 +109,9 @@ impl HomographyMatrix {
     }
 
     fn compute_homography(src: &[Point2D; 4], dst: &[Point2D; 4]) -> Option<Self> {
-        // Direct Linear Transformation (DLT) algorithm solving 8x8 system
-        let mut a = [[0.0f32; 8]; 8];
-        let mut b = [0.0f32; 8];
-
-        for i in 0..4 {
-            let sx = src[i].x;
-            let sy = src[i].y;
-            let dx = dst[i].x;
-            let dy = dst[i].y;
-
-            a[i * 2][0] = sx;
-            a[i * 2][1] = sy;
-            a[i * 2][2] = 1.0;
-            a[i * 2][6] = -sx * dx;
-            a[i * 2][7] = -sy * dx;
-            b[i * 2] = dx;
-
-            a[i * 2 + 1][3] = sx;
-            a[i * 2 + 1][4] = sy;
-            a[i * 2 + 1][5] = 1.0;
-            a[i * 2 + 1][6] = -sx * dy;
-            a[i * 2 + 1][7] = -sy * dy;
-            b[i * 2 + 1] = dy;
-        }
-
-        let h = solve_gaussian_elimination_8x8(&mut a, &mut b)?;
-        Some(HomographyMatrix {
-            m: [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1.0],
-        })
+        let src = src.map(|p| (f64::from(p.x), f64::from(p.y)));
+        let dst = dst.map(|p| (f64::from(p.x), f64::from(p.y)));
+        let matrix = otium_scan_math::homography(src, dst, 1e-9)?;
+        Some(Self { m: matrix.map(|value| value as f32) })
     }
-}
-
-/// Gaussian elimination solver with partial pivoting for 8x8 linear system
-fn solve_gaussian_elimination_8x8(a: &mut [[f32; 8]; 8], b: &mut [f32; 8]) -> Option<[f32; 8]> {
-    const N: usize = 8;
-
-    for i in 0..N {
-        // Find pivot
-        let mut max_row = i;
-        let mut max_val = a[i][i].abs();
-        for (k, row_data) in a.iter().enumerate().skip(i + 1) {
-            let val = row_data[i].abs();
-            if val > max_val {
-                max_val = val;
-                max_row = k;
-            }
-        }
-
-        if max_val < 1e-9 {
-            return None; // Singular matrix
-        }
-
-        // Swap rows
-        if max_row != i {
-            a.swap(i, max_row);
-            b.swap(i, max_row);
-        }
-
-        // Eliminate
-        let pivot = a[i][i];
-        let inv_pivot = 1.0 / pivot;
-        for cell in a[i].iter_mut().skip(i) {
-            *cell *= inv_pivot;
-        }
-        b[i] *= inv_pivot;
-
-        let pivot_row = a[i];
-        for (k, row_data) in a.iter_mut().enumerate() {
-            if k != i {
-                let factor = row_data[i];
-                if factor.abs() > 1e-9 {
-                    for (dst_cell, pivot_cell) in row_data[i..].iter_mut().zip(&pivot_row[i..]) {
-                        *dst_cell -= factor * *pivot_cell;
-                    }
-                    b[k] -= factor * b[i];
-                }
-            }
-        }
-    }
-
-    let mut result = [0.0f32; 8];
-    result.copy_from_slice(b);
-    Some(result)
 }

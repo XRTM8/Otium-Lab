@@ -39,8 +39,8 @@ jobs:
       - name: Verify single-version alignment
         run: npm run version:check
 
-      - name: Run automated regression suite
-        run: npm test -- --reporter=dot
+      - name: Run automated regression suite and enforce coverage
+        run: npm run test:coverage -- --reporter=dot
 
       - name: Test media engines
         run: npm run lab:media:test
@@ -87,7 +87,7 @@ jobs:
         run: >
           cargo clippy --locked
           -p otium-core -p otium-slides -p otium-scanner -p otium-ink
-          -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm
+          -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm -p otium-scan-math
           --all-targets -- -D warnings
 
       - name: Clippy and Build Rust WASM Target
@@ -99,7 +99,7 @@ jobs:
         run: >
           cargo test --locked
           -p otium-core -p otium-slides -p otium-scanner -p otium-ink
-          -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm
+          -p otium-pdf -p otium-vault -p otium-beam -p otium-wasm -p otium-scan-math
 
   tauri-windows:
     if: github.repository == 'XRTM8/Otium-Lab'

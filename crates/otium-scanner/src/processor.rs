@@ -46,18 +46,14 @@ impl DocumentScanner {
                 if sx >= 0.0 && sx < max_x_bound && sy >= 0.0 && sy < max_y_bound {
                     let x0 = sx as usize;
                     let y0 = sy as usize;
-                    let x1 = x0 + 1;
-                    let y1 = y0 + 1;
 
                     let fx = sx - (x0 as f32);
                     let fy = sy - (y0 as f32);
                     let inv_fx = 1.0 - fx;
                     let inv_fy = 1.0 - fy;
 
-                    let idx00 = y0 * src_stride + x0 * 4;
-                    let idx10 = y0 * src_stride + x1 * 4;
-                    let idx01 = y1 * src_stride + x0 * 4;
-                    let idx11 = y1 * src_stride + x1 * 4;
+                    let [idx00, idx10, idx01, idx11] =
+                        otium_scan_math::rgba_neighbors(x0, y0, src_stride);
 
                     for c in 0..4 {
                         let p00 = src_raw[idx00 + c] as f32;

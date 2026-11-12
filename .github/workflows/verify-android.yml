@@ -1,0 +1,39 @@
+name: Verify Otium Lab Android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    if: github.repository == 'XRTM8/Otium-Lab'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-aarch64
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager "platforms;android-36" "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - run: npm ci
+      - name: Assemble ARM64 debug APK
+        run: |
+          chmod +x src-tauri/gen/android/gradlew
+          npm run tauri -- android build --debug --apk --target aarch64 -- --locked

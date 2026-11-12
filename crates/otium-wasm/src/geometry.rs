@@ -16,60 +16,7 @@ fn compute_inverse_homography(dst_w: f64, dst_h: f64, corners: &[f32; 8]) -> Opt
         (corners[6] as f64, corners[7] as f64),
     ];
 
-    let mut a = [[0.0f64; 8]; 8];
-    let mut b = [0.0f64; 8];
-
-    for i in 0..4 {
-        let (sx, sy) = src[i];
-        let (dx, dy) = dst[i];
-        let r1 = i * 2;
-        a[r1] = [sx, sy, 1.0, 0.0, 0.0, 0.0, -dx * sx, -dx * sy];
-        b[r1] = dx;
-        let r2 = r1 + 1;
-        a[r2] = [0.0, 0.0, 0.0, sx, sy, 1.0, -dy * sx, -dy * sy];
-        b[r2] = dy;
-    }
-
-    for col in 0..8 {
-        let mut pivot = col;
-        let mut max_val = a[col][col].abs();
-        for (row, a_row) in a.iter().enumerate().skip(col + 1) {
-            let v = a_row[col].abs();
-            if v > max_val {
-                max_val = v;
-                pivot = row;
-            }
-        }
-        if max_val < 1e-10 {
-            return None;
-        }
-        if pivot != col {
-            a.swap(col, pivot);
-            b.swap(col, pivot);
-        }
-        let diag = a[col][col];
-        let pivot_row = a[col];
-        for row in (col + 1)..8 {
-            let factor = a[row][col] / diag;
-            if factor != 0.0 {
-                for (dst_cell, pivot_cell) in a[row][col..].iter_mut().zip(&pivot_row[col..]) {
-                    *dst_cell -= factor * *pivot_cell;
-                }
-                b[row] -= factor * b[col];
-            }
-        }
-    }
-
-    let mut h = [0.0f64; 8];
-    for row in (0..8).rev() {
-        let mut sum = b[row];
-        for k in (row + 1)..8 {
-            sum -= a[row][k] * h[k];
-        }
-        h[row] = sum / a[row][row];
-    }
-
-    Some([h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1.0])
+    otium_scan_math::homography(src, dst, 1e-10)
 }
 
 pub fn warp_perspective_rgba_slice(
@@ -115,10 +62,8 @@ pub fn warp_perspective_rgba_slice(
                 let inv_fx = 1.0 - fx;
                 let inv_fy = 1.0 - fy;
 
-                let idx00 = y0 * src_stride + x0 * 4;
-                let idx10 = idx00 + 4;
-                let idx01 = idx00 + src_stride;
-                let idx11 = idx01 + 4;
+                let [idx00, idx10, idx01, idx11] =
+                    otium_scan_math::rgba_neighbors(x0, y0, src_stride);
 
                 let w00 = inv_fx * inv_fy;
                 let w10 = fx * inv_fy;
