@@ -136,7 +136,7 @@ export async function initiateBeamRtc(host: BeamWebRtcHost): Promise<void> {
       type: 'BEAM_RTC_OFFER',
       roomCode: room,
       sessionId,
-      sdp: description,
+      sdp: { type: description.type, sdp: description.sdp },
       timestamp: Date.now(),
     });
   } catch (error) {
@@ -197,7 +197,7 @@ export async function handleBeamRtcOffer(host: BeamWebRtcHost, message: BeamMess
       type: 'BEAM_RTC_ANSWER',
       roomCode: host.getConnectedRoom()!,
       sessionId: message.sessionId,
-      sdp: description,
+      sdp: { type: description.type, sdp: description.sdp },
       timestamp: Date.now(),
     });
   } catch (error) {

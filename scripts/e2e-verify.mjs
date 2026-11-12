@@ -4,10 +4,13 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { fileURLToPath } from 'node:url';
+import { build } from 'vite';
 
 const DIST_DIR = path.resolve(process.cwd(), 'dist');
 const liveOfflineAudit = process.argv.includes('--live-offline');
-if (!liveOfflineAudit && !fs.existsSync(DIST_DIR)) {
+const beamOnly = process.argv.includes('--beam-only');
+if (!liveOfflineAudit && !beamOnly && !fs.existsSync(DIST_DIR)) {
   console.error('[e2e-verify] dist/ does not exist. Build the web app first.');
   process.exit(1);
 }
@@ -292,6 +295,19 @@ class CdpClient {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const browserPath = findBrowserExecutable();
+let beamFixture = '';
+if (!liveOfflineAudit) {
+  const result = await build({
+    configFile: false, logLevel: 'error',
+    build: {
+      write: false,
+      lib: { entry: fileURLToPath(new URL('./beam-browser-fixture.mjs', import.meta.url)), formats: ['es'] },
+    },
+  });
+  const bundle = Array.isArray(result) ? result[0] : result;
+  if (bundle.output.length !== 1 || bundle.output[0].type !== 'chunk') throw new Error('Expected one Beam browser fixture module');
+  beamFixture = bundle.output[0].code;
+}
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'otium-e2e-'));
 const testPdfPath = path.join(tempDir, 'test-sample.pdf');
 const testPptxPath = path.join(tempDir, 'test-deck.pptx');
@@ -305,6 +321,16 @@ fs.mkdirSync(userDataDir, { recursive: true });
 
 const server = http.createServer((req, res) => {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  if (beamFixture && urlPath === '/beam-test/') {
+    res.writeHead(200, { 'Content-Type': MIME['.html'] });
+    res.end('<!doctype html><title>Beam WebRTC recovery test</title><link rel="icon" href="data:,">');
+    return;
+  }
+  if (beamFixture && urlPath === '/beam-test/fixture.js') {
+    res.writeHead(200, { 'Content-Type': MIME['.js'] });
+    res.end(beamFixture);
+    return;
+  }
   if (!urlPath.startsWith('/Otium-Lab')) {
     res.writeHead(404);
     res.end(`404 OUTSIDE /Otium-Lab: ${urlPath}`);
@@ -383,7 +409,7 @@ if (!cdpPort) {
 
 let allPassed = true;
 
-async function runAudit(name, mobileMode, scenarioFn) {
+async function runAudit(name, mobileMode, scenarioFn, url = appUrl) {
   const created = await (await fetch(`http://127.0.0.1:${cdpPort}/json/new?about:blank`, { method: 'PUT' })).json();
   const cdp = new CdpClient(created.webSocketDebuggerUrl);
   await cdp.connect();
@@ -406,7 +432,7 @@ async function runAudit(name, mobileMode, scenarioFn) {
       });
     }
     await cdp.send('Emulation.setEmitTouchEventsForMouse', { enabled: mobileMode });
-    const navigation = await cdp.send('Page.navigate', { url: appUrl });
+    const navigation = await cdp.send('Page.navigate', { url });
     if (navigation.errorText) throw new Error(`Navigation failed: ${navigation.errorText}`);
     await wait(1600);
 
@@ -435,6 +461,13 @@ async function runAudit(name, mobileMode, scenarioFn) {
       console.error('MISSING 200 OK FOR otium_wasm.wasm!');
       allPassed = false;
     }
+  } catch (error) {
+    const diagnostics = cdp.events
+      .filter(event => event.method === 'Runtime.consoleAPICalled')
+      .slice(-12)
+      .map(event => event.params.args.map(arg => arg.value ?? arg.description).join(' '));
+    if (diagnostics.length) console.error(`[${name}] Browser diagnostics:`, diagnostics);
+    throw error;
   } finally {
     cdp.close();
   }
@@ -492,6 +525,39 @@ async function auditOffline(cdp) {
       offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
     });
   }
+}
+
+async function auditScheduledTheme(cdp) {
+  await cdp.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-color-scheme', value: 'dark' }],
+  });
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+    localStorage.setItem('otium-lab:otium_theme', 'paper');
+    localStorage.setItem('otium-lab:otium_theme_schedule', 'system');
+    localStorage.setItem('otium-lab:otium_night_theme', 'nordic');
+    window.OtiumTheme = { setTheme(scheme, color) {
+      window.__initialTheme ??= {
+        scheme, color,
+        theme: document.documentElement.dataset.theme,
+        beforeReader: !document.querySelector('#root'),
+      };
+    } };
+  ` });
+  await cdp.send('Page.reload');
+  await waitForBrowser(cdp, '!!window.__initialTheme', 'theme bootstrap after reload');
+  // The production app registers on HTTPS. The loopback fixture uses HTTP.
+  await cdp.evalJs("(async () => { await navigator.serviceWorker.register('./sw.js'); })()");
+  const offline = await auditOffline(cdp);
+  const result = await cdp.evalJs(`(async () => ({
+    ...window.__initialTheme,
+    assetCached: !!(await caches.match(new URL('theme-init.js', location.href))),
+    renderedTheme: document.documentElement.dataset.theme,
+  }))()`);
+  if (!result.beforeReader || result.scheme !== 'dark' || result.color !== '#15181e' ||
+      result.theme !== 'nordic' || result.renderedTheme !== 'nordic' || !result.assetCached) {
+    throw new Error(`The scheduled theme was not applied before the offline reader mounted: ${JSON.stringify(result)}`);
+  }
+  return { ...result, offlineHttpStatus: offline.offlineHttpStatus };
 }
 
 async function auditLocalBuild() {
@@ -728,7 +794,15 @@ async function auditLocalBuild() {
 
 try {
   if (liveOfflineAudit) await runAudit('LIVE PAGES OFFLINE RELOAD', false, auditOffline);
-  else await auditLocalBuild();
+  else {
+    await runAudit('NATIVE WEBRTC BEAM RECOVERY', false,
+      cdp => cdp.evalJs("import('./fixture.js').then(module => module.runBeamRecovery())"),
+      `http://127.0.0.1:${port}/beam-test/`);
+    if (!beamOnly) {
+      await auditLocalBuild();
+      await runAudit('SCHEDULED THEME STARTUP AND OFFLINE RELOAD', false, auditScheduledTheme);
+    }
+  }
 } finally {
   browser.kill();
   server.close();
@@ -746,4 +820,5 @@ if (!allPassed) {
 }
 console.log(liveOfflineAudit
   ? '\n[e2e-verify] LIVE OFFLINE RELOAD PASSED'
-  : '\n[e2e-verify] ALL DESKTOP + MOBILE + WASM + REAL OCR E2E VERIFICATIONS PASSED');
+  : beamOnly ? '\n[e2e-verify] NATIVE WEBRTC BEAM RECOVERY PASSED'
+    : '\n[e2e-verify] ALL BEAM + DESKTOP + MOBILE + WASM + REAL OCR E2E VERIFICATIONS PASSED');

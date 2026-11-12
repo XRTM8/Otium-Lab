@@ -14,7 +14,12 @@ function worker() {
 it('precaches the deployed application path instead of the GitHub Pages origin root', async () => {
   const app = worker(); let done!: Promise<unknown>;
   app.handlers.get('install')!({ waitUntil: (value: Promise<unknown>) => { done = value; } }); await done;
-  expect(app.cache.addAll).toHaveBeenCalledWith(['https://xrtm8.github.io/Otium-Lab/', 'https://xrtm8.github.io/Otium-Lab/index.html', 'https://xrtm8.github.io/Otium-Lab/manifest.webmanifest']);
+  expect(app.cache.addAll).toHaveBeenCalledWith([
+    'https://xrtm8.github.io/Otium-Lab/',
+    'https://xrtm8.github.io/Otium-Lab/index.html',
+    'https://xrtm8.github.io/Otium-Lab/manifest.webmanifest',
+    'https://xrtm8.github.io/Otium-Lab/theme-init.js',
+  ]);
 });
 it('removes old Otium caches without deleting another application cache', async () => {
   const app = worker(); let done!: Promise<unknown>;
