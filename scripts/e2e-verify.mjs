@@ -441,6 +441,22 @@ try {
     await cdp.send('Page.reload');
     await wait(1200);
 
+    // Stage 5: Lazy chunk hygiene + Service Worker readiness on Landing
+    res.startupCheck = await cdp.evalJs(`(async () => {
+      const scripts = Array.from(document.scripts).map(s => s.src || '');
+      const resources = performance.getEntriesByType('resource').map(r => r.name);
+      const eagerHeavy = [...scripts, ...resources].filter(u => /pdfjs-core|tesseract-ocr|vendor-pdflib/i.test(u));
+      let swFetchOk = false;
+      try {
+        const swResp = await fetch('./sw.js', { cache: 'no-store' });
+        swFetchOk = swResp.ok && (await swResp.text()).includes('CACHE_NAME');
+      } catch (err) {
+        console.debug('[e2e] sw probe failed:', err);
+      }
+      return { eagerHeavy, swFetchOk };
+    })()`);
+    if (res.startupCheck.eagerHeavy.length > 0 || !res.startupCheck.swFetchOk) allPassed = false;
+
     // Settings
     res.settingsOpened = await cdp.evalJs(`(() => {
       const btn = Array.from(document.querySelectorAll('button')).find(b => b.getAttribute('title')?.includes('إعدادات') || b.textContent?.includes('إعدادات'));
@@ -502,19 +518,25 @@ try {
     })()`);
     await wait(600);
     res.boardSplit = await cdp.evalJs(`!!document.querySelector('[data-board-resizing]')`);
-    res.boardStroke = await cdp.evalJs(`(() => {
+    res.boardStroke = await cdp.evalJs(`(async () => {
       const pane = document.querySelector('[data-board-resizing]');
       const canvases = pane ? Array.from(pane.querySelectorAll('canvas')) : [];
       const boardCanvas = canvases.find(c => !c.classList.contains('pointer-events-none'));
+      let strokeFrameMs = null;
       if (boardCanvas) {
         const rect = boardCanvas.getBoundingClientRect();
         const x = rect.left + 40;
         const y = rect.top + 40;
+        const t0 = performance.now();
         boardCanvas.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x, clientY: y, bubbles: true }));
-        boardCanvas.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x + 40, clientY: y + 30, bubbles: true }));
-        boardCanvas.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x + 40, clientY: y + 30, bubbles: true }));
+        for (let step = 1; step <= 15; step++) {
+          boardCanvas.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x + step * 4, clientY: y + step * 2, bubbles: true }));
+        }
+        boardCanvas.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x + 60, clientY: y + 30, bubbles: true }));
+        await new Promise(r => requestAnimationFrame(() => r()));
+        strokeFrameMs = Math.round((performance.now() - t0) * 100) / 100;
       }
-      return { totalCanvases: canvases.length, drewBoardStroke: !!boardCanvas };
+      return { totalCanvases: canvases.length, drewBoardStroke: !!boardCanvas, strokeFrameMs };
     })()`);
     if (!res.boardSplit || !res.boardStroke?.drewBoardStroke) allPassed = false;
     return res;

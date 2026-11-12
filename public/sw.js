@@ -3,7 +3,12 @@ const CACHE_NAME = 'otium-lab-offline-20261109-13';
 const APP_ROOT = self.registration.scope;
 const PRECACHE_URLS = ['./', './index.html', './manifest.webmanifest'].map(path => new URL(path, APP_ROOT).href);
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS)).catch(() => {}));
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE_URLS))
+      .catch(err => console.debug('[sw] Precache install skipped:', err))
+  );
   self.skipWaiting();
 });
 self.addEventListener('activate', event => {
@@ -14,7 +19,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || !url.href.startsWith(APP_ROOT) || url.pathname.endsWith('/latest.json')) return;
   const remember = response => {
-    if (response.ok) { const copy = response.clone(); void caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {}); }
+    if (response.ok) {
+      const copy = response.clone();
+      void caches
+        .open(CACHE_NAME)
+        .then(cache => cache.put(event.request, copy))
+        .catch(err => console.debug('[sw] Runtime cache write skipped:', err));
+    }
     return response;
   };
   event.respondWith((async () => {

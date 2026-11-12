@@ -279,3 +279,86 @@ pub unsafe extern "C" fn otium_dewarp_spine_rgba(
         -1
     }
 }
+
+/// Simplifies a flat `[x0, y0, x1, y1, ...]` polyline with iterative Ramer-Douglas-Peucker
+/// and writes retained `[x, y]` pairs back in place, returning the retained point count.
+pub fn simplify_polyline_xy_slice(coords: &mut [f32], epsilon: f32) -> usize {
+    let point_count = coords.len() / 2;
+    if point_count <= 2 || epsilon <= 0.0 {
+        return point_count;
+    }
+
+    let eps_sq = epsilon * epsilon;
+    let mut keep = vec![false; point_count];
+    keep[0] = true;
+    keep[point_count - 1] = true;
+
+    let mut stack = vec![(0usize, point_count - 1)];
+    while let Some((start, end)) = stack.pop() {
+        if end <= start + 1 {
+            continue;
+        }
+        let ax = coords[start * 2];
+        let ay = coords[start * 2 + 1];
+        let bx = coords[end * 2];
+        let by = coords[end * 2 + 1];
+        let dx = bx - ax;
+        let dy = by - ay;
+        let len_sq = dx * dx + dy * dy;
+
+        let mut max_dist_sq = 0.0f32;
+        let mut max_idx = start;
+        for i in (start + 1)..end {
+            let px = coords[i * 2];
+            let py = coords[i * 2 + 1];
+            let dist_sq = if len_sq < 1e-6 {
+                let rx = px - ax;
+                let ry = py - ay;
+                rx * rx + ry * ry
+            } else {
+                let cross = dx * (ay - py) - (ax - px) * dy;
+                (cross * cross) / len_sq
+            };
+            if dist_sq > max_dist_sq {
+                max_dist_sq = dist_sq;
+                max_idx = i;
+            }
+        }
+
+        if max_dist_sq > eps_sq {
+            keep[max_idx] = true;
+            stack.push((start, max_idx));
+            stack.push((max_idx, end));
+        }
+    }
+
+    let mut out_idx = 0usize;
+    for (idx, &retained) in keep.iter().enumerate() {
+        if retained {
+            coords[out_idx * 2] = coords[idx * 2];
+            coords[out_idx * 2 + 1] = coords[idx * 2 + 1];
+            out_idx += 1;
+        }
+    }
+    out_idx
+}
+
+/// Simplifies `[x, y]` coordinate pairs in place via RDP and returns the retained point count or `-1` on invalid args.
+///
+/// # Safety
+/// `coords_ptr` must be valid for `point_count * 2` contiguous `f32` elements.
+#[no_mangle]
+pub unsafe extern "C" fn otium_simplify_polyline_f32(
+    coords_ptr: *mut f32,
+    point_count: u32,
+    epsilon: f32,
+) -> i32 {
+    if coords_ptr.is_null() || point_count > 500_000 {
+        return -1;
+    }
+    let Some(f32_len) = (point_count as usize).checked_mul(2) else {
+        return -1;
+    };
+    let coords = unsafe { slice::from_raw_parts_mut(coords_ptr, f32_len) };
+    simplify_polyline_xy_slice(coords, epsilon) as i32
+}

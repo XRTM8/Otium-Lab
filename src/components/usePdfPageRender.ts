@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
-import { TextLayer } from 'pdfjs-dist';
 import type { ThemeMode } from '../core/types';
 import { scheduleIdleWork, scheduleRender } from '../core/reader/renderScheduler';
 import { supportsCanvasFilter, themeFilter } from './pdfPageCanvas';
@@ -281,6 +280,8 @@ export function usePdfPageRender({
         target.style.setProperty('--scale-round-x', '1px');
         target.style.setProperty('--scale-round-y', '1px');
 
+        const { TextLayer } = await import('pdfjs-dist');
+        if (cancelled || !textLayerRef.current) return;
         const textLayer = new TextLayer({
           textContentSource: textContent,
           container: target,

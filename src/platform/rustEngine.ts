@@ -48,7 +48,8 @@ export async function drawPngBytesOnCanvas(
     ctx.clearRect(0, 0, target.width, target.height);
     ctx.drawImage(img, 0, 0, target.width, target.height);
     return true;
-  } catch {
+  } catch (error) {
+    console.warn('Rust canvas PNG decode failed:', error);
     return false;
   } finally {
     URL.revokeObjectURL(url);
@@ -62,7 +63,7 @@ export async function fetchRustEngineStatus(): Promise<RustEngineStatus> {
       isActive: true,
       modules: [
         'otium-core (Bilingual Typography, Search Normalization & 8 OLED Themes)',
-        'otium-wasm (Web Worker Perspective Warp, Document Filters & Camera CV)',
+        'otium-wasm (Web Worker Perspective Warp, Document Filters, Camera CV & RDP Ink)',
         'otium-slides (PPTX Slide Presentation Engine)',
         'otium-beam (Smart Beam P2P Sync)',
       ],
@@ -166,7 +167,117 @@ export async function searchDocumentPagesWithRust(
       pages,
       query,
     });
-  } catch {
+  } catch (error) {
+    console.warn('Rust Arabic search fallback:', error);
+    return null;
+  }
+}
+
+export interface RustPdfPageInfo {
+  page_number: number;
+  width_pt: number;
+  height_pt: number;
+  rotation: number;
+}
+
+export interface RustPdfDocumentInfo {
+  title: string | null;
+  author: string | null;
+  page_count: number;
+  version: string;
+  pages: RustPdfPageInfo[];
+}
+
+export interface RustInkPoint {
+  x: number;
+  y: number;
+  pressure: number;
+  timestamp_ms: number;
+}
+
+export interface RustInkStroke {
+  id: string;
+  tool: 'pen' | 'highlighter' | 'eraser';
+  color_hex: string;
+  base_width: number;
+  opacity: number;
+  points: RustInkPoint[];
+}
+
+/**
+ * Inspects PDF structure, version, and page boxes natively via otium-pdf raw binary IPC.
+ */
+export async function inspectPdfWithRust(bytes: Uint8Array): Promise<RustPdfDocumentInfo | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    return await invoke<RustPdfDocumentInfo>('rust_inspect_pdf_bytes', bytes);
+  } catch (error) {
+    console.warn('Rust PDF inspector fallback:', error);
+    return null;
+  }
+}
+
+/**
+ * Decimates high-frequency 120Hz ink trajectories natively via otium-ink RDP simplifier.
+ */
+export async function simplifyInkWithRust(
+  points: RustInkPoint[],
+  tolerance = 0.75
+): Promise<RustInkPoint[] | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    return await invoke<RustInkPoint[]>('rust_simplify_ink_points', { points, tolerance });
+  } catch (error) {
+    console.warn('Rust ink simplifier fallback:', error);
+    return null;
+  }
+}
+
+/**
+ * Renders vector strokes to standalone SVG markup via otium-ink.
+ */
+export async function exportInkSvgWithRust(
+  width: number,
+  height: number,
+  strokes: RustInkStroke[]
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    return await invoke<string>('rust_export_ink_svg', { width, height, strokes });
+  } catch (error) {
+    console.warn('Rust ink SVG export fallback:', error);
+    return null;
+  }
+}
+
+/**
+ * Encrypts binary backup/document payloads via Argon2id + ChaCha20-Poly1305 (otium-vault).
+ */
+export async function sealBytesWithRust(bytes: Uint8Array, passphrase: string): Promise<Uint8Array | null> {
+  if (!isTauriRuntime() || !passphrase.trim()) return null;
+  try {
+    const sealed = await invoke<ArrayBuffer | number[]>('rust_vault_seal_bytes', bytes, {
+      headers: { 'x-vault-passphrase': passphrase },
+    });
+    return toUint8Array(sealed);
+  } catch (error) {
+    console.warn('Rust vault seal fallback:', error);
+    return null;
+  }
+}
+
+/**
+ * Decrypts payloads produced by `sealBytesWithRust` via otium-vault.
+ */
+export async function unsealBytesWithRust(sealed: Uint8Array, passphrase: string): Promise<Uint8Array | null> {
+  if (!isTauriRuntime() || !passphrase.trim()) return null;
+  try {
+    const opened = await invoke<ArrayBuffer | number[]>('rust_vault_unseal_bytes', sealed, {
+      headers: { 'x-vault-passphrase': passphrase },
+    });
+    return toUint8Array(opened);
+  } catch (error) {
+    console.warn('Rust vault unseal fallback:', error);
     return null;
   }
 }

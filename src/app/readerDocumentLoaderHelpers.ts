@@ -1,5 +1,6 @@
 import type React from 'react';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { PdfLoadingTaskHandle } from '../core/pdf/document';
 import type { BookmarkItem, TextAnnotation, ThemeMode, ViewMode } from '../core/types';
 import type { Language } from '../core/i18n/translations';
 import type { RecentDocItem } from '../core/storage/documents';
@@ -65,7 +66,7 @@ export interface UseReaderDocumentLoaderOptions {
 }
 
 export function destroyPdfTaskQuietly(
-  task: PDFDocumentLoadingTask | null | undefined,
+  task: PdfLoadingTaskHandle | null | undefined,
   context: string
 ): void {
   if (!task) return;

@@ -5,6 +5,8 @@ use std::path::Path;
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::State;
 
+mod vault_ink_pdf;
+
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -17,6 +19,7 @@ const ALLOWED_MEDIA_EXTENSIONS: &[&str] = &[
   "opus", "flac", "txt", "md",
 ];
 
+#[cfg_attr(test, allow(dead_code))]
 #[derive(serde::Serialize, Clone)]
 struct InitialPdf {
   name: String,
@@ -40,10 +43,14 @@ fn get_rust_engine_status() -> RustEngineStatus {
       "otium-slides (Native PPTX Parser)",
       "otium-scanner (Document Filter & ID Card Stitcher)",
       "otium-beam (Pairing PIN & Vector QR SVG)",
+      "otium-pdf (Zero-Copy PDF Metadata Inspector)",
+      "otium-ink (RDP Stroke Decimator & SVG Exporter)",
+      "otium-vault (Argon2id + ChaCha20-Poly1305 Vault Crypto)",
     ],
   }
 }
 
+#[cfg_attr(test, allow(dead_code))]
 fn extract_raw_body(request: Request<'_>) -> Result<Vec<u8>, String> {
   let InvokeBody::Raw(bytes) = request.body() else {
     return Err("Expected raw binary IPC payload".into());
@@ -51,6 +58,7 @@ fn extract_raw_body(request: Request<'_>) -> Result<Vec<u8>, String> {
   Ok(bytes.clone())
 }
 
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 async fn rust_parse_pptx(request: Request<'_>) -> Result<otium_slides::SlidePresentation, String> {
   let bytes = extract_raw_body(request)?;
@@ -66,6 +74,7 @@ fn rust_generate_beam_qr(payload: String) -> Result<String, String> {
   otium_beam::BeamPairing::generate_qr_svg(&payload).map_err(|e| e.to_string())
 }
 
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 async fn rust_clean_document_image(request: Request<'_>) -> Result<Response, String> {
   let contrast_boost = request
@@ -90,6 +99,7 @@ async fn rust_clean_document_image(request: Request<'_>) -> Result<Response, Str
   Ok(Response::new(png_bytes))
 }
 
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 async fn rust_stitch_id_cards(request: Request<'_>) -> Result<Response, String> {
   let front_len = request
@@ -120,6 +130,7 @@ async fn rust_stitch_id_cards(request: Request<'_>) -> Result<Response, String> 
   Ok(Response::new(png_bytes))
 }
 
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 fn rust_search_document_pages_arabic(
   doc_key: String,
@@ -130,6 +141,7 @@ fn rust_search_document_pages_arabic(
   cache.search_or_build(doc_key, pages, &query)
 }
 
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 fn get_initial_pdf() -> Option<InitialPdf> {
   for candidate in env::args().skip(1) {
@@ -158,6 +170,7 @@ fn get_initial_pdf() -> Option<InitialPdf> {
 }
 
 /// Validates symlink safety, canonical path, extension and `%PDF-` header before returning bytes.
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 async fn read_pdf_bytes(path: String) -> Result<Response, String> {
   let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
@@ -171,6 +184,7 @@ async fn read_pdf_bytes(path: String) -> Result<Response, String> {
 }
 
 /// Reads supported non-PDF workspace files (PPTX, images, audio/video, text) dropped onto Tauri.
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 async fn read_media_file_bytes(path: String) -> Result<Response, String> {
   let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
@@ -186,6 +200,7 @@ async fn read_media_file_bytes(path: String) -> Result<Response, String> {
 /// True when Windows has an Otium uninstall entry, which is written by the
 /// NSIS installer. A portable executable has no such entry and therefore uses
 /// the manual download path instead of the automatic updater.
+#[cfg_attr(test, allow(dead_code))]
 #[tauri::command]
 fn is_installed_build() -> bool {
   #[cfg(windows)]
@@ -216,7 +231,7 @@ fn is_installed_build() -> bool {
 /// worker and its cache storage before the webview is created. Site data such
 /// as localStorage, IndexedDB and PDF progress lives in sibling directories
 /// and is intentionally left untouched.
-#[cfg(windows)]
+#[cfg(all(windows, not(test)))]
 fn clear_legacy_service_worker() {
   let Some(local_app_data) = env::var_os("LOCALAPPDATA") else {
     return;
@@ -231,6 +246,7 @@ fn clear_legacy_service_worker() {
   }
 }
 
+#[cfg(not(test))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   #[cfg(windows)]
@@ -256,7 +272,12 @@ pub fn run() {
       rust_generate_beam_qr,
       rust_clean_document_image,
       rust_stitch_id_cards,
-      rust_search_document_pages_arabic
+      rust_search_document_pages_arabic,
+      vault_ink_pdf::rust_inspect_pdf_bytes,
+      vault_ink_pdf::rust_simplify_ink_points,
+      vault_ink_pdf::rust_export_ink_svg,
+      vault_ink_pdf::rust_vault_seal_bytes,
+      vault_ink_pdf::rust_vault_unseal_bytes
     ])
     .setup(|_app| {
       #[cfg(not(mobile))]
@@ -282,7 +303,7 @@ mod tests {
     let status = get_rust_engine_status();
     assert!(status.is_active);
     assert!(status.version.contains("2.0.0-lab"));
-    assert_eq!(status.modules.len(), 4);
+    assert_eq!(status.modules.len(), 7);
   }
 
   #[test]

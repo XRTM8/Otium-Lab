@@ -7,6 +7,11 @@ import {
   cleanDocumentWithRust,
   stitchIdCardWithRust,
   searchDocumentPagesWithRust,
+  inspectPdfWithRust,
+  simplifyInkWithRust,
+  exportInkSvgWithRust,
+  sealBytesWithRust,
+  unsealBytesWithRust,
 } from './rustEngine';
 
 describe('rustEngine platform integration', () => {
@@ -35,6 +40,11 @@ describe('rustEngine platform integration', () => {
     expect(await cleanDocumentWithRust(dummyBytes)).toBeNull();
     expect(await stitchIdCardWithRust(dummyBytes, dummyBytes)).toBeNull();
     expect(await searchDocumentPagesWithRust('doc-1', 'تجربة', ['محتوى تجربة'])).toBeNull();
+    expect(await inspectPdfWithRust(dummyBytes)).toBeNull();
+    expect(await simplifyInkWithRust([{ x: 0, y: 0, pressure: 1, timestamp_ms: 1 }])).toBeNull();
+    expect(await exportInkSvgWithRust(100, 100, [])).toBeNull();
+    expect(await sealBytesWithRust(dummyBytes, 'secret')).toBeNull();
+    expect(await unsealBytesWithRust(dummyBytes, 'secret')).toBeNull();
   });
 
   it('passes raw Uint8Array payloads (not JSON number arrays) and forwards search cache commands in Tauri', async () => {
@@ -85,5 +95,19 @@ describe('rustEngine platform integration', () => {
       { docKey: 'doc-k', pages: null, query: 'السلام' },
       undefined
     );
+
+    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    await inspectPdfWithRust(pdfBytes);
+    expect(invokeMock).toHaveBeenCalledWith('rust_inspect_pdf_bytes', pdfBytes, undefined);
+
+    const pts = [{ x: 0, y: 0, pressure: 1, timestamp_ms: 0 }];
+    await simplifyInkWithRust(pts, 0.5);
+    expect(invokeMock).toHaveBeenCalledWith('rust_simplify_ink_points', { points: pts, tolerance: 0.5 }, undefined);
+
+    await exportInkSvgWithRust(320, 240, []);
+    expect(invokeMock).toHaveBeenCalledWith('rust_export_ink_svg', { width: 320, height: 240, strokes: [] }, undefined);
+
+    await sealBytesWithRust(pdfBytes, 'pin-99');
+    expect(invokeMock).toHaveBeenCalledWith('rust_vault_seal_bytes', pdfBytes, { headers: { 'x-vault-passphrase': 'pin-99' } });
   });
 });

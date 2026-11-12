@@ -59,6 +59,9 @@ export default defineConfig({
           if (id.includes('node_modules/tesseract.js')) {
             return 'tesseract-ocr';
           }
+          if (id.includes('node_modules/pdf-lib')) {
+            return 'vendor-pdflib';
+          }
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react';
           }

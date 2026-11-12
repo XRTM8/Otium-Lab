@@ -63,4 +63,32 @@ impl VaultCrypto {
 
         Ok(plaintext)
     }
+
+    const SEAL_MAGIC: &[u8; 5] = b"OTMV1";
+
+    /// Encrypt arbitrary bytes with a random 16-byte OS salt and passphrase via Argon2id + ChaCha20-Poly1305.
+    pub fn seal_bytes(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
+        let mut salt = [0u8; 16];
+        OsRng.fill_bytes(&mut salt);
+        let key = Self::derive_key(passphrase, &salt)?;
+        let ciphertext = Self::encrypt(&key, plaintext)?;
+
+        let mut sealed = Vec::with_capacity(Self::SEAL_MAGIC.len() + salt.len() + ciphertext.len());
+        sealed.extend_from_slice(Self::SEAL_MAGIC);
+        sealed.extend_from_slice(&salt);
+        sealed.extend_from_slice(&ciphertext);
+        Ok(sealed)
+    }
+
+    /// Decrypt payload produced by `seal_bytes`.
+    pub fn unseal_bytes(passphrase: &str, sealed: &[u8]) -> Result<Vec<u8>> {
+        let header_len = Self::SEAL_MAGIC.len() + 16;
+        if sealed.len() < header_len + 28 || &sealed[..Self::SEAL_MAGIC.len()] != Self::SEAL_MAGIC {
+            return Err(OtiumError::Format("Invalid Otium vault envelope".into()));
+        }
+        let mut salt = [0u8; 16];
+        salt.copy_from_slice(&sealed[Self::SEAL_MAGIC.len()..header_len]);
+        let key = Self::derive_key(passphrase, &salt)?;
+        Self::decrypt(&key, &sealed[header_len..])
+    }
 }

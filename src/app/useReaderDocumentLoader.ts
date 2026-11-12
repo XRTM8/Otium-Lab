@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { PDFDocumentLoadingTask } from 'pdfjs-dist';
-import { isPdfBuffer, openPdf } from '../core/pdf/document';
+import { isPdfBuffer, openPdf, type PdfLoadingTaskHandle } from '../core/pdf/document';
 import { mergeTextAnnotations } from '../core/annotations/textSync';
 import {
   adoptLegacyDocumentRecord,
@@ -82,7 +81,7 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
     changeTheme,
   } = opts;
 
-  const loadingTaskRef = useRef<PDFDocumentLoadingTask | null>(null);
+  const loadingTaskRef = useRef<PdfLoadingTaskHandle | null>(null);
   const loadGenerationRef = useRef(0);
   const fileReadGenerationRef = useRef(0);
 

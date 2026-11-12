@@ -37,4 +37,14 @@ mod tests {
         let result = VaultCrypto::decrypt(&wrong_key, &encrypted);
         assert!(result.is_err(), "Decryption with wrong key must fail");
     }
+
+    #[test]
+    fn test_vault_seal_and_unseal_bytes_roundtrip() {
+        let secret = b"Otium Lab encrypted backup payload";
+        let sealed = VaultCrypto::seal_bytes("passphrase-42", secret).expect("seal");
+        assert!(sealed.starts_with(b"OTMV1"));
+        let opened = VaultCrypto::unseal_bytes("passphrase-42", &sealed).expect("unseal");
+        assert_eq!(opened, secret);
+        assert!(VaultCrypto::unseal_bytes("wrong-pass", &sealed).is_err());
+    }
 }

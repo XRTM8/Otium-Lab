@@ -5,8 +5,8 @@ pub mod vision;
 
 pub use filters::{apply_filter_rgba_slice, otium_apply_filter_rgba};
 pub use geometry::{
-    dewarp_spine_rgba_slice, otium_dewarp_spine_rgba, otium_warp_perspective_rgba,
-    warp_perspective_rgba_slice,
+    dewarp_spine_rgba_slice, otium_dewarp_spine_rgba, otium_simplify_polyline_f32,
+    otium_warp_perspective_rgba, simplify_polyline_xy_slice, warp_perspective_rgba_slice,
 };
 pub use memory::{otium_alloc, otium_dealloc};
 pub use vision::otium_motion_and_sharpness_rgba;
@@ -174,5 +174,13 @@ mod tests {
             0
         );
         assert!(metrics[0] > 150.0);
+    }
+
+    #[test]
+    fn simplify_polyline_keeps_endpoints_and_corners() {
+        let mut pts = [0.0f32, 0.0, 2.0, 0.0, 5.0, 0.0, 5.0, 3.0, 5.0, 6.0];
+        let count = simplify_polyline_xy_slice(&mut pts, 0.25);
+        assert_eq!(count, 3);
+        assert_eq!(&pts[0..6], &[0.0, 0.0, 5.0, 0.0, 5.0, 6.0]);
     }
 }
