@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -43,19 +42,6 @@ function findBrowserExecutable() {
     if (fs.existsSync(candidate)) return candidate;
   }
   throw new Error(`No headless Chromium/Edge executable found. Checked: ${candidates.join(', ')}`);
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.unref();
-    srv.on('error', reject);
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address();
-      const port = typeof addr === 'object' && addr ? addr.port : 0;
-      srv.close((closeErr) => (closeErr ? reject(closeErr) : resolve(port)));
-    });
-  });
 }
 
 function crc32(buf) {
@@ -306,7 +292,6 @@ class CdpClient {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const browserPath = findBrowserExecutable();
-const cdpPort = await getFreePort();
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'otium-e2e-'));
 const testPdfPath = path.join(tempDir, 'test-sample.pdf');
 const testPptxPath = path.join(tempDir, 'test-deck.pptx');
@@ -348,27 +333,48 @@ const browser = spawn(
     '--disable-gpu',
     '--disable-dev-shm-usage',
     '--no-sandbox',
-    `--remote-debugging-port=${cdpPort}`,
+    '--remote-debugging-port=0',
     `--user-data-dir=${userDataDir}`,
     'about:blank',
   ],
-  { stdio: ['ignore', 'pipe', 'pipe'] }
+  { stdio: ['ignore', 'ignore', 'pipe'] }
 );
 
-let browserReady = false;
-for (let i = 0; i < 40; i++) {
+let browserError = '';
+let browserStderr = '';
+browser.on('error', (error) => { browserError = error.message; });
+browser.stderr.setEncoding('utf8');
+browser.stderr.on('data', (chunk) => { browserStderr = (browserStderr + chunk).slice(-4096); });
+
+// Chromium publishes the port it bound in the fresh profile. Reserving and
+// closing a separate socket first leaves a race before Chromium binds it.
+const devToolsPortFile = path.join(userDataDir, 'DevToolsActivePort');
+let cdpPort;
+let cdpError = '';
+const startupDeadline = Date.now() + 20_000;
+while (Date.now() < startupDeadline) {
+  if (browserError || browser.exitCode !== null || browser.signalCode !== null) break;
   try {
-    const list = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json();
-    if (list.some((t) => t.type === 'page')) {
-      browserReady = true;
-      break;
+    if (fs.existsSync(devToolsPortFile)) {
+      const candidatePort = Number(fs.readFileSync(devToolsPortFile, 'utf8').split(/\r?\n/, 1)[0]);
+      if (Number.isInteger(candidatePort) && candidatePort > 0 && candidatePort <= 65535) {
+        const response = await fetch(`http://127.0.0.1:${candidatePort}/json/list`, { signal: AbortSignal.timeout(1000) });
+        const targets = await response.json();
+        if (targets.some((target) => target.type === 'page')) {
+          cdpPort = candidatePort;
+          break;
+        }
+      }
     }
-  } catch (err) {
-    if (i === 39) console.error('[e2e-verify] CDP wait failed:', err);
+  } catch (error) {
+    cdpError = error.message;
   }
   await wait(200);
 }
-if (!browserReady) {
+if (!cdpPort) {
+  console.error('[e2e-verify] Browser failed to expose a CDP page:', {
+    browserPath, exitCode: browser.exitCode, signal: browser.signalCode, browserError, cdpError, browserStderr,
+  });
   browser.kill();
   server.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
