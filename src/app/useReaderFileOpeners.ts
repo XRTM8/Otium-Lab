@@ -34,12 +34,13 @@ export function useReaderFileOpeners({
         return await loadDocumentRef.current(buffer, file.name);
       } catch (error) {
         if (fileGeneration !== fileReadGenerationRef.current) return false;
+        setIsLoading(false);
         setDocumentError(describeDocumentError(error, lang));
         console.error('Error reading file:', error);
         return false;
       }
     },
-    [fileReadGenerationRef, lang, loadDocumentRef, setDocumentError]
+    [fileReadGenerationRef, lang, loadDocumentRef, setDocumentError, setIsLoading]
   );
 
   const openFileRef = useRef(openFile);
@@ -55,20 +56,23 @@ export function useReaderFileOpeners({
   });
 
   const openSample = useCallback(async () => {
+    const fileGeneration = ++fileReadGenerationRef.current;
     setIsLoading(true);
     setDocumentError(null);
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}sample.pdf`);
       if (!response.ok) throw new Error(`Sample document returned ${response.status}`);
       const buffer = await response.arrayBuffer();
+      if (fileGeneration !== fileReadGenerationRef.current) return false;
       return await loadDocumentRef.current(buffer, SAMPLE_DOCUMENT_NAME);
     } catch (error) {
+      if (fileGeneration !== fileReadGenerationRef.current) return false;
       setDocumentError(describeDocumentError(error, lang));
       setIsLoading(false);
       console.error('Error loading sample:', error);
       return false;
     }
-  }, [lang, loadDocumentRef, setDocumentError, setIsLoading]);
+  }, [fileReadGenerationRef, lang, loadDocumentRef, setDocumentError, setIsLoading]);
 
   const loadDocumentBytes = useCallback(
     async (data: ArrayBuffer, name: string) => {
@@ -82,9 +86,11 @@ export function useReaderFileOpeners({
       if (recent.name === SAMPLE_DOCUMENT_NAME) {
         return await openSample();
       }
+      const fileGeneration = ++fileReadGenerationRef.current;
       setIsLoading(true);
       setDocumentError(null);
       const result = await readRecentDocumentBytes(recent, lang);
+      if (fileGeneration !== fileReadGenerationRef.current) return false;
       if (!result.ok) {
         setIsLoading(false);
         setDocumentError(result.error);
@@ -92,7 +98,7 @@ export function useReaderFileOpeners({
       }
       return await loadDocumentRef.current(result.data, recent.name);
     },
-    [lang, loadDocumentRef, openSample, setDocumentError, setIsLoading]
+    [fileReadGenerationRef, lang, loadDocumentRef, openSample, setDocumentError, setIsLoading]
   );
 
   return {

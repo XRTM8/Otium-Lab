@@ -168,19 +168,21 @@ export function normalizeAnnotation(raw: unknown): TextAnnotation | null {
   };
 }
 
-function readLegacy(docTitle: string): TextAnnotation[] {
-  if (!docTitle || typeof window === 'undefined') return [];
+function readLegacy(docTitle: string, requireComplete = false): TextAnnotation[] | null {
+  if (!docTitle || typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${docTitle}`);
-    if (!raw) return [];
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    if (!Array.isArray(parsed)) return null;
+    const annotations = parsed
       .map(normalizeAnnotation)
       .filter((annotation): annotation is TextAnnotation => annotation !== null);
+    if (annotations.length < parsed.length && (requireComplete || annotations.length === 0)) return null;
+    return annotations;
   } catch (error) {
     console.warn('Failed to read legacy annotations:', error);
-    return [];
+    return null;
   }
 }
 
@@ -195,11 +197,18 @@ function writeLegacy(docTitle: string, annotations: TextAnnotation[]): boolean {
   }
 }
 
-async function readDatabase(docTitle: string): Promise<TextAnnotation[] | null> {
+async function readDatabase(docTitle: string, requireReadable: boolean): Promise<TextAnnotation[] | null> {
   const db = await openDatabase();
-  if (!db) return null;
+  if (!db) {
+    if (requireReadable) throw new Error('The annotation database is unavailable.');
+    return null;
+  }
 
-  return new Promise<TextAnnotation[] | null>((resolve) => {
+  return new Promise<TextAnnotation[] | null>((resolve, reject) => {
+    const fail = (error: unknown) => {
+      if (requireReadable) reject(error);
+      else resolve(null);
+    };
     try {
       const tx = db.transaction(STORE, 'readonly');
       const request = tx.objectStore(STORE).get(docTitle);
@@ -215,9 +224,9 @@ async function readDatabase(docTitle: string): Promise<TextAnnotation[] | null> 
             .filter((annotation): annotation is TextAnnotation => annotation !== null)
         );
       };
-      request.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
+      request.onerror = () => fail(request.error);
+    } catch (error) {
+      fail(error);
     }
   });
 }
@@ -243,7 +252,8 @@ async function writeDatabase(docTitle: string, annotations: TextAnnotation[]): P
 /** Loads annotations from IndexedDB, migrating legacy filename-keyed records. */
 export async function loadStoredAnnotations(
   docKey: string,
-  legacyTitle?: string
+  legacyTitle?: string,
+  { requireReadable = false }: { requireReadable?: boolean } = {}
 ): Promise<TextAnnotation[]> {
   if (!docKey || typeof window === 'undefined') return [];
 
@@ -251,14 +261,21 @@ export async function loadStoredAnnotations(
   // intentionally empty set after deleting the last highlight.
   try {
     if (localStorage.getItem(`otium_annos_pending_${docKey}`) === '1') {
-      const pending = readLegacy(docKey);
-      if (await writeDatabase(docKey, pending)) localStorage.removeItem(`otium_annos_pending_${docKey}`);
-      return pending;
+      const pending = readLegacy(docKey, true);
+      if (pending !== null) {
+        if (await writeDatabase(docKey, pending)) localStorage.removeItem(`otium_annos_pending_${docKey}`);
+        return pending;
+      }
     }
-  } catch { /* Read the database when localStorage is unavailable. */ }
+  } catch (error) {
+    if (requireReadable) throw error;
+    // Read the database when localStorage is unavailable.
+  }
 
-  const fromDb = await readDatabase(docKey);
+  const fromDb = await readDatabase(docKey, requireReadable);
   if (fromDb !== null) return fromDb;
+  const fromLocal = readLegacy(docKey);
+  if (fromLocal !== null) return fromLocal;
 
   const legacyKey = legacyTitle && legacyTitle !== docKey ? legacyTitle : '';
   if (!legacyKey) return [];
@@ -266,14 +283,14 @@ export async function loadStoredAnnotations(
   // Pre-1.5 stored annotations in this same database under the filename. Read
   // it before the localStorage fallback, otherwise an upgrade would look like
   // every highlight had vanished until the file was opened from the old app.
-  const legacyDatabase = await readDatabase(legacyKey);
+  const legacyDatabase = await readDatabase(legacyKey, requireReadable);
   if (legacyDatabase !== null && legacyDatabase.length > 0) {
     void writeDatabase(docKey, legacyDatabase);
     return legacyDatabase;
   }
 
   const legacy = readLegacy(legacyKey);
-  if (legacy.length > 0) {
+  if (legacy && legacy.length > 0) {
     void writeDatabase(docKey, legacy);
     return legacy;
   }

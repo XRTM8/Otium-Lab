@@ -174,12 +174,22 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
   }, [setIsLoading, setLoadProgress, setPasswordModal]);
 
   const loadPdfData = async (data: ArrayBuffer, title: string, startPage?: number, reportFailure = false) => {
+    fileReadGenerationRef.current++;
+    const generation = ++loadGenerationRef.current;
+    const previousTask = loadingTaskRef.current;
+    loadingTaskRef.current = null;
+    destroyPdfTaskQuietly(previousTask, 'PDF previous task teardown:');
+    setLoadProgress(null);
+    setPasswordModal(EMPTY_PASSWORD_MODAL);
+
     if (!data || data.byteLength === 0) {
+      setIsLoading(false);
       setDocumentError(lang === 'ar' ? 'الملف المحدد فارغ.' : 'The selected file is empty.');
       return false;
     }
 
     if (!isPdfBuffer(data)) {
+      setIsLoading(false);
       setDocumentError(
         lang === 'ar'
           ? 'الملف المحدد تالف أو ليس مستند PDF صالحاً.'
@@ -188,44 +198,34 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
       return false;
     }
 
-    const generation = ++loadGenerationRef.current;
-    const annotationGeneration = ++annotationsGenerationRef.current;
-    annotationsHydratedRef.current = false;
-    bookmarksHydratedRef.current = false;
     setDocumentError(null);
-    setLoadProgress(null);
     setIsLoading(true);
-    setPasswordModal(EMPTY_PASSWORD_MODAL);
 
-    const previousTask = loadingTaskRef.current;
-    loadingTaskRef.current = null;
-    destroyPdfTaskQuietly(previousTask, 'PDF previous task teardown:');
     const storageBuffer = data.slice(0);
     const identityPromise = fingerprintDocument(storageBuffer).then(undefined, (err: unknown) => {
       console.warn('PDF fingerprint fallback:', err);
       return '';
     });
 
-    const handle = openPdf(data, {
-      onPassword: ({ callback, reason }) => {
-        if (generation !== loadGenerationRef.current) return;
-        setIsLoading(false);
-        setPasswordModal({
-          isOpen: true,
-          isIncorrect: reason === 2,
-          callback,
-          title,
-        });
-      },
-      onProgress: (loaded, total) => {
-        if (generation !== loadGenerationRef.current || total <= 0) return;
-        setLoadProgress(Math.min(100, Math.round((loaded / total) * 100)));
-      },
-    });
-
-    loadingTaskRef.current = handle.loadingTask;
-
     try {
+      const handle = openPdf(data, {
+        onPassword: ({ callback, reason }) => {
+          if (generation !== loadGenerationRef.current) return;
+          setIsLoading(false);
+          setPasswordModal({
+            isOpen: true,
+            isIncorrect: reason === 2,
+            callback,
+            title,
+          });
+        },
+        onProgress: (loaded, total) => {
+          if (generation !== loadGenerationRef.current || total <= 0) return;
+          setLoadProgress(Math.min(100, Math.round((loaded / total) * 100)));
+        },
+      });
+      loadingTaskRef.current = handle.loadingTask;
+
       const opened = await handle.promise;
       if (generation !== loadGenerationRef.current) {
         destroyDocumentSoon(opened.doc);
@@ -240,6 +240,9 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
 
       loadingTaskRef.current = null;
       const previousDoc = docRef.current;
+      const annotationGeneration = ++annotationsGenerationRef.current;
+      annotationsHydratedRef.current = false;
+      bookmarksHydratedRef.current = false;
       docRef.current = opened.doc;
       docIdRef.current = documentId;
 
@@ -309,8 +312,8 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
       });
 
       if (storageBuffer.byteLength > 0) {
-        void saveDocumentToStorage(documentId, title, storageBuffer, opened.numPages, initialPage);
-        void adoptLegacyDocumentRecord(title, documentId);
+        void saveDocumentToStorage(documentId, title, storageBuffer, opened.numPages, initialPage)
+          .then(() => adoptLegacyDocumentRecord(title, documentId));
       } else {
         void updateDocumentPage(documentId, initialPage, savedOffset);
       }
@@ -322,6 +325,7 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
       return true;
     } catch (error) {
       if (generation !== loadGenerationRef.current) return false;
+      destroyPdfTaskQuietly(loadingTaskRef.current, 'PDF failed task teardown:');
       loadingTaskRef.current = null;
       setPasswordModal(EMPTY_PASSWORD_MODAL);
       setDocumentError(describeDocumentError(error, lang));

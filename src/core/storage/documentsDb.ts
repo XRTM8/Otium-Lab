@@ -247,12 +247,7 @@ export function openDB(): Promise<IDBDatabase> {
       const err = request.error;
       dbPromise = null;
       if (err?.name === 'VersionError') {
-        console.warn('IndexedDB version error. Resetting database to recover...', err);
-        try {
-          labIndexedDB.deleteDatabase(DB_NAME);
-        } catch {
-          // ignore
-        }
+        console.warn('The document database requires a newer version of Otium.', err);
       }
       reject(err);
     };

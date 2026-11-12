@@ -117,37 +117,39 @@ export async function saveDocumentToStorage(
     const db = await openDB();
     const total = Math.max(1, Math.round(totalPages) || 1);
     const lastPage = Math.min(total, Math.max(1, Math.round(page) || 1));
+    const metadata = {
+      id,
+      name,
+      lastOpened: Date.now(),
+      lastPage,
+      totalPages: total,
+      sizeBytes: data.byteLength,
+      fingerprint: id,
+    };
 
     try {
       const tx = db.transaction([STORE_NAME, FILES_STORE], 'readwrite');
-      tx.objectStore(STORE_NAME).put({
-        id,
-        name,
-        lastOpened: Date.now(),
-        lastPage,
-        totalPages: total,
-        sizeBytes: data.byteLength,
-        fingerprint: id,
-        hasFile: true,
-        metadataOnly: false
-      });
-      tx.objectStore(FILES_STORE).put({ id, data });
+      try {
+        tx.objectStore(STORE_NAME).put({ ...metadata, hasFile: true, metadataOnly: false });
+        tx.objectStore(FILES_STORE).put({ id, data });
+      } catch (error) {
+        // Synchronous request errors leave previously queued writes active.
+        tx.abort();
+        throw error;
+      }
       await transactionDone(tx);
       void pruneStorage(id);
     } catch (saveErr) {
       console.warn('Primary file storage failed, attempting quota-safe metadata fallback:', saveErr);
       const fallbackTx = db.transaction(STORE_NAME, 'readwrite');
-      fallbackTx.objectStore(STORE_NAME).put({
-        id,
-        name,
-        lastOpened: Date.now(),
-        lastPage,
-        totalPages: total,
-        sizeBytes: data.byteLength,
-        fingerprint: id,
-        hasFile: false,
-        metadataOnly: true
-      });
+      const docs = fallbackTx.objectStore(STORE_NAME);
+      const existing = docs.get(id);
+      existing.onsuccess = () => {
+        const record = existing.result as StoredDocumentRecord | undefined;
+        if (!record?.hasFile && !record?.data) {
+          docs.put({ ...metadata, hasFile: false, metadataOnly: true });
+        }
+      };
       await transactionDone(fallbackTx);
     }
   } catch (err) {
@@ -299,49 +301,38 @@ export async function clearAllStoredDocuments(): Promise<void> {
  */
 export async function restoreDocumentMetadata(
   metadata: RestorableDocumentMetadata
-): Promise<void> {
+): Promise<boolean> {
   const id = metadata.id;
-  if (!id) return;
+  if (!id) return false;
 
   try {
     const db = await openDB();
-    const existing = await readMetadata(db, id);
     const totalPages = Math.max(1, Math.round(metadata.totalPages) || 1);
     const lastPage = Math.min(totalPages, Math.max(1, Math.round(metadata.lastPage) || 1));
     const lastOpened = Number(metadata.lastOpened) || Date.now();
-
-    if (existing) {
-      const current = normalizeRecord(existing);
-      const { data: _data, ...currentMetadata } = current;
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put({
-        ...currentMetadata,
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const docs = tx.objectStore(STORE_NAME);
+    const existing = docs.get(id);
+    existing.onsuccess = () => {
+      const record = existing.result as StoredDocumentRecord | undefined;
+      const current = record ? normalizeRecord(record) : {
+        id, name: 'document.pdf', fingerprint: id, hasFile: false, metadataOnly: true, sizeBytes: 0,
+      };
+      docs.put({
+        ...current,
         name: metadata.name || current.name,
         lastOpened,
         lastPage,
         totalPages,
-        sizeBytes: Math.max(current.sizeBytes, Number(metadata.sizeBytes) || 0)
+        sizeBytes: Math.max(current.sizeBytes, Number(metadata.sizeBytes) || 0),
       });
-      await transactionDone(tx);
-      return;
-    }
-
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put({
-      id,
-      name: metadata.name || 'document.pdf',
-      lastOpened,
-      lastPage,
-      totalPages,
-      sizeBytes: Math.max(0, Number(metadata.sizeBytes) || 0),
-      fingerprint: id,
-      hasFile: false,
-      metadataOnly: true
-    });
+    };
     await transactionDone(tx);
-    void pruneStorage(id);
+    if (!existing.result) void pruneStorage(id);
+    return true;
   } catch (error) {
     console.warn('Could not restore document metadata:', error);
+    return false;
   }
 }
 
@@ -368,8 +359,13 @@ export async function adoptLegacyDocumentRecord(
     if (fingerprint !== documentId) return;
 
     const tx = db.transaction([STORE_NAME, FILES_STORE], 'readwrite');
-    tx.objectStore(STORE_NAME).delete(legacyId);
-    tx.objectStore(FILES_STORE).delete(legacyId);
+    const files = tx.objectStore(FILES_STORE);
+    const replacement = files.getKey(documentId);
+    replacement.onsuccess = () => {
+      if (replacement.result === undefined) return;
+      tx.objectStore(STORE_NAME).delete(legacyId);
+      files.delete(legacyId);
+    };
     await transactionDone(tx);
   } catch {
     // Keeping both entries is harmless; the new one is the canonical record.
