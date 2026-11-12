@@ -4,6 +4,7 @@ const info = labVersion();
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const tauriBase = JSON.parse(read('src-tauri/tauri.conf.json'));
+const tauriAndroid = JSON.parse(read('src-tauri/tauri.android.conf.json'));
 const androidManifest = read('src-tauri/gen/android/app/src/main/AndroidManifest.xml');
 const androidStrings = read('src-tauri/gen/android/app/src/main/res/values/strings.xml');
 
@@ -24,6 +25,7 @@ const checks = [
   ],
 
   // 3. Android identity and authority guards (eliminates INSTALL_FAILED_DUPLICATE_PERMISSION)
+  [tauriAndroid.identifier === 'com.otium.reader' && info.gradle.includes('namespace = "com.otium.reader"'), 'Tauri Android identifier must match the Kotlin and Gradle namespace'],
   [info.gradle.includes('applicationIdSuffix = ".lab"'), 'Android release must use separate Lab application ID suffix (.lab)'],
   [androidManifest.includes('android:authorities="${applicationId}.fileprovider"'), 'AndroidManifest must namespace FileProvider with ${applicationId}'],
   [androidStrings.includes('Otium Lab'), 'Android strings.xml app_name must be "Otium Lab"'],
