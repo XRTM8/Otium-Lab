@@ -205,10 +205,11 @@ export function useReaderBeamSync({
     const timer = setTimeout(() => {
       const container = scrollContainerRef.current;
       const page = container?.querySelector<HTMLElement>(`[data-pdf-page="${beamSelection.pageNumber}"]`);
-      if (!container || !page || !beamSelection.rects.length) return;
+      const firstRect = beamSelection.rects[0];
+      if (!container || !page || !firstRect) return;
       const rect = page.getBoundingClientRect();
       const viewport = container.getBoundingClientRect();
-      const selectedY = rect.top + beamSelection.rects[0].yPct * rect.height;
+      const selectedY = rect.top + firstRect.yPct * rect.height;
       if (selectedY < viewport.top + 70 || selectedY > viewport.bottom - 70) {
         container.scrollTop += selectedY - viewport.top - container.clientHeight * 0.35;
       }
@@ -220,7 +221,7 @@ export function useReaderBeamSync({
   }, [beamSelection, beamState.role, doc, scrollToPage, scrollContainerRef]);
 
   useEffect(() => {
-    if (beamLoadingRef.current || pendingBeamPageRef.current === null) return;
+    if (isLoading || !docId || numPages <= 0 || beamLoadingRef.current || pendingBeamPageRef.current === null) return;
     const page = pendingBeamPageRef.current;
     pendingBeamPageRef.current = null;
     scrollToPage(page);

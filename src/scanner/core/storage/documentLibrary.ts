@@ -43,7 +43,9 @@ async function getLibraryDB(): Promise<IDBDatabase> {
       dbInstance.onversionchange = () => {
         try {
           dbInstance?.close();
-        } catch {}
+        } catch (err) {
+          console.debug('[ScannerLibrary] db close skipped:', err);
+        }
         dbInstance = null;
       };
       dbInstance.onclose = () => {

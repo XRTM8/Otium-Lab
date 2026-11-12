@@ -1,0 +1,603 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import http from 'node:http';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
+
+const DIST_DIR = path.resolve(process.cwd(), 'dist');
+if (!fs.existsSync(DIST_DIR)) {
+  console.error('[e2e-verify] dist/ does not exist. Build the web app first.');
+  process.exit(1);
+}
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff2': 'font/woff2',
+  '.wasm': 'application/wasm',
+  '.gz': 'application/gzip',
+};
+
+function findBrowserExecutable() {
+  const envPath = process.env.CHROME_PATH || process.env.CHROME_BIN || process.env.EDGE_PATH;
+  const candidates = [
+    envPath,
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(`No headless Chromium/Edge executable found. Checked: ${candidates.join(', ')}`);
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      srv.close((closeErr) => (closeErr ? reject(closeErr) : resolve(port)));
+    });
+  });
+}
+
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+const FONT = {
+  O: ['0111110', '1100011', '1100011', '1100011', '1100011', '1100011', '1100011', '1100011', '0111110'],
+  T: ['1111111', '1111111', '0011100', '0011100', '0011100', '0011100', '0011100', '0011100', '0011100'],
+  I: ['0111110', '0111110', '0011100', '0011100', '0011100', '0011100', '0011100', '0111110', '0111110'],
+  U: ['1100011', '1100011', '1100011', '1100011', '1100011', '1100011', '1100011', '1100011', '0111110'],
+  M: ['1100011', '1110111', '1011101', '1001001', '1000001', '1000001', '1000001', '1000001', '1000001'],
+  H: ['1100011', '1100011', '1100011', '1111111', '1111111', '1100011', '1100011', '1100011', '1100011'],
+  E: ['1111111', '1111111', '1100000', '1111110', '1111110', '1100000', '1100000', '1111111', '1111111'],
+  L: ['1100000', '1100000', '1100000', '1100000', '1100000', '1100000', '1100000', '1111111', '1111111'],
+  ' ': ['0000', '0000', '0000', '0000', '0000', '0000', '0000', '0000', '0000'],
+};
+
+function buildTextPng(lines) {
+  const width = 1000;
+  const height = 460;
+  const scale = 10;
+  const rowStride = 1 + width * 3;
+  const raw = Buffer.alloc(height * rowStride, 255);
+  for (let y = 0; y < height; y++) raw[y * rowStride] = 0;
+
+  const paintRect = (px, py, pw, ph, r, g, b) => {
+    for (let y = py; y < py + ph && y < height; y++) {
+      if (y < 0) continue;
+      for (let x = px; x < px + pw && x < width; x++) {
+        if (x < 0) continue;
+        const idx = y * rowStride + 1 + x * 3;
+        raw[idx] = r;
+        raw[idx + 1] = g;
+        raw[idx + 2] = b;
+      }
+    }
+  };
+
+  lines.forEach((line, lineIdx) => {
+    let cursorX = 110;
+    const baseY = 90 + lineIdx * 150;
+    for (const ch of line) {
+      const glyph = FONT[ch];
+      if (!glyph) continue;
+      for (let gy = 0; gy < glyph.length; gy++) {
+        const row = glyph[gy];
+        for (let gx = 0; gx < row.length; gx++) {
+          if (row[gx] === '1') {
+            paintRect(cursorX + gx * scale, baseY + gy * scale, scale, scale, 10, 10, 10);
+          }
+        }
+      }
+      cursorX += (glyph[0].length + 2) * scale;
+    }
+  });
+
+  const idat = zlib.deflateSync(raw);
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const t = Buffer.from(type, 'ascii');
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc32(Buffer.concat([t, data])), 0);
+    return Buffer.concat([len, t, data, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function buildMinimalPdf() {
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    '4 0 obj\n<< /Length 44 >>\nstream\nBT /F1 18 Tf 72 700 Td (Otium Lab PDF) Tj ET\nendstream\nendobj\n',
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+  ];
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const obj of objects) {
+    offsets.push(Buffer.byteLength(body, 'utf8'));
+    body += obj;
+  }
+  const xrefPos = Buffer.byteLength(body, 'utf8');
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i < offsets.length; i++) {
+    xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
+  return Buffer.from(body + xref + trailer, 'utf8');
+}
+
+function buildStoredZip(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = Buffer.from(file.name, 'utf8');
+    const data = Buffer.from(file.content, 'utf8');
+    const crc = crc32(data);
+
+    const local = Buffer.alloc(30 + nameBytes.length + data.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    nameBytes.copy(local, 30);
+    data.copy(local, 30 + nameBytes.length);
+    localParts.push(local);
+
+    const central = Buffer.alloc(46 + nameBytes.length);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(offset, 42);
+    nameBytes.copy(central, 46);
+    centralParts.push(central);
+    offset += local.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, p) => sum + p.length, 0);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(centralSize, 12);
+  eocd.writeUInt32LE(offset, 16);
+
+  return Buffer.concat([...localParts, ...centralParts, eocd]);
+}
+
+function buildMinimalPptx() {
+  return buildStoredZip([
+    {
+      name: 'ppt/presentation.xml',
+      content:
+        '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<p:sldIdLst><p:sldId r:id="rId1"/><p:sldId r:id="rId2"/></p:sldIdLst>' +
+        '<p:sldSz cx="12192000" cy="6858000"/>' +
+        '</p:presentation>',
+    },
+    {
+      name: 'ppt/_rels/presentation.xml.rels',
+      content:
+        '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/>' +
+        '</Relationships>',
+    },
+    {
+      name: 'ppt/slides/slide1.xml',
+      content:
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
+        '<p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="457200" y="457200"/><a:ext cx="8229600" cy="1143000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>First Slide</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+    },
+    {
+      name: 'ppt/slides/slide2.xml',
+      content:
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
+        '<p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="457200" y="457200"/><a:ext cx="8229600" cy="1143000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>Second Slide</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+    },
+  ]);
+}
+
+class CdpClient {
+  constructor(wsUrl) {
+    this.ws = new WebSocket(wsUrl);
+    this.id = 0;
+    this.pending = new Map();
+    this.events = [];
+  }
+  async connect() {
+    await new Promise((res, rej) => {
+      this.ws.onopen = res;
+      this.ws.onerror = rej;
+    });
+    this.ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.id && this.pending.has(msg.id)) {
+        const { resolve, reject } = this.pending.get(msg.id);
+        this.pending.delete(msg.id);
+        if (msg.error) reject(new Error(msg.error.message));
+        else resolve(msg.result);
+      } else if (msg.method) {
+        this.events.push(msg);
+        if (msg.method === 'Target.attachedToTarget' && msg.params?.sessionId) {
+          const sid = msg.params.sessionId;
+          this.sendSession(sid, 'Runtime.enable', {}).catch((err) => {
+            console.debug('[cdp-worker-runtime]', err?.message || err);
+          });
+          this.sendSession(sid, 'Network.enable', {}).catch((err) => {
+            console.debug('[cdp-worker-network]', err?.message || err);
+          });
+          this.sendSession(sid, 'Runtime.runIfWaitingForDebugger', {}).catch((err) => {
+            console.debug('[cdp-worker-resume]', err?.message || err);
+          });
+        }
+      }
+    };
+  }
+  send(method, params = {}) {
+    const id = ++this.id;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify({ id, method, params }));
+    });
+  }
+  sendSession(sessionId, method, params = {}) {
+    const id = ++this.id;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify({ id, sessionId, method, params }));
+    });
+  }
+  async evalJs(expr) {
+    const res = await this.send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+    if (res.exceptionDetails) throw new Error(JSON.stringify(res.exceptionDetails));
+    return res.result?.value;
+  }
+  close() {
+    this.ws.close();
+  }
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const browserPath = findBrowserExecutable();
+const cdpPort = await getFreePort();
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'otium-e2e-'));
+const testPdfPath = path.join(tempDir, 'test-sample.pdf');
+const testPptxPath = path.join(tempDir, 'test-deck.pptx');
+const testOcrPngPath = path.join(tempDir, 'test-ocr-otium.png');
+const userDataDir = path.join(tempDir, 'browser-profile');
+
+fs.writeFileSync(testPdfPath, buildMinimalPdf());
+fs.writeFileSync(testPptxPath, buildMinimalPptx());
+fs.writeFileSync(testOcrPngPath, buildTextPng(['HELLO', 'TIME']));
+fs.mkdirSync(userDataDir, { recursive: true });
+
+const server = http.createServer((req, res) => {
+  const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  if (!urlPath.startsWith('/Otium-Lab')) {
+    res.writeHead(404);
+    res.end(`404 OUTSIDE /Otium-Lab: ${urlPath}`);
+    return;
+  }
+  let rel = urlPath.slice('/Otium-Lab'.length);
+  if (rel === '' || rel === '/') rel = '/index.html';
+  const filePath = path.join(DIST_DIR, rel);
+  if (!filePath.startsWith(DIST_DIR) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    res.writeHead(404);
+    res.end(`404 MISSING: ${urlPath}`);
+    return;
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  fs.createReadStream(filePath).pipe(res);
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const { port } = server.address();
+const appUrl = `http://127.0.0.1:${port}/Otium-Lab/`;
+
+const browser = spawn(
+  browserPath,
+  [
+    '--headless=new',
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    '--no-sandbox',
+    `--remote-debugging-port=${cdpPort}`,
+    `--user-data-dir=${userDataDir}`,
+    'about:blank',
+  ],
+  { stdio: ['ignore', 'pipe', 'pipe'] }
+);
+
+let browserReady = false;
+for (let i = 0; i < 40; i++) {
+  try {
+    const list = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json();
+    if (list.some((t) => t.type === 'page')) {
+      browserReady = true;
+      break;
+    }
+  } catch (err) {
+    if (i === 39) console.error('[e2e-verify] CDP wait failed:', err);
+  }
+  await wait(200);
+}
+if (!browserReady) {
+  browser.kill();
+  server.close();
+  fs.rmSync(tempDir, { recursive: true, force: true });
+  process.exit(1);
+}
+
+let allPassed = true;
+
+async function runAudit(name, mobileMode, scenarioFn) {
+  const created = await (await fetch(`http://127.0.0.1:${cdpPort}/json/new?about:blank`, { method: 'PUT' })).json();
+  const cdp = new CdpClient(created.webSocketDebuggerUrl);
+  await cdp.connect();
+  try {
+    await cdp.send('Page.enable');
+    await cdp.send('Runtime.enable');
+    await cdp.send('Network.enable');
+    await cdp.send('DOM.enable');
+    await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+    await cdp.send(
+      'Emulation.setDeviceMetricsOverride',
+      mobileMode
+        ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true, hasTouch: true }
+        : { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false }
+    );
+    if (mobileMode) {
+      await cdp.send('Emulation.setUserAgentOverride', {
+        userAgent:
+          'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+      });
+    }
+    await cdp.send('Emulation.setEmitTouchEventsForMouse', { enabled: mobileMode });
+    await cdp.send('Page.navigate', { url: appUrl });
+    await wait(1600);
+
+    const out = await scenarioFn(cdp);
+    const exceptions = cdp.events
+      .filter((e) => e.method === 'Runtime.exceptionThrown')
+      .map((e) => e.params.exceptionDetails?.exception?.description || e.params.exceptionDetails?.text);
+    const consoleErrors = cdp.events
+      .filter((e) => e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error')
+      .map((e) => e.params.args.map((a) => a.value ?? a.description).join(' '));
+    const http4xx5xx = cdp.events
+      .filter((e) => e.method === 'Network.responseReceived' && e.params.response.status >= 400)
+      .map((e) => `${e.params.response.status} ${e.params.response.url}`);
+    const wasmRequests = cdp.events
+      .filter((e) => e.method === 'Network.responseReceived' && e.params.response.url.includes('otium_wasm.wasm'))
+      .map((e) => `${e.params.response.status} ${e.params.response.url}`);
+
+    console.log(`\n=== ${name} ===`);
+    console.log(JSON.stringify(out, null, 2));
+    console.log(`Exceptions (${exceptions.length}):`, exceptions);
+    console.log(`Console Errors (${consoleErrors.length}):`, consoleErrors);
+    console.log(`HTTP >= 400 (${http4xx5xx.length}):`, http4xx5xx);
+    console.log(`Rust WASM Asset Requests (${wasmRequests.length}):`, wasmRequests);
+    if (exceptions.length || consoleErrors.length || http4xx5xx.length) allPassed = false;
+    if (mobileMode && !wasmRequests.some((r) => r.startsWith('200 '))) {
+      console.error('MISSING 200 OK FOR otium_wasm.wasm!');
+      allPassed = false;
+    }
+  } finally {
+    cdp.close();
+  }
+}
+
+try {
+  await runAudit('DESKTOP FULL VERIFICATION', false, async (cdp) => {
+    const res = {};
+    await cdp.evalJs(`(() => {
+      localStorage.setItem('otium-lab:otium-teaching-preferences-v1', JSON.stringify({ boardEnabled: true, position: 'center', offset: 12, size: 52, color: '#e11d48', width: 4, stylusOnly: false, boardFollowTheme: true, boardColor: '#ffffff' }));
+    })()`);
+    await cdp.send('Page.reload');
+    await wait(1200);
+
+    // Settings
+    res.settingsOpened = await cdp.evalJs(`(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find(b => b.getAttribute('title')?.includes('إعدادات') || b.textContent?.includes('إعدادات'));
+      if (!btn) return false; btn.click(); return true;
+    })()`);
+    await wait(250);
+    await cdp.evalJs(`(() => {
+      const done = Array.from(document.querySelectorAll('[role="dialog"] button')).find(b => /تم وحفظ|Done/i.test(b.textContent || ''));
+      done?.click();
+    })()`);
+    await wait(200);
+
+    // PPTX
+    let doc = await cdp.send('DOM.getDocument', { depth: -1 });
+    let input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' });
+    await cdp.send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [testPptxPath] });
+    await wait(1200);
+    res.pptx = await cdp.evalJs(`(() => {
+      const txt = document.body.innerText;
+      const next = Array.from(document.querySelectorAll('button')).find(b => /الشريحة التالية|Next slide/i.test(b.getAttribute('aria-label')||''));
+      if (next) next.click();
+      return { slide1: txt.includes('First Slide'), nextClicked: !!next };
+    })()`);
+    await wait(300);
+    res.pptxSlide2 = await cdp.evalJs(`document.body.innerText.includes('Second Slide')`);
+    if (!res.pptx?.slide1 || !res.pptxSlide2) allPassed = false;
+
+    await cdp.evalJs(`(() => {
+      const back = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('المكتبة') || b.textContent?.includes('Library'));
+      back?.click();
+    })()`);
+    await wait(400);
+
+    // PDF + Zoom + Search + Board 120Hz stroke
+    doc = await cdp.send('DOM.getDocument', { depth: -1 });
+    input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' });
+    await cdp.send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [testPdfPath] });
+    await wait(1400);
+
+    const beforeZoom = await cdp.evalJs(`(() => {
+      const c = document.querySelector('canvas');
+      return c ? { width: c.getBoundingClientRect().width, height: c.getBoundingClientRect().height } : null;
+    })()`);
+    await cdp.evalJs(`(() => {
+      const zoomIn = Array.from(document.querySelectorAll('button')).find(b => /تكبير|Zoom In/i.test((b.getAttribute('aria-label')||'') + ' ' + (b.getAttribute('title')||'')));
+      zoomIn?.click();
+    })()`);
+    await wait(400);
+    const afterZoom = await cdp.evalJs(`(() => {
+      const c = document.querySelector('canvas');
+      return c ? { width: c.getBoundingClientRect().width, height: c.getBoundingClientRect().height } : null;
+    })()`);
+    res.pdfZoom = { beforeZoom, afterZoom, grew: !!(beforeZoom && afterZoom && afterZoom.width > beforeZoom.width) };
+    if (!res.pdfZoom.grew) allPassed = false;
+
+    await cdp.evalJs(`(() => {
+      const boardBtn = Array.from(document.querySelectorAll('button')).find(b => /السبورة|Smartboard/i.test((b.getAttribute('aria-label')||'') + ' ' + (b.getAttribute('title')||'')));
+      boardBtn?.click();
+    })()`);
+    await wait(600);
+    res.boardSplit = await cdp.evalJs(`!!document.querySelector('[data-board-resizing]')`);
+    res.boardStroke = await cdp.evalJs(`(() => {
+      const pane = document.querySelector('[data-board-resizing]');
+      const canvases = pane ? Array.from(pane.querySelectorAll('canvas')) : [];
+      const boardCanvas = canvases.find(c => !c.classList.contains('pointer-events-none'));
+      if (boardCanvas) {
+        const rect = boardCanvas.getBoundingClientRect();
+        const x = rect.left + 40;
+        const y = rect.top + 40;
+        boardCanvas.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x, clientY: y, bubbles: true }));
+        boardCanvas.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x + 40, clientY: y + 30, bubbles: true }));
+        boardCanvas.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'pen', pointerId: 7, button: 0, clientX: x + 40, clientY: y + 30, bubbles: true }));
+      }
+      return { totalCanvases: canvases.length, drewBoardStroke: !!boardCanvas };
+    })()`);
+    if (!res.boardSplit || !res.boardStroke?.drewBoardStroke) allPassed = false;
+    return res;
+  });
+
+  await runAudit('MOBILE + SCANNER + WASM + REAL TESSERACT OCR', true, async (cdp) => {
+    const res = {};
+    res.hasOverflow = await cdp.evalJs(`document.documentElement.scrollWidth > window.innerWidth + 2`);
+    if (res.hasOverflow) allPassed = false;
+
+    await cdp.evalJs(`(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('الماسح بالكاميرا'));
+      btn?.click();
+    })()`);
+    await wait(900);
+
+    const doc = await cdp.send('DOM.getDocument', { depth: -1 });
+    const inputs = await cdp.send('DOM.querySelectorAll', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' });
+    const scannerInputId = inputs.nodeIds[inputs.nodeIds.length - 1];
+    await cdp.send('DOM.setFileInputFiles', { nodeId: scannerInputId, files: [testOcrPngPath] });
+    await wait(1100);
+
+    await cdp.evalJs(`(() => {
+      const btns = Array.from(document.querySelectorAll('[role="dialog"] button'));
+      const done = btns.find(b => /تأكيد|اعتماد|إنهاء|مراجعة|Confirm|Done|Finish/i.test(b.textContent || ''));
+      done?.click();
+    })()`);
+    await wait(800);
+
+    res.wasmFilterClicked = await cdp.evalJs(`(() => {
+      const btns = Array.from(document.querySelectorAll('[role="dialog"] button'));
+      const cleanBtn = btns.find(b => /تنقية نصوص|ورق ناصع|Clean/i.test(b.textContent || ''));
+      cleanBtn?.click();
+      return cleanBtn?.textContent?.trim() || null;
+    })()`);
+    if (!res.wasmFilterClicked) allPassed = false;
+    await wait(700);
+
+    res.ocrButton = await cdp.evalJs(`(() => {
+      const btns = Array.from(document.querySelectorAll('[role="dialog"] button'));
+      const ocr = btns.find(b => /استخراج النص|OCR/i.test((b.getAttribute('title')||'') + ' ' + (b.getAttribute('aria-label')||'') + ' ' + (b.textContent||'')));
+      if (ocr) { ocr.click(); return ocr.textContent?.trim() || ocr.getAttribute('title'); }
+      return null;
+    })()`);
+
+    let ocrSnapshot = { txt: '', area: '', inputs: [] };
+    for (let i = 0; i < 80; i++) {
+      await wait(500);
+      ocrSnapshot = await cdp.evalJs(`(() => {
+        const dlg = document.querySelector('[role="dialog"]');
+        const txt = dlg?.innerText || '';
+        const area = dlg?.querySelector('textarea')?.value || '';
+        const inputs = Array.from(dlg?.querySelectorAll('input, textarea') || []).map(el => el.value);
+        return { txt, area, inputs };
+      })()`);
+      const combined = `${ocrSnapshot.txt}\n${ocrSnapshot.area}\n${ocrSnapshot.inputs.join('\n')}`.toUpperCase();
+      const stillLoading = ocrSnapshot.txt.includes('جاري القراءة') || ocrSnapshot.txt.includes('جاري استخراج النص');
+      if (!stillLoading && (combined.includes('HELLO') || combined.includes('TIME'))) {
+        break;
+      }
+      if (i > 10 && !stillLoading && (combined.includes('تعذر') || combined.includes('لا يوجد') || ocrSnapshot.area.length > 0)) {
+        break;
+      }
+    }
+    const combinedUpper = `${ocrSnapshot.txt}\n${ocrSnapshot.area}\n${ocrSnapshot.inputs.join('\n')}`.toUpperCase();
+    res.ocrMatchedHello = combinedUpper.includes('HELLO');
+    res.ocrMatchedTime = combinedUpper.includes('TIME');
+    if (!res.ocrMatchedHello || !res.ocrMatchedTime) allPassed = false;
+    return res;
+  });
+} finally {
+  browser.kill();
+  server.close();
+  await wait(200);
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
+  } catch (cleanupErr) {
+    console.debug('[e2e-verify] Temp profile cleanup skipped:', cleanupErr?.code || cleanupErr);
+  }
+}
+
+if (!allPassed) {
+  console.error('\n[e2e-verify] E2E VERIFICATION FAILED');
+  process.exit(1);
+}
+console.log('\n[e2e-verify] ALL DESKTOP + MOBILE + WASM + REAL OCR E2E VERIFICATIONS PASSED');

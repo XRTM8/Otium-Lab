@@ -128,6 +128,7 @@ export async function createPdfFromCanvases(
   let objCounter = 4;
   for (let i = 0; i < imageSpecs.length; i++) {
     const spec = imageSpecs[i];
+    if (!spec) continue;
     const imgObjIdx = objCounter++;
     const pageObjIdx = objCounter++;
     const contentObjIdx = objCounter++;

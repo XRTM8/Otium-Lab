@@ -33,7 +33,9 @@ export function Lab() {
   useEffect(() => {
     if (!stage.current) return;
     const observer = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect;
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
       setSpace({ width, height });
     });
     observer.observe(stage.current);
@@ -79,8 +81,8 @@ export function Lab() {
         const url = lease.current.file(ticket, file.type === mime ? file : file.slice(0, file.size, mime));
         if (url) setSource({ id: ticket, name: file.name, kind, url });
       }
-    } catch (error) {
-      if (lease.current.current(ticket)) setError(error instanceof Error ? error.message : 'تعذّر قراءة الملف. أعد اختياره من مساحة تخزين الجهاز.');
+    } catch (err) {
+      if (lease.current.current(ticket)) setError(err instanceof Error ? err.message : 'تعذّر قراءة الملف. أعد اختياره من مساحة تخزين الجهاز.');
     } finally { if (lease.current.current(ticket)) { setBusy(false); loading.current = null; } }
   };
   const size = fitSize(space, dimensions);

@@ -1,25 +1,25 @@
 import type { BeamMessage, BeamTransferState } from '../types';
 import { boundedResponseBytes, trustedRelayUrl } from './beamSecurity';
 import {
-  CLOUD_RELAY_BASE,
   RELAY_CHUNK_SIZE,
   RELAY_MAX_BYTES,
   MAX_FILE_BYTES,
-  type SendDocumentOptions,
   computeSha256,
   fetchWithTimeout,
-  getDeviceLabel,
-  isBrowserNetworkAvailable,
   isPdfHeader,
   isRetryableStatus,
   mergeBuffers,
   mapWithConcurrency,
-  randomId,
   retryDelayMs,
-  safeTopicPart,
   sleep,
-  topicForRoom,
+  isBeamMessage,
 } from './beamUtils';
+
+export {
+  publishRelayMessage,
+  putRelayAttachment,
+  uploadAndBroadcastViaRelay,
+} from './beamRelayUpload';
 
 export interface RelayAttachmentPayload {
   event?: string;
@@ -81,8 +81,8 @@ export async function extractMessagesFromRelayEvent(
     fetchText: (url: string) => Promise<string>;
   }
 ): Promise<BeamMessage[]> {
-  if (parsed.type && parsed.roomCode && !parsed.message) {
-    return [parsed as unknown as BeamMessage];
+  if (!parsed.message && isBeamMessage(parsed)) {
+    return [parsed];
   }
 
   if (typeof parsed.message === 'string' && parsed.message.length > 0) {
@@ -228,205 +228,4 @@ export async function downloadChunksViaRelay({
     onTransferPatch({ active: false, phase: 'error', error: message });
     throw error;
   }
-}
-
-export async function putRelayAttachment(
-  topic: string,
-  data: ArrayBuffer,
-  filename: string
-): Promise<string> {
-  const encodedName = encodeURIComponent(filename);
-  const url = `${CLOUD_RELAY_BASE}/${topic}?filename=${encodedName}`;
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      const response = await fetchWithTimeout(
-        url,
-        {
-          method: 'PUT',
-          headers: {
-            Filename: encodedName,
-            'Content-Type': 'application/octet-stream',
-          },
-          body: data,
-        },
-        60000
-      );
-
-      if (response.ok) {
-        const parsed = (await response.json()) as { attachment?: { url?: unknown } };
-        const attachmentUrl = parsed?.attachment?.url;
-        if (typeof attachmentUrl === 'string' && attachmentUrl.length > 0) {
-          return trustedRelayUrl(attachmentUrl);
-        }
-        throw new Error('The relay did not return an attachment URL.');
-      }
-
-      if (isRetryableStatus(response.status) && attempt < 3) {
-        await sleep(retryDelayMs(response, attempt));
-        continue;
-      }
-
-      if (response.status === 413) {
-        throw new Error('The cloud relay rejected a file chunk. The PDF may be too large for relay mode.');
-      }
-      if (response.status === 429) {
-        throw new Error('The public relay is rate-limiting uploads. Wait a few seconds and retry, or keep both devices on the same Wi-Fi.');
-      }
-      throw new Error(`The cloud relay returned HTTP ${response.status}.`);
-    } catch (error) {
-      lastError = error;
-      if (attempt < 3) {
-        await sleep(retryDelayMs(null, attempt));
-      }
-    }
-  }
-
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Failed to upload a file chunk to the relay.');
-}
-
-export async function publishRelayMessage({
-  connectedRoom,
-  deviceId,
-  message,
-  onPublishFailed,
-}: {
-  connectedRoom: string | null;
-  deviceId: string;
-  message: BeamMessage;
-  onPublishFailed: () => void;
-}): Promise<boolean> {
-  if (!connectedRoom || !isBrowserNetworkAvailable()) return false;
-  const topic = topicForRoom(message.roomCode);
-  const body: BeamMessage = {
-    ...message,
-    msgId: message.msgId || randomId('m'),
-    origin: message.origin || deviceId,
-    timestamp: message.timestamp || Date.now(),
-  };
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const response = await fetchWithTimeout(
-        `${CLOUD_RELAY_BASE}/${topic}`,
-        {
-          method: 'POST',
-          keepalive: body.type === 'BEAM_DISCONNECT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Title': 'Otium Beam',
-          },
-          body: JSON.stringify(body),
-        },
-        15000
-      );
-      if (response.ok) return true;
-      if (isRetryableStatus(response.status) && attempt === 0) {
-        await sleep(retryDelayMs(response, attempt));
-        continue;
-      }
-      return false;
-    } catch (error) {
-      if (attempt === 0) {
-        await sleep(retryDelayMs(null, attempt));
-      } else {
-        console.debug('Cloud signaling transport note:', error);
-      }
-    }
-  }
-  onPublishFailed();
-  return false;
-}
-
-export async function uploadAndBroadcastViaRelay({
-  connectedRoom,
-  sessionId,
-  options,
-  assertActive,
-  putChunk,
-  onTransferPatch,
-  registerCompletion,
-  broadcastPayload,
-}: {
-  connectedRoom: string;
-  sessionId: string | null;
-  options: SendDocumentOptions;
-  assertActive: () => void;
-  putChunk: (topic: string, chunk: ArrayBuffer, filename: string) => Promise<string>;
-  onTransferPatch: (patch: Partial<BeamTransferState>) => void;
-  registerCompletion: (transferId: string) => Promise<void>;
-  broadcastPayload: (msg: BeamMessage) => Promise<void>;
-}): Promise<void> {
-  const totalBytes = options.buffer.byteLength;
-  const sha256 = await computeSha256(options.buffer);
-  assertActive();
-  const transferId = randomId('t');
-  const chunkCount = Math.ceil(totalBytes / RELAY_CHUNK_SIZE);
-  const baseTopic = topicForRoom(connectedRoom);
-  const safeName = encodeURIComponent(
-    (options.title || 'document').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60)
-  );
-  const chunks: string[] = [];
-
-  onTransferPatch({
-    active: true,
-    direction: 'send',
-    mode: 'relay',
-    phase: 'transferring',
-    progress: 2,
-    bytesTransferred: 0,
-    totalBytes,
-    error: null,
-  });
-
-  for (let index = 0; index < chunkCount; index++) {
-    const start = index * RELAY_CHUNK_SIZE;
-    const end = Math.min(start + RELAY_CHUNK_SIZE, totalBytes);
-    const chunk = options.buffer.slice(start, end);
-    const topic = `${baseTopic}_${safeTopicPart(transferId)}_c${index}`;
-    const filename = `${safeName}.part${index}`;
-    const url = await putChunk(topic, chunk, filename);
-    assertActive();
-    chunks.push(url);
-    onTransferPatch({
-      phase: 'transferring',
-      progress: Math.min(88, 2 + Math.round(((index + 1) / chunkCount) * 86)),
-      bytesTransferred: end,
-    });
-  }
-
-  onTransferPatch({ phase: 'finalizing', progress: 92 });
-  const completion = registerCompletion(transferId);
-  void completion.catch(() => {});
-  await broadcastPayload({
-    type: 'BEAM_PAYLOAD',
-    roomCode: connectedRoom,
-    sessionId: sessionId || undefined,
-    senderName: getDeviceLabel(),
-    payload: {
-      title: options.title,
-      pageNumber: options.pageNumber,
-      totalPages: options.totalPages,
-      theme: options.theme,
-      chunks,
-      totalSize: totalBytes,
-      sha256: sha256 || undefined,
-      transferId,
-    },
-    timestamp: Date.now(),
-  });
-
-  await completion;
-  assertActive();
-
-  onTransferPatch({
-    active: false,
-    phase: 'done',
-    progress: 100,
-    bytesTransferred: totalBytes,
-    totalBytes,
-  });
 }

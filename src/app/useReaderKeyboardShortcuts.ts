@@ -245,7 +245,8 @@ export function useReaderKeyboardShortcuts({
         case 't': {
           event.preventDefault();
           const nextIndex = (THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length;
-          changeTheme(THEME_ORDER[nextIndex]);
+          const nextTheme = THEME_ORDER[nextIndex];
+          if (nextTheme) changeTheme(nextTheme);
           break;
         }
         case 'm':

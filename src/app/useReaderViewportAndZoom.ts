@@ -10,10 +10,9 @@ import { updateDocumentPage } from '../core/storage/documents';
 import { stopTts } from '../platform/tts';
 import {
   isInteractiveTarget,
-  WHEEL_TURN_COOLDOWN_MS,
-  WHEEL_TURN_THRESHOLD,
   type ZoomAnchor,
 } from './readerControllerHelpers';
+import { useReaderWheelNavigation, type ScrollMetrics } from './useReaderWheelNavigation';
 
 interface UseReaderViewportAndZoomOptions {
   doc: PDFDocumentProxy | null;
@@ -59,18 +58,7 @@ export function useReaderViewportAndZoom({
   const zoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const zoomFocusRef = useRef<{ x: number; y: number } | null>(null);
 
-  const lastWheelTimeRef = useRef(0);
-  const wheelAccumRef = useRef(0);
-  const wheelDirectionRef = useRef(0);
-  const wheelIdleTimerRef = useRef<number | null>(null);
-  const ctrlWheelIdleTimerRef = useRef<number | null>(null);
-
-  const cachedScrollMetricsRef = useRef<{
-    maxScrollX: number;
-    maxScrollY: number;
-    isOverflowingX: boolean;
-    isOverflowingY: boolean;
-  }>({
+  const cachedScrollMetricsRef = useRef<ScrollMetrics>({
     maxScrollX: 0,
     maxScrollY: 0,
     isOverflowingX: false,
@@ -80,8 +68,6 @@ export function useReaderViewportAndZoom({
   useEffect(() => {
     return () => {
       if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current);
-      if (wheelIdleTimerRef.current !== null) window.clearTimeout(wheelIdleTimerRef.current);
-      if (ctrlWheelIdleTimerRef.current !== null) window.clearTimeout(ctrlWheelIdleTimerRef.current);
     };
   }, []);
 
@@ -107,38 +93,6 @@ export function useReaderViewportAndZoom({
     const fit = lastFitScaleRef.current || getFitScale();
     return Math.max(3.5, Number((fit * 4.0).toFixed(2)));
   }, [getFitScale]);
-
-  const canScrollVertically = useCallback(
-    (direction: number) => {
-      const container = scrollContainerRef.current;
-      if (!container) return false;
-
-      const metrics = cachedScrollMetricsRef.current;
-      if (viewMode !== 'continuous' && !metrics.isOverflowingY) {
-        return false;
-      }
-
-      if (metrics.maxScrollY <= 2) return false;
-      return direction > 0 ? container.scrollTop < metrics.maxScrollY - 1 : container.scrollTop > 1;
-    },
-    [viewMode]
-  );
-
-  const canScrollHorizontally = useCallback(
-    (direction: number) => {
-      const container = scrollContainerRef.current;
-      if (!container) return false;
-
-      const metrics = cachedScrollMetricsRef.current;
-      if (viewMode !== 'continuous' && !metrics.isOverflowingX) {
-        return false;
-      }
-
-      if (metrics.maxScrollX <= 2) return false;
-      return direction > 0 ? container.scrollLeft < metrics.maxScrollX - 1 : container.scrollLeft > 1;
-    },
-    [viewMode]
-  );
 
   const captureZoomAnchor = useCallback((clientX: number, clientY: number) => {
     const target = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
@@ -171,7 +125,7 @@ export function useReaderViewportAndZoom({
     const anchor = zoomAnchorRef.current;
     const focus = zoomFocusRef.current;
     const container = scrollContainerRef.current;
-    if (!anchor || !focus || !container || !anchor.element.isConnected) return;
+    if (zoom <= 0 || !anchor || !focus || !container || !anchor.element.isConnected) return;
 
     const rect = anchor.element.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -267,128 +221,38 @@ export function useReaderViewportAndZoom({
     };
   }, [doc, basePageSize, chromeInset, viewMode, actionsRef, currentPageRef, docIdRef, pageSaveTimerRef]);
 
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !doc) return;
-
-    const handleNativeWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) {
-        event.preventDefault();
-        captureZoomAnchor(event.clientX, event.clientY);
-        const minZ = getMinZoom();
-        const maxZ = getMaxZoom();
-        const step = Math.max(0.02, Math.min(0.15, Number(((lastFitScaleRef.current || 1.0) * 0.12).toFixed(2))));
-        const delta = event.deltaY > 0 ? -step : step;
-        setZoom((current) =>
-          Math.min(maxZ, Math.max(minZ, Number((current + delta).toFixed(2))))
-        );
-        if (ctrlWheelIdleTimerRef.current !== null) {
-          window.clearTimeout(ctrlWheelIdleTimerRef.current);
-        }
-        ctrlWheelIdleTimerRef.current = window.setTimeout(() => {
-          ctrlWheelIdleTimerRef.current = null;
-          clearZoomAnchor();
-        }, 180);
-        return;
-      }
-
-      if (viewMode === 'continuous') return;
-      if (container.scrollWidth > container.clientWidth + 2 || container.scrollHeight > container.clientHeight + 2) return;
-
-      const multiplier =
-        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
-      const absX = Math.abs(event.deltaX);
-      const absY = Math.abs(event.deltaY);
-
-      if (absX > 0 && absY > 0 && Math.max(absX, absY) / Math.min(absX, absY) < 1.35) {
-        return;
-      }
-
-      const horizontal = absX > absY;
-      const rawDelta = horizontal ? event.deltaX : event.deltaY;
-      const delta = rawDelta * multiplier;
-      if (Math.abs(delta) < 1) return;
-
-      const direction = delta > 0 ? 1 : -1;
-      const canScroll = horizontal
-        ? canScrollHorizontally(direction)
-        : canScrollVertically(direction);
-
-      if (canScroll) {
-        wheelAccumRef.current = 0;
-        wheelDirectionRef.current = 0;
-        return;
-      }
-
-      event.preventDefault();
-
-      const now = performance.now();
-      if (now - lastWheelTimeRef.current < WHEEL_TURN_COOLDOWN_MS) return;
-
-      if (wheelDirectionRef.current !== direction) {
-        wheelDirectionRef.current = direction;
-        wheelAccumRef.current = 0;
-      }
-      wheelAccumRef.current += Math.abs(delta);
-
-      if (wheelIdleTimerRef.current !== null) {
-        window.clearTimeout(wheelIdleTimerRef.current);
-      }
-      wheelIdleTimerRef.current = window.setTimeout(() => {
-        wheelIdleTimerRef.current = null;
-        wheelAccumRef.current = 0;
-        wheelDirectionRef.current = 0;
-      }, 180);
-
-      if (wheelAccumRef.current < WHEEL_TURN_THRESHOLD) return;
-
-      wheelAccumRef.current = 0;
-      wheelDirectionRef.current = 0;
-      lastWheelTimeRef.current = now;
-
-      if (direction > 0) actionsRef.current.goToNextPage();
-      else actionsRef.current.goToPrevPage();
-    };
-
-    container.addEventListener('wheel', handleNativeWheel, { passive: false });
-    return () => {
-      container.removeEventListener('wheel', handleNativeWheel);
-      if (ctrlWheelIdleTimerRef.current !== null) {
-        window.clearTimeout(ctrlWheelIdleTimerRef.current);
-        ctrlWheelIdleTimerRef.current = null;
-      }
-      if (wheelIdleTimerRef.current !== null) {
-        window.clearTimeout(wheelIdleTimerRef.current);
-        wheelIdleTimerRef.current = null;
-      }
-    };
-  }, [
-    actionsRef,
-    canScrollHorizontally,
-    canScrollVertically,
+  const { resetWheelTurnAccum } = useReaderWheelNavigation({
+    doc,
+    viewMode,
+    scrollContainerRef,
+    cachedScrollMetricsRef,
+    lastFitScaleRef,
+    getMinZoom,
+    getMaxZoom,
+    setZoom,
     captureZoomAnchor,
     clearZoomAnchor,
-    doc,
-    getMaxZoom,
-    getMinZoom,
-    viewMode,
-  ]);
+    actionsRef,
+  });
 
   const handleTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
     if (isInteractiveTarget(event.target)) return;
 
     if (event.touches.length === 2) {
+      const t0 = event.touches[0];
+      const t1 = event.touches[1];
+      if (!t0 || !t1) return;
       const distance = Math.hypot(
-        event.touches[0].clientX - event.touches[1].clientX,
-        event.touches[0].clientY - event.touches[1].clientY
+        t0.clientX - t1.clientX,
+        t0.clientY - t1.clientY
       );
       if (distance > 10) {
         pinchStartDistRef.current = distance;
         pinchStartZoomRef.current = zoom;
         isPinchingRef.current = true;
         captureZoomAnchor(
-          (event.touches[0].clientX + event.touches[1].clientX) / 2,
-          (event.touches[0].clientY + event.touches[1].clientY) / 2
+          (t0.clientX + t1.clientX) / 2,
+          (t0.clientY + t1.clientY) / 2
         );
       }
       return;
@@ -415,13 +279,16 @@ export function useReaderViewportAndZoom({
       pinchStartDistRef.current !== null &&
       pinchStartDistRef.current > 0
     ) {
+      const t0 = event.touches[0];
+      const t1 = event.touches[1];
+      if (!t0 || !t1) return;
       const distance = Math.hypot(
-        event.touches[0].clientX - event.touches[1].clientX,
-        event.touches[0].clientY - event.touches[1].clientY
+        t0.clientX - t1.clientX,
+        t0.clientY - t1.clientY
       );
       zoomFocusRef.current = {
-        x: (event.touches[0].clientX + event.touches[1].clientX) / 2,
-        y: (event.touches[0].clientY + event.touches[1].clientY) / 2,
+        x: (t0.clientX + t1.clientX) / 2,
+        y: (t0.clientY + t1.clientY) / 2,
       };
       const minZ = getMinZoom();
       const maxZ = getMaxZoom();
@@ -473,11 +340,6 @@ export function useReaderViewportAndZoom({
           (keyboardCapable ? 800 : 844) - chromeInset,
           viewMode
         ));
-
-  const resetWheelTurnAccum = useCallback(() => {
-    wheelAccumRef.current = 0;
-    wheelDirectionRef.current = 0;
-  }, []);
 
   return {
     zoom,

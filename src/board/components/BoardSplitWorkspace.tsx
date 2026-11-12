@@ -52,7 +52,13 @@ export const BoardSplitWorkspace: React.FC<BoardSplitWorkspaceProps> = ({ reader
   }, [layout]);
 
   const boardMounted = boardEverOpened || splitPercent < 100 || isDragging;
-  useEffect(() => { setLayout('document'); }, [reader.docId, setLayout]);
+  const lastDocIdRef = useRef(reader.docId);
+  useEffect(() => {
+    if (lastDocIdRef.current !== reader.docId) {
+      lastDocIdRef.current = reader.docId;
+      setLayout('document');
+    }
+  }, [reader.docId, setLayout]);
   const { doc, scrollContainerRef, setZoom, basePageSize, viewMode } = reader;
   const wasDraggingRef = useRef(false);
   useEffect(() => {

@@ -119,19 +119,36 @@ async function instantiateOtiumWasm(wasmUrl: string): Promise<OtiumWasmExports |
       instance = result.instance;
     }
 
-    const exports = instance.exports as unknown as Partial<OtiumWasmExports>;
+    const exp = instance.exports;
+    const {
+      memory,
+      otium_alloc,
+      otium_dealloc,
+      otium_apply_filter_rgba,
+      otium_warp_perspective_rgba,
+      otium_dewarp_spine_rgba,
+      otium_motion_and_sharpness_rgba,
+    } = exp;
     if (
-      !exports.memory ||
-      typeof exports.otium_alloc !== 'function' ||
-      typeof exports.otium_dealloc !== 'function' ||
-      typeof exports.otium_apply_filter_rgba !== 'function' ||
-      typeof exports.otium_warp_perspective_rgba !== 'function' ||
-      typeof exports.otium_dewarp_spine_rgba !== 'function' ||
-      typeof exports.otium_motion_and_sharpness_rgba !== 'function'
+      !(memory instanceof WebAssembly.Memory) ||
+      typeof otium_alloc !== 'function' ||
+      typeof otium_dealloc !== 'function' ||
+      typeof otium_apply_filter_rgba !== 'function' ||
+      typeof otium_warp_perspective_rgba !== 'function' ||
+      typeof otium_dewarp_spine_rgba !== 'function' ||
+      typeof otium_motion_and_sharpness_rgba !== 'function'
     ) {
       return null;
     }
-    return exports as OtiumWasmExports;
+    return {
+      memory,
+      otium_alloc: otium_alloc as OtiumWasmExports['otium_alloc'],
+      otium_dealloc: otium_dealloc as OtiumWasmExports['otium_dealloc'],
+      otium_apply_filter_rgba: otium_apply_filter_rgba as OtiumWasmExports['otium_apply_filter_rgba'],
+      otium_warp_perspective_rgba: otium_warp_perspective_rgba as OtiumWasmExports['otium_warp_perspective_rgba'],
+      otium_dewarp_spine_rgba: otium_dewarp_spine_rgba as OtiumWasmExports['otium_dewarp_spine_rgba'],
+      otium_motion_and_sharpness_rgba: otium_motion_and_sharpness_rgba as OtiumWasmExports['otium_motion_and_sharpness_rgba'],
+    };
   } catch {
     return null;
   }

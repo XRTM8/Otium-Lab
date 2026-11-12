@@ -11,14 +11,16 @@ import type { ThemeScheduleMode } from '../core/settings/preferences';
 import { getTranslations } from '../core/i18n/translations';
 import { useUpdateChecker } from '../core/updates/useUpdateChecker';
 import type { RestoreSummary } from '../core/storage/backupFormat';
-import { getStorageSummary, type StorageSummary } from '../core/storage/documents';
 import type { SaveTextOutcome } from '../platform/saveFile';
 import { getUpdateAdapter } from '../platform/updates';
 import { isOcrLanguageCached, preloadOcrLanguage } from '../scanner/core/ocr/ocrEngine';
 import type { CropMode } from '../scanner/core/types';
-import { triggerHaptic } from '../core/utils/haptics';
-import { FontsTabPanel, ReadingTabPanel } from './settings/FontsAndReadingTabs';
+import { trapModalFocus } from '../core/utils/a11y';
+import { FontsTabPanel } from './settings/FontsAndReadingTabs';
+import { ReadingTabPanel } from './settings/ReadingTabPanel';
 import { AboutTabPanel, DataTabPanel, ScannerTabPanel } from './settings/ScannerDataAboutTabs';
+import { useSettingsSheetDrag } from './settings/useSettingsSheetDrag';
+import { useSettingsBackupActions } from './settings/useSettingsBackupActions';
 
 export type SettingsTab = 'fonts' | 'reading' | 'scanner' | 'data' | 'about';
 
@@ -54,13 +56,15 @@ interface SettingsModalProps {
   initialTab?: SettingsTab;
 }
 
+const NOOP = () => {};
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   currentFont = 'tajawal',
-  onFontChange = () => {},
+  onFontChange = NOOP,
   viewMode = 'continuous',
-  onViewModeChange = () => {},
+  onViewModeChange = NOOP,
   lang = 'ar',
   mobile = false,
   mobileNavVisible = true,
@@ -79,7 +83,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onKeepScreenAwakeChange,
   smartBoardEnabled = false,
   onSmartBoardEnabledChange,
-  onResetDefaults = () => {},
+  onResetDefaults = NOOP,
   onExportBackup,
   onImportBackup,
   initialTab
@@ -103,116 +107,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setCropMode(mode);
     try {
       localStorage.setItem('otium_scan_crop_mode', mode);
-    } catch {}
+    } catch (err) {
+      console.warn('[SettingsModal] Failed to persist crop mode:', err);
+    }
   };
 
-  // Draggable handle & expandable sheet state scoped to modal open session
-  const [sheetState, setSheetState] = useState({
-    open: isOpen,
-    expanded: false,
-    dragOffset: 0,
-    isDragging: false
-  });
-  const isExpanded = isOpen && sheetState.open ? sheetState.expanded : false;
-  const dragOffset = isOpen && sheetState.open ? sheetState.dragOffset : 0;
-  const isDragging = isOpen && sheetState.open ? sheetState.isDragging : false;
-  const setIsExpanded = (next: boolean | ((prev: boolean) => boolean)) =>
-    setSheetState((prev) => {
-      const currentExpanded = isOpen && prev.open ? prev.expanded : false;
-      const expanded = typeof next === 'function' ? next(currentExpanded) : next;
-      return { ...prev, open: isOpen, expanded };
-    });
-  const setDragOffset = (nextOffset: number) =>
-    setSheetState((prev) => ({ ...prev, open: isOpen, dragOffset: nextOffset }));
-  const setIsDragging = (nextDragging: boolean) =>
-    setSheetState((prev) => ({ ...prev, open: isOpen, isDragging: nextDragging }));
-  const dragStartYRef = useRef(0);
-  const currentDragOffsetRef = useRef(0);
-  const dragStartTimeRef = useRef(0);
-  const isDraggingActiveRef = useRef(false);
-
-  useEffect(() => {
-    if (!isOpen) {
-      isDraggingActiveRef.current = false;
-    }
-  }, [isOpen]);
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    dragStartYRef.current = e.clientY;
-    currentDragOffsetRef.current = 0;
-    dragStartTimeRef.current = Date.now();
-    isDraggingActiveRef.current = true;
-    setIsDragging(true);
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {}
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDraggingActiveRef.current) return;
-    const deltaY = e.clientY - dragStartYRef.current;
-
-    let effectiveOffset = deltaY;
-    if (isExpanded) {
-      if (deltaY < 0) {
-        effectiveOffset = deltaY * 0.2; // Rubber banding against ceiling
-      }
-    } else {
-      if (deltaY < 0) {
-        effectiveOffset = deltaY * 0.4; // Soft resistance pulling up towards expand
-      }
-    }
-    currentDragOffsetRef.current = effectiveOffset;
-    setDragOffset(effectiveOffset);
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (!isDraggingActiveRef.current) return;
-    isDraggingActiveRef.current = false;
-    setIsDragging(false);
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
-
-    const deltaY = currentDragOffsetRef.current;
-    const elapsed = Math.max(1, Date.now() - dragStartTimeRef.current);
-    const velocity = deltaY / elapsed;
-
-    // 1. Drag down or flick down -> dismiss or collapse
-    if (deltaY > 110 || (deltaY > 40 && velocity > 0.4)) {
-      if (isExpanded && deltaY < 180 && velocity < 0.75) {
-        setIsExpanded(false);
-        setDragOffset(0);
-        triggerHaptic('light');
-        return;
-      }
-      triggerHaptic('medium');
-      onClose();
-      return;
-    }
-
-    // 2. Drag up or flick up -> expand / maximize
-    if (deltaY < -40 || (deltaY < -15 && velocity < -0.35)) {
-      if (!isExpanded) {
-        setIsExpanded(true);
-        triggerHaptic('light');
-      }
-      setDragOffset(0);
-      return;
-    }
-
-    // 3. Tap on handle (< 8px movement in short time) -> toggle expand
-    if (Math.abs(deltaY) < 8 && elapsed < 350) {
-      setIsExpanded((prev) => !prev);
-      triggerHaptic('light');
-      setDragOffset(0);
-      return;
-    }
-
-    // Snap back smoothly
-    setDragOffset(0);
-  };
+  const {
+    isExpanded,
+    dragOffset,
+    isDragging,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+  } = useSettingsSheetDrag(isOpen, onClose);
 
   const handleDownloadOcr = async () => {
     setIsDownloadingOcr(true);
@@ -224,7 +131,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (ok) {
         setOcrCached(true);
       }
-    } catch {
+    } catch (err) {
+      console.warn('[SettingsModal] Failed to preload OCR language pack:', err);
     } finally {
       setIsDownloadingOcr(false);
     }
@@ -232,26 +140,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const [updateAdapter] = useState(getUpdateAdapter);
   const updates = useUpdateChecker(updateAdapter);
-  const [storage, setStorage] = useState<StorageSummary | null>(null);
-  const [dataBusy, setDataBusy] = useState<'export' | 'import' | null>(null);
-  const [dataNotice, setDataNotice] = useState<{
-    tone: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
   const t = getTranslations(lang);
   const ar = lang === 'ar';
-
-  useEffect(() => {
-    if (!isOpen || activeTab !== 'data') return;
-    let alive = true;
-    void getStorageSummary().then((summary) => {
-      if (alive) setStorage(summary);
+  const { storage, dataBusy, dataNotice, importInputRef, handleExport, handleImport } =
+    useSettingsBackupActions({
+      isOpen,
+      isDataTab: activeTab === 'data',
+      ar,
+      onExportBackup,
+      onImportBackup,
     });
-    return () => {
-      alive = false;
-    };
-  }, [activeTab, isOpen]);
 
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
@@ -276,24 +174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
 
       if (e.key === 'Tab' && modalRef.current) {
-        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
+        trapModalFocus(modalRef.current, e);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -301,74 +182,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-
-  const handleExport = async () => {
-    if (!onExportBackup || dataBusy) return;
-    setDataBusy('export');
-    setDataNotice(null);
-    try {
-      const outcome = await onExportBackup();
-      if (outcome === 'unavailable') {
-        setDataNotice({
-          tone: 'error',
-          text: ar ? 'تعذر حفظ الملف على هذا الجهاز.' : 'Could not save the file on this device.'
-        });
-      } else {
-        setDataNotice({
-          tone: 'success',
-          text:
-            outcome === 'native-picker'
-              ? ar
-                ? 'اختر مجلد الحفظ لإكمال التصدير.'
-                : 'Choose a folder to finish exporting.'
-              : ar
-                ? 'تم تنزيل نسخة احتياطية بصيغة JSON.'
-                : 'JSON backup downloaded.'
-        });
-      }
-    } catch (error) {
-      setDataNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : String(error)
-      });
-    } finally {
-      setDataBusy(null);
-    }
-  };
-
-  const handleImport = async (file: File) => {
-    if (!onImportBackup || dataBusy) return;
-    if (file.size > 15 * 1024 * 1024) {
-      setDataNotice({
-        tone: 'error',
-        text: ar
-          ? 'حجم ملف النسخة الاحتياطية كبير جداً (الحد الأقصى 15 ميجابايت).'
-          : 'Backup file exceeds maximum permitted size (15MB).'
-      });
-      return;
-    }
-    setDataBusy('import');
-    setDataNotice(null);
-    try {
-      const text = await file.text();
-      const summary = await onImportBackup(text);
-      const nextStorage = await getStorageSummary();
-      setStorage(nextStorage);
-      setDataNotice({
-        tone: 'success',
-        text: ar
-          ? `تمت الاستعادة: ${summary.documents} مستند، ${summary.annotations} اقتباس، ${summary.bookmarks} إشارة.`
-          : `Restored ${summary.documents} documents, ${summary.annotations} highlights and ${summary.bookmarks} bookmarks.`
-      });
-    } catch (error) {
-      setDataNotice({
-        tone: 'error',
-        text: error instanceof Error ? error.message : String(error)
-      });
-    } finally {
-      setDataBusy(null);
-    }
-  };
 
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'fonts', label: ar ? 'الخطوط' : 'Fonts' },

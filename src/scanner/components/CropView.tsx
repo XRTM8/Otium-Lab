@@ -293,9 +293,9 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
       <div className="relative z-30 flex items-center justify-center gap-1.5 px-4 py-2 bg-black/75 backdrop-blur-md border-t border-white/[0.08]">
         <span className="text-[10px] text-gray-400 font-bold ml-1 font-arabic">المقاس:</span>
         <button
-          onClick={() => applyAspectRatio(1 / 1.414)}
+          onClick={() => applyAspectRatio(Math.SQRT1_2)}
           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-accent/20 text-gray-300 hover:text-accent text-[11px] font-bold border border-white/10 flex items-center gap-1 active:scale-95 transition-all"
-          title="A4 Standard Document (1:1.414)"
+          title="A4 Standard Document (1:√2)"
         >
           <FileText className="w-3 h-3 text-accent" />
           <span>A4 قياسي</span>

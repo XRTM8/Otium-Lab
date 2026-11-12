@@ -9,6 +9,7 @@ members = [
     "crates/otium-vault",
     "crates/otium-beam",
     "crates/otium-wasm",
+    # Standalone experimental Slint desktop prototype (isolated from Web/Tauri CI targets)
     "crates/otium-app",
     "src-tauri",
 ]

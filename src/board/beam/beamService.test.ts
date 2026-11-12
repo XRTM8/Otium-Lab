@@ -1,5 +1,5 @@
 import { localStorage } from '../../lab/storage';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   arrayBufferToBase64,
   base64ToArrayBuffer,
@@ -33,8 +33,13 @@ function resetService(): void {
   (beamService as any).seenMessages.clear();
 }
 
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => '' }));
+});
+
 afterEach(() => {
   resetService();
+  vi.unstubAllGlobals();
 });
 
 describe('Otium Smart Beam room codes', () => {
@@ -306,8 +311,8 @@ describe('Otium Smart Beam session routing', () => {
     };
     const create = vi.spyOn(service, 'createPeerConnection').mockReturnValue(peer);
     const broadcast = vi.spyOn(beamService, 'broadcast').mockResolvedValue(undefined);
-    vi.stubGlobal('RTCSessionDescription', class { constructor(value: unknown) { return value as any; } });
-    vi.stubGlobal('RTCIceCandidate', class { constructor(value: unknown) { return value as any; } });
+    vi.stubGlobal('RTCSessionDescription', vi.fn(function (this: unknown, value: unknown) { return value as RTCSessionDescription; }));
+    vi.stubGlobal('RTCIceCandidate', vi.fn(function (this: unknown, value: unknown) { return value as RTCIceCandidate; }));
     try {
       await service.handleRtcIce({ candidate });
       await service.handleRtcOffer({ sessionId: 'live', sdp: { sdp: 'offer' } });

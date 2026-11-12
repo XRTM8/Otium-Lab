@@ -24,7 +24,11 @@ export function useMediaDrawing(id: string, saved: boolean, persistent: boolean,
     if (!persistent || !saved) return;
     const snapshot = drawing.current, ticket = ++sequence.current;
     setStatus('saving'); setMessage('');
-    queue.current = queue.current.catch(() => {}).then(() => saveDrawing(id, snapshot)).then(() => {
+    queue.current = queue.current
+      .then(undefined, (err: unknown) => {
+        console.warn('[MediaDrawing] Previous drawing save failed:', err);
+      })
+      .then(() => saveDrawing(id, snapshot)).then(() => {
       if (mounted.current && ticket === sequence.current) setStatus('saved');
     }).catch(error => {
       if (mounted.current && ticket === sequence.current) { setStatus('error'); setMessage(error instanceof Error ? error.message : 'تعذر حفظ الشرح.'); }
@@ -39,8 +43,14 @@ export function useMediaDrawing(id: string, saved: boolean, persistent: boolean,
   const current = pages[page] ?? empty;
   return { strokes: current.present, status, message, ready: restored,
     change: (present: InkStroke[]) => apply({ past: [...current.past.slice(-19), current.present], present, future: [] }),
-    undo: () => { if (current.past.length) apply({ past: current.past.slice(0, -1), present: current.past.at(-1)!, future: [current.present, ...current.future] }); },
-    redo: () => { if (current.future.length) apply({ past: [...current.past, current.present], present: current.future[0], future: current.future.slice(1) }); },
+    undo: () => {
+      const prevPresent = current.past.at(-1);
+      if (prevPresent) apply({ past: current.past.slice(0, -1), present: prevPresent, future: [current.present, ...current.future] });
+    },
+    redo: () => {
+      const nextPresent = current.future[0];
+      if (nextPresent) apply({ past: [...current.past, current.present], present: nextPresent, future: current.future.slice(1) });
+    },
     canUndo: !!current.past.length, canRedo: !!current.future.length,
     getDrawing: () => drawing.current,
     replaceDrawing: (value: MediaDrawing) => {

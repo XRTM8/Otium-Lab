@@ -185,7 +185,7 @@ export const TextSelectionToolbarCard: React.FC<TextSelectionToolbarCardProps> =
             </div>
             <button
               type="button"
-              onClick={() => createAnnotation('underline', UNDERLINE_COLORS[0].hex)}
+              onClick={() => createAnnotation('underline', UNDERLINE_COLORS[0]?.hex ?? '#2563eb')}
               title={labels.underline}
               aria-label={labels.underline}
               className={`flex items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-hover hover:text-ink ${

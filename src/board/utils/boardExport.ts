@@ -165,6 +165,7 @@ export async function exportAllPagesToPdf(
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i];
+    if (!page) continue;
     renderBoardPageToContext(ctx, page, targetWidth, targetHeight, snippets, images);
 
     const jpegBlob = await new Promise<Blob | null>((resolve) => {
@@ -184,7 +185,7 @@ export async function exportAllPagesToPdf(
   if (pdfPages.length !== pages.length) throw new Error('Could not encode all whiteboard pages.');
 
   const pdfBytes = buildPdfFromJpegPages(pdfPages);
-  const pdfBlob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
+  const pdfBlob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
   const dateStr = new Date().toISOString().slice(0, 10);
   triggerFileDownload(pdfBlob, `Otium_Lecture_Notes_${dateStr}.pdf`);
 }

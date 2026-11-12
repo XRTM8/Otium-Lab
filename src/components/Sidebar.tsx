@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import {
   X,
@@ -10,6 +10,8 @@ import type { BookmarkItem, TextAnnotation } from '../core/types';
 import type { Language } from '../core/i18n/translations';
 import { getTranslations } from '../core/i18n/translations';
 import { SidebarNotesTab, SidebarTocTab, type FlatTocItem } from './SidebarTocAndNotes';
+import { useSidebarSheetGesture } from './useSidebarSheetGesture';
+import { extractDocumentOutline } from './sidebarOutlineHelper';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -32,6 +34,9 @@ interface SidebarProps {
   variant?: 'drawer' | 'sheet';
 }
 
+const EMPTY_BOOKMARKS: BookmarkItem[] = [];
+const EMPTY_ANNOTATIONS: TextAnnotation[] = [];
+
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   doc,
@@ -39,8 +44,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   totalPages,
   currentPage,
   lang = 'ar',
-  bookmarks = [],
-  annotations = [],
+  bookmarks = EMPTY_BOOKMARKS,
+  annotations = EMPTY_ANNOTATIONS,
   onSelectPage,
   onToggleBookmark,
   onDeleteAnnotation,
@@ -55,17 +60,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const t = getTranslations(lang);
   const ar = lang === 'ar';
 
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const backdropRef = useRef<HTMLDivElement>(null);
-  const sheetHeightRef = useRef<number>(0);
-  const dragRef = useRef<{
-    pointerId: number;
-    startY: number;
-    startedAt: number;
-    delta: number;
-  } | null>(null);
-  const closeTimerRef = useRef<number | null>(null);
-  const settleTimerRef = useRef<number | null>(null);
+  const {
+    sheetRef,
+    backdropRef,
+    handleHandlePointerDown,
+    handleHandlePointerMove,
+    handleHandlePointerEnd,
+    handleHandlePointerCancel,
+  } = useSidebarSheetGesture(isSheet, onClose);
 
   const wasOpenRef = useRef(isOpen);
   useEffect(() => {
@@ -86,203 +88,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     if (!doc) return;
     let cancelled = false;
-
-    const flattenOutline = async (
-      nodes: Awaited<ReturnType<typeof doc.getOutline>>,
-      depth: number,
-      out: FlatTocItem[]
-    ): Promise<void> => {
-      if (!nodes || depth > 8) return;
-      for (const item of nodes) {
-        let pageNum = 1;
-        try {
-          if (typeof item.dest === 'string') {
-            const dest = await doc.getDestination(item.dest);
-            if (dest) {
-              const ref = dest[0];
-              pageNum = (await doc.getPageIndex(ref)) + 1;
-            }
-          } else if (Array.isArray(item.dest)) {
-            pageNum = (await doc.getPageIndex(item.dest[0])) + 1;
-          }
-        } catch {
-          // Resilient fallback for broken outline destinations
-        }
-        out.push({
-          title: item.title,
-          pageNumber: Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1,
-          depth,
-        });
-        if (Array.isArray(item.items) && item.items.length > 0) {
-          await flattenOutline(item.items, depth + 1, out);
-        }
-      }
-    };
-
-    const loadOutline = async () => {
-      try {
-        const outline = await doc.getOutline();
-        if (cancelled) return;
-        if (outline && outline.length > 0) {
-          const items: FlatTocItem[] = [];
-          await flattenOutline(outline, 0, items);
-          if (!cancelled) setToc(items);
-        } else {
-          setToc([]);
-        }
-      } catch (err) {
+    void extractDocumentOutline(doc)
+      .then((items) => {
+        if (!cancelled) setToc(items);
+      })
+      .catch((err) => {
         console.warn('Could not extract outline:', err);
-      }
-    };
-
-    loadOutline();
+      });
     return () => {
       cancelled = true;
     };
   }, [doc]);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
-      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
-    };
-  }, []);
-
-  const resetSheetMotion = useCallback(() => {
-    const sheet = sheetRef.current;
-    if (sheet) {
-      sheet.style.transition = '';
-      sheet.style.transform = '';
-    }
-    const backdrop = backdropRef.current;
-    if (backdrop) {
-      backdrop.style.transition = '';
-      backdrop.style.opacity = '';
-    }
-  }, []);
-
-  const settleSheet = useCallback(
-    (shouldClose: boolean) => {
-      const sheet = sheetRef.current;
-      if (!sheet) return;
-
-      sheet.style.transition = 'transform 230ms cubic-bezier(0.22, 1, 0.36, 1)';
-      const backdrop = backdropRef.current;
-      if (backdrop) backdrop.style.transition = 'opacity 200ms ease';
-
-      if (shouldClose) {
-        sheet.style.transform = 'translate3d(0, 110%, 0)';
-        if (backdrop) backdrop.style.opacity = '0';
-        closeTimerRef.current = window.setTimeout(() => {
-          closeTimerRef.current = null;
-          resetSheetMotion();
-          onClose();
-        }, 230);
-        return;
-      }
-
-      sheet.style.transform = 'translate3d(0, 0, 0)';
-      if (backdrop) backdrop.style.opacity = '1';
-      settleTimerRef.current = window.setTimeout(() => {
-        settleTimerRef.current = null;
-        if (sheetRef.current) {
-          sheetRef.current.style.transition = '';
-        }
-        if (backdropRef.current) {
-          backdropRef.current.style.transition = '';
-        }
-      }, 240);
-    },
-    [onClose, resetSheetMotion]
-  );
-
-  const handleHandlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isSheet) return;
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-
-    if (closeTimerRef.current !== null) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    if (settleTimerRef.current !== null) {
-      window.clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = null;
-    }
-
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-
-    sheetHeightRef.current = sheet.offsetHeight || window.innerHeight;
-
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startedAt: performance.now(),
-      delta: 0
-    };
-
-    // The entrance animation uses the `translate` property; remove it before
-    // driving the sheet with `transform` so the two never fight.
-    sheet.style.animation = 'none';
-    sheet.style.transition = 'none';
-    if (backdropRef.current) backdropRef.current.style.transition = 'none';
-
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is an enhancement; the handle still receives moves.
-    }
-  };
-
-  const handleHandlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-
-    const delta = Math.max(0, event.clientY - drag.startY);
-    drag.delta = delta;
-
-    // Rubber-band after 160px so the sheet never detaches from the finger too
-    // abruptly, while keeping the first part of the drag 1:1.
-    const shown = delta <= 160 ? delta : 160 + (delta - 160) * 0.62;
-    const height = Math.max(1, sheetHeightRef.current || window.innerHeight);
-
-    sheet.style.transform = `translate3d(0, ${shown}px, 0)`;
-    if (backdropRef.current) {
-      backdropRef.current.style.opacity = `${Math.max(0, 1 - (delta / height) * 0.8)}`;
-    }
-
-    if (event.cancelable) event.preventDefault();
-  };
-
-  const handleHandlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // The browser may have released it already.
-    }
-
-    const height = Math.max(1, sheetHeightRef.current || window.innerHeight);
-    const elapsed = Math.max(1, performance.now() - drag.startedAt);
-    const velocity = drag.delta / elapsed;
-    const passedDistance = drag.delta > Math.min(150, height * 0.22);
-    const flickedDown = drag.delta > 36 && velocity > 0.55;
-
-    settleSheet(passedDistance || flickedDown);
-  };
-
-  const handleHandlePointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    settleSheet(false);
-  };
 
   useEffect(() => {
     if (!isOpen) return;

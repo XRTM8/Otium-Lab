@@ -79,7 +79,9 @@ for (const lang of ocrModels) {
   if (existsSync(rawFile)) {
     try {
       rmSync(rawFile);
-    } catch {}
+    } catch (err) {
+      console.debug(`Note: Could not remove uncompressed ${rawFile}:`, err);
+    }
   }
 
   if (!existsSync(gzFile) || statSync(gzFile).size < 10000) {

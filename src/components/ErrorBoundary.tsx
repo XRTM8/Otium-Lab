@@ -16,7 +16,7 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
+  public override state: State = {
     hasError: false,
     error: null,
     prevResetKey: this.props.resetKey
@@ -36,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return null;
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
     this.props.onError?.(error, errorInfo);
   }
@@ -57,13 +57,15 @@ export class ErrorBoundary extends Component<Props, State> {
       localStorage.removeItem('tirs_theme');
       localStorage.removeItem('otium_lang');
       localStorage.removeItem('tirs_lang');
-    } catch {}
+    } catch (err) {
+      console.warn('[ErrorBoundary] Failed to clear preferences on reset:', err);
+    }
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
   };
 
-  public render() {
+  public override render() {
     if (this.state.hasError) {
       if (typeof this.props.fallback === 'function') {
         return this.props.fallback(

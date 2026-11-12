@@ -56,7 +56,8 @@ export function supportsCanvasFilter(): boolean {
     context.filter = 'invert(1)';
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, 1, 1);
-    canvasFilterSupport = context.getImageData(0, 0, 1, 1).data[0] < 64;
+    const firstChannel = context.getImageData(0, 0, 1, 1).data[0] ?? 255;
+    canvasFilterSupport = firstChannel < 64;
   } catch {
     canvasFilterSupport = false;
   }

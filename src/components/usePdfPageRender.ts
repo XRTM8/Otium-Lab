@@ -2,9 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { TextLayer } from 'pdfjs-dist';
 import type { ThemeMode } from '../core/types';
-import { getCanvasPixelRatio } from '../core/reader/device';
 import { scheduleIdleWork, scheduleRender } from '../core/reader/renderScheduler';
 import { supportsCanvasFilter, themeFilter } from './pdfPageCanvas';
+import { applySearchHighlightsToLayer, renderPdfPageToCanvas } from './pdfPageRenderHelpers';
 
 interface UsePdfPageRenderParams {
   doc: PDFDocumentProxy;
@@ -66,7 +66,7 @@ export function usePdfPageRender({
   // gesture zoom anchored to the fingers instead of waiting for a render.
   const [pageSize, setPageSize] = useState<{ width: number; height: number }>(() => ({
     width: 595,
-    height: Math.round(595 / (baseAspectRatio || 0.707))
+    height: Math.round(595 / (baseAspectRatio || 595 / 842))
   }));
 
   useEffect(() => {
@@ -80,11 +80,15 @@ export function usePdfPageRender({
         const unscaledViewport = page.getViewport({ scale: 1 });
         setPageSize({ width: unscaledViewport.width, height: unscaledViewport.height });
       })
-      .catch(() => {})
+      .then(undefined, (err: unknown) => {
+        console.debug('[usePdfPageRender] Page size probe failed:', err);
+      })
       .finally(() => {
         try {
           pageRef?.cleanup();
-        } catch {}
+        } catch (err) {
+          console.debug('[usePdfPageRender] Page cleanup skipped:', err);
+        }
       });
 
     return () => {
@@ -102,7 +106,15 @@ export function usePdfPageRender({
 
   // A reused component (dual mode) must never show the previous page while
   // the next one is still rasterising.
+  const lastPageIdentityRef = useRef<{ doc: PDFDocumentProxy; pageNumber: number } | null>(null);
   useEffect(() => {
+    if (
+      lastPageIdentityRef.current?.doc === doc &&
+      lastPageIdentityRef.current?.pageNumber === pageNumber
+    ) {
+      return;
+    }
+    lastPageIdentityRef.current = { doc, pageNumber };
     renderedKeyRef.current = '';
     hasRenderedOnceRef.current = false;
     if (textLayerRef.current) {
@@ -188,7 +200,7 @@ export function usePdfPageRender({
   useEffect(() => {
     if (!isVisible) return;
 
-    const renderKey = `${pageNumber}:${rasterScale.toFixed(4)}:${theme}`;
+    const renderKey = `${pageNumber}:${rasterScale.toFixed(4)}:${theme}:${retryKey}`;
     if (renderedKeyRef.current === renderKey) return;
 
     let cancelled = false;
@@ -196,110 +208,30 @@ export function usePdfPageRender({
     const run = async () => {
       if (cancelled || !canvasRef.current) return;
 
-      let page: PDFPageProxy | null = null;
-      let staging: HTMLCanvasElement | null = null;
-
       try {
-        page = await doc.getPage(pageNumber);
-        if (cancelled || !canvasRef.current) return;
-
-        const dpr = getCanvasPixelRatio();
-        // Safe bitmap ceiling (4.5M pixels = ~18MB buffer) prevents mobile WebView OOM
-        // crashes and GPU texture exhaustion when zooming in to 250%+ on Retina displays.
-        const MAX_CANVAS_PIXELS = 4_500_000;
-        const rawPixels = (pageSize.width * rasterScale * dpr) * (pageSize.height * rasterScale * dpr);
-        const dprAdjustment = rawPixels > MAX_CANVAS_PIXELS ? Math.sqrt(MAX_CANVAS_PIXELS / rawPixels) : 1;
-        const effectiveDpr = Math.max(1, dpr * dprAdjustment);
-
-        const viewport = page.getViewport({ scale: rasterScale * effectiveDpr });
-        const cssViewport = page.getViewport({ scale: rasterScale });
-
-        // Render into a staging canvas first. The visible canvas is updated in
-        // one synchronous copy, so zooming never flashes a blank page.
-        staging = document.createElement('canvas');
-        staging.width = Math.max(1, Math.floor(viewport.width));
-        staging.height = Math.max(1, Math.floor(viewport.height));
-        const stagingContext = staging.getContext('2d', {
-          alpha: false,
-          willReadFrequently: false
+        const result = await renderPdfPageToCanvas({
+          doc,
+          pageNumber,
+          rasterScale,
+          pageSize,
+          theme,
+          canvas: canvasRef.current,
+          isCancelled: () => cancelled || !canvasRef.current,
+          setRenderTask: (task) => {
+            currentRenderTaskRef.current = task;
+          },
         });
-        if (!stagingContext) return;
-
-        stagingContext.imageSmoothingEnabled = true;
-        stagingContext.imageSmoothingQuality = 'high';
-        stagingContext.fillStyle = '#ffffff';
-        stagingContext.fillRect(0, 0, staging.width, staging.height);
-
-        const task = page.render({
-          canvas: staging,
-          canvasContext: stagingContext,
-          viewport,
-          intent: 'display'
-        });
-        currentRenderTaskRef.current = task;
-
-        try {
-          await task.promise;
-        } catch (error) {
-          const name = (error as { name?: string } | null)?.name;
-          if (!cancelled && name !== 'RenderingCancelledException') {
-            console.warn(`Render notice on page ${pageNumber}:`, error);
-          }
-          return;
-        }
-
-        if (cancelled || !canvasRef.current) return;
-
-        const canvas = canvasRef.current;
-        if (canvas.width !== staging.width) canvas.width = staging.width;
-        if (canvas.height !== staging.height) canvas.height = staging.height;
-
-        const context = canvas.getContext('2d', { alpha: false });
-        if (context) {
-          context.imageSmoothingEnabled = true;
-          context.imageSmoothingQuality = 'high';
-          const filter = themeFilter(theme);
-          const canFilter = Boolean(filter && supportsCanvasFilter());
-          if (canFilter && filter) context.filter = filter;
-          context.drawImage(
-            staging,
-            0,
-            0,
-            staging.width,
-            staging.height,
-            0,
-            0,
-            canvas.width,
-            canvas.height
-          );
-          if (canFilter) context.filter = 'none';
-        }
-
-        staging.width = 1;
-        staging.height = 1;
+        if (!result.ok || cancelled) return;
 
         currentRenderTaskRef.current = null;
         renderedKeyRef.current = renderKey;
         setRenderedTarget({ doc, page: pageNumber });
         setErrorTarget(null);
-
-        canvas.dataset.viewportWidth = String(Math.floor(cssViewport.width));
-        canvas.dataset.viewportHeight = String(Math.floor(cssViewport.height));
       } catch (error) {
         const name = (error as { name?: string } | null)?.name;
         if (!cancelled && name !== 'RenderingCancelledException') {
           console.warn(`Render notice on page ${pageNumber}:`, error);
           setErrorTarget({ doc, page: pageNumber, message: (error as Error)?.message || 'Render failed' });
-        }
-      } finally {
-        if (staging) {
-          staging.width = 1;
-          staging.height = 1;
-        }
-        try {
-          page?.cleanup();
-        } catch {
-          // Cleanup is best-effort
         }
       }
     };
@@ -319,7 +251,7 @@ export function usePdfPageRender({
         currentRenderTaskRef.current = null;
       }
     };
-  }, [doc, pageNumber, rasterScale, pageSize.width, pageSize.height, theme, isVisible, retryKey]);
+  }, [doc, pageNumber, rasterScale, pageSize, theme, isVisible, retryKey]);
 
   // Text layer is laid out once at natural size and scaled via CSS transform.
   useEffect(() => {
@@ -344,7 +276,7 @@ export function usePdfPageRender({
         if (cancelled || !textLayerRef.current) return;
 
         const target = textLayerRef.current;
-        target.innerHTML = '';
+        target.replaceChildren();
         target.style.setProperty('--total-scale-factor', '1');
         target.style.setProperty('--scale-round-x', '1px');
         target.style.setProperty('--scale-round-y', '1px');
@@ -382,61 +314,7 @@ export function usePdfPageRender({
   useEffect(() => {
     const container = textLayerRef.current;
     if (!container || textLayerVersion === 0) return;
-
-    container.querySelectorAll('mark.search-highlight').forEach((mark) => {
-      const parent = mark.parentNode;
-      if (!parent) return;
-      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-      parent.removeChild(mark);
-    });
-    container.normalize();
-
-    const term = searchQuery?.trim() ?? '';
-    if (term.length < 2) return;
-
-    const safeTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let regex: RegExp;
-    try {
-      regex = new RegExp(safeTerm, 'gi');
-    } catch {
-      return;
-    }
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    const textNodes: Text[] = [];
-
-    let currentNode = walker.nextNode();
-    while (currentNode) {
-      if (currentNode.nodeValue) textNodes.push(currentNode as Text);
-      currentNode = walker.nextNode();
-    }
-
-    for (const textNode of textNodes) {
-      const text = textNode.nodeValue || '';
-      if (!text) continue;
-
-      regex.lastIndex = 0;
-      const matches = Array.from(text.matchAll(regex));
-      if (matches.length === 0) continue;
-
-      const fragment = document.createDocumentFragment();
-      let cursor = 0;
-
-      for (const match of matches) {
-        const start = match.index ?? 0;
-        if (start > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, start)));
-
-        const marker = document.createElement('mark');
-        marker.className = isCurrentSearchPage
-          ? 'search-highlight active-search-highlight'
-          : 'search-highlight';
-        marker.textContent = match[0];
-        fragment.appendChild(marker);
-        cursor = start + match[0].length;
-      }
-
-      if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)));
-      textNode.parentNode?.replaceChild(fragment, textNode);
-    }
+    applySearchHighlightsToLayer(container, searchQuery, isCurrentSearchPage);
   }, [searchQuery, isCurrentSearchPage, textLayerVersion]);
 
   const retryRender = () => {

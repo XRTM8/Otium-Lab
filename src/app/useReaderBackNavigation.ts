@@ -104,7 +104,7 @@ export function useReaderBackNavigation({
   ]);
 
   useEffect(() => {
-    (window as unknown as Record<string, unknown>).__OTIUM_HANDLE_BACK__ = handleBackStep;
+    window.__OTIUM_HANDLE_BACK__ = handleBackStep;
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -129,7 +129,7 @@ export function useReaderBackNavigation({
     window.history.pushState(null, '', window.location.href);
 
     return () => {
-      delete (window as unknown as Record<string, unknown>).__OTIUM_HANDLE_BACK__;
+      delete window.__OTIUM_HANDLE_BACK__;
       window.removeEventListener('keydown', handleEscape);
       window.removeEventListener('popstate', handlePopState);
     };

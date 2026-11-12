@@ -43,7 +43,7 @@ function makeReader(overrides: Partial<ReaderController> = {}): ReaderController
     theme: 'paper',
     viewMode: 'single',
     lang: 'en',
-    baseAspectRatio: 0.707,
+    baseAspectRatio: 595 / 842,
     basePageSize: { width: 595, height: 842 },
     annotations: [],
     annotationSaveStatus: 'saved',

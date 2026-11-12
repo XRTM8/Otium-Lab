@@ -143,7 +143,8 @@ export async function openPptx(buffer: ArrayBuffer, signal?: AbortSignal): Promi
   if (zip.has('ppt/theme/theme1.xml')) {
     const scheme = first(await zip.xml('ppt/theme/theme1.xml', signal), 'clrScheme');
     if (scheme) for (const item of scheme.children) theme[item.localName] = color(item, theme, '#000000');
-    theme.tx1 = theme.dk1; theme.bg1 = theme.lt1;
+    theme.tx1 = theme.dk1 ?? defaults.dk1 ?? '#000000';
+    theme.bg1 = theme.lt1 ?? defaults.lt1 ?? '#ffffff';
   }
   const nativeSummary = await parsePptxWithRust(new Uint8Array(buffer));
   signal?.throwIfAborted();
@@ -166,7 +167,10 @@ export async function readSlide(deck: Deck, page: number, signal?: AbortSignal):
   if (themeRef) {
     Object.assign(theme, await cachedThemeScheme(deck, themeRef.target, signal));
   }
-  for (const attr of first(master, 'clrMap')?.attributes ?? []) if (theme[attr.value]) theme[attr.name] = theme[attr.value];
+  for (const attr of first(master, 'clrMap')?.attributes ?? []) {
+    const mapped = theme[attr.value];
+    if (mapped !== undefined) theme[attr.name] = mapped;
+  }
   const elements: SlideElement[] = [];
   let limited = false;
   let imageBytes = 0;
@@ -210,7 +214,7 @@ export async function readSlide(deck: Deck, page: number, signal?: AbortSignal):
       geometry, parentTransform, insets: [num(bodyPr, 'tIns', 45720), num(bodyPr, 'rIns', 91440), num(bodyPr, 'bIns', 45720), num(bodyPr, 'lIns', 91440)].map(value => Math.max(0, Math.min(value / 12700, 100))),
       anchor: bodyPr?.getAttribute('anchor') ?? 't', strokeWidth: num(line, 'w', 12700) / 12700,
       fill: color(fillNode, theme, 'none'), stroke: child(line, 'noFill') ? 'none' : color(line, theme, 'none'), paragraphs: [] };
-    if (body) for (const paragraph of [...body.children].filter(child => child.localName === 'p')) {
+    if (body) for (const paragraph of [...body.children].filter(item => item.localName === 'p')) {
       const ppr = first(paragraph, 'pPr');
       const runs: SlideRun[] = [];
       const styleName = ['title', 'ctrTitle'].includes(placeholder?.getAttribute('type') ?? '') ? 'titleStyle' : 'bodyStyle';
@@ -224,7 +228,7 @@ export async function readSlide(deck: Deck, page: number, signal?: AbortSignal):
         if (textCount > 100_000) throw new Error('نص الشريحة أكبر من حد المعاينة.');
         const rpr = first(run, 'rPr') ?? paragraphRpr;
         runs.push({ text: `${!runs.length && bullet ? `${bullet} ` : ''}${text}`, size: Math.max(600, Math.min(10000, num(rpr, 'sz', num(paragraphRpr, 'sz', 2400)))) / 100,
-          color: color(first(rpr, 'solidFill') ?? first(paragraphRpr, 'solidFill'), theme, theme.tx1), bold: (rpr?.getAttribute('b') ?? paragraphRpr?.getAttribute('b')) === '1', italic: (rpr?.getAttribute('i') ?? paragraphRpr?.getAttribute('i')) === '1' });
+          color: color(first(rpr, 'solidFill') ?? first(paragraphRpr, 'solidFill'), theme, theme.tx1 ?? '#000000'), bold: (rpr?.getAttribute('b') ?? paragraphRpr?.getAttribute('b')) === '1', italic: (rpr?.getAttribute('i') ?? paragraphRpr?.getAttribute('i')) === '1' });
       }
       element.paragraphs.push({ align: ppr?.getAttribute('algn') ?? 'l', rtl: ppr?.getAttribute('rtl') === '1', runs });
     }

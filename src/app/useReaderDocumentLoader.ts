@@ -1,88 +1,32 @@
-import type React from 'react';
 import { useCallback, useEffect, useRef } from 'react';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
-import type { BookmarkItem, TextAnnotation, ThemeMode, ViewMode } from '../core/types';
-import type { Language } from '../core/i18n/translations';
-import type { RecentDocItem } from '../core/storage/documents';
+import type { PDFDocumentLoadingTask } from 'pdfjs-dist';
 import { isPdfBuffer, openPdf } from '../core/pdf/document';
 import { mergeTextAnnotations } from '../core/annotations/textSync';
 import {
   adoptLegacyDocumentRecord,
-  getDocumentFromStorage,
   saveDocumentToStorage,
   updateDocumentPage,
 } from '../core/storage/documents';
 import { fingerprintDocument } from '../core/storage/documentIdentity';
 import { loadStoredAnnotations } from '../core/storage/annotations';
 import { getStoredBookmarks } from '../core/storage/bookmarks';
-import {
-  loadDocumentTheme,
-  loadLastPage,
-  loadScrollOffset,
-  loadTheme,
-  resolveScheduledTheme,
-  type ThemeScheduleMode,
-} from '../core/settings/preferences';
+import { loadLastPage, loadScrollOffset } from '../core/settings/preferences';
 import { computeOptimalPageScale } from '../core/reader/device';
 import { clearSearchTextCache } from '../core/search/documentSearch';
 import { stopTts } from '../platform/tts';
 import {
   describeDocumentError,
   destroyDocumentSoon,
-  detectIsArabicScript,
   EMPTY_PASSWORD_MODAL,
-  SAMPLE_DOCUMENT_NAME,
-  type PasswordModalState,
 } from './readerControllerHelpers';
-
-interface UseReaderDocumentLoaderOptions {
-  dragDropEnabled: boolean;
-  lang: Language;
-  langRef: React.MutableRefObject<Language>;
-  viewMode: ViewMode;
-  chromeInset: number;
-  docRef: React.MutableRefObject<PDFDocumentProxy | null>;
-  docIdRef: React.MutableRefObject<string>;
-  annotationsGenerationRef: React.MutableRefObject<number>;
-  annotationsHydratedRef: React.MutableRefObject<boolean>;
-  bookmarksHydratedRef: React.MutableRefObject<boolean>;
-  pendingScrollPageRef: React.MutableRefObject<number | null>;
-  pendingScrollOffsetRef: React.MutableRefObject<number | null>;
-  pageSaveTimerRef: React.MutableRefObject<number | null>;
-  currentPageRef: React.MutableRefObject<number>;
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
-  lastFitScaleRef: React.MutableRefObject<number>;
-  rememberDocThemeRef: React.MutableRefObject<boolean>;
-  themeScheduleRef: React.MutableRefObject<ThemeScheduleMode>;
-  dayThemeRef: React.MutableRefObject<ThemeMode>;
-  nightThemeRef: React.MutableRefObject<ThemeMode>;
-  passwordModal: PasswordModalState;
-  setPasswordModal: React.Dispatch<React.SetStateAction<PasswordModalState>>;
-  setDoc: React.Dispatch<React.SetStateAction<PDFDocumentProxy | null>>;
-  setDocTitle: React.Dispatch<React.SetStateAction<string>>;
-  setDocId: React.Dispatch<React.SetStateAction<string>>;
-  setNumPages: React.Dispatch<React.SetStateAction<number>>;
-  setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
-  setAnnotations: React.Dispatch<React.SetStateAction<TextAnnotation[]>>;
-  setBookmarks: React.Dispatch<React.SetStateAction<BookmarkItem[]>>;
-  setBasePageSize: React.Dispatch<React.SetStateAction<{ width: number; height: number }>>;
-  setBaseAspectRatio: React.Dispatch<React.SetStateAction<number>>;
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-  setActiveSearchPage: React.Dispatch<React.SetStateAction<number | null>>;
-  setSearchSeed: React.Dispatch<React.SetStateAction<{ query: string; id: number } | null>>;
-  setIsSearchOpen: (next: boolean | ((prev: boolean) => boolean)) => void;
-  setIsSidebarOpen: (next: boolean | ((prev: boolean) => boolean)) => void;
-  setIsSettingsOpen: (next: boolean | ((prev: boolean) => boolean)) => void;
-  setIsImmersive: React.Dispatch<React.SetStateAction<boolean>>;
-  setDocumentError: React.Dispatch<React.SetStateAction<string | null>>;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  setLoadProgress: React.Dispatch<React.SetStateAction<number | null>>;
-  setDetectedDocIsRtl: React.Dispatch<React.SetStateAction<boolean>>;
-  setFitScaleState: React.Dispatch<React.SetStateAction<number>>;
-  setZoom: React.Dispatch<React.SetStateAction<number>>;
-  setFileSizeBytes: React.Dispatch<React.SetStateAction<number>>;
-  changeTheme: (nextTheme: ThemeMode, persistDocument?: boolean) => void;
-}
+import {
+  applyInitialDocumentTheme,
+  destroyPdfTaskQuietly,
+  detectDocumentArabicScript,
+  resolveInitialPageNumber,
+  type UseReaderDocumentLoaderOptions,
+} from './readerDocumentLoaderHelpers';
+import { useReaderFileOpeners } from './useReaderFileOpeners';
 
 /**
  * Coordinates PDF opening, drag-and-drop file loading, password prompts,
@@ -144,12 +88,8 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
 
   useEffect(() => {
     return () => {
-      if (loadingTaskRef.current) {
-        void loadingTaskRef.current.destroy().catch(() => {});
-      }
-      if (docRef.current) {
-        void docRef.current.loadingTask.destroy().catch(() => {});
-      }
+      destroyPdfTaskQuietly(loadingTaskRef.current, 'PDF loading task teardown:');
+      destroyPdfTaskQuietly(docRef.current?.loadingTask, 'PDF active task teardown:');
     };
   }, [docRef]);
 
@@ -158,7 +98,7 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
     loadGenerationRef.current++;
     const pendingTask = loadingTaskRef.current;
     loadingTaskRef.current = null;
-    if (pendingTask) void pendingTask.destroy().catch(() => {});
+    destroyPdfTaskQuietly(pendingTask, 'PDF close pending task teardown:');
     stopTts();
     if (pageSaveTimerRef.current !== null && docIdRef.current) {
       window.clearTimeout(pageSaveTimerRef.current);
@@ -228,9 +168,7 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
     loadGenerationRef.current += 1;
     const task = loadingTaskRef.current;
     loadingTaskRef.current = null;
-    if (task) {
-      void task.destroy().catch(() => {});
-    }
+    destroyPdfTaskQuietly(task, 'PDF password cancel teardown:');
     setPasswordModal(EMPTY_PASSWORD_MODAL);
     setIsLoading(false);
     setLoadProgress(null);
@@ -262,12 +200,12 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
 
     const previousTask = loadingTaskRef.current;
     loadingTaskRef.current = null;
-    if (previousTask) {
-      void previousTask.destroy().catch(() => {});
-    }
-
+    destroyPdfTaskQuietly(previousTask, 'PDF previous task teardown:');
     const storageBuffer = data.slice(0);
-    const identityPromise = fingerprintDocument(storageBuffer).catch(() => '');
+    const identityPromise = fingerprintDocument(storageBuffer).then(undefined, (err: unknown) => {
+      console.warn('PDF fingerprint fallback:', err);
+      return '';
+    });
 
     const handle = openPdf(data, {
       onPassword: ({ callback, reason }) => {
@@ -336,25 +274,9 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
       setDocumentError(null);
 
       setDetectedDocIsRtl(false);
-      void (async () => {
-        let pageText = '';
-        try {
-          for (let page = 1; page <= Math.min(3, opened.doc.numPages); page++) {
-            if (generation !== loadGenerationRef.current) return;
-            const pdfPage = await opened.doc.getPage(page);
-            const textContent = await pdfPage.getTextContent();
-            pageText +=
-              ' ' +
-              textContent.items
-                .map((item) => ('str' in item ? item.str : ''))
-                .join(' ')
-                .slice(0, 6000);
-          }
-        } catch {
-          /* Image-only PDFs default to LTR. */
-        }
-        if (generation === loadGenerationRef.current) setDetectedDocIsRtl(detectIsArabicScript(pageText));
-      })();
+      void detectDocumentArabicScript(opened.doc, () => generation === loadGenerationRef.current).then((rtl) => {
+        if (rtl !== null) setDetectedDocIsRtl(rtl);
+      });
 
       if (opened.basePageSize.width && opened.basePageSize.height && typeof window !== 'undefined') {
         const fit = computeOptimalPageScale(
@@ -371,33 +293,21 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
 
       const savedPage = loadLastPage(documentId, title);
       const savedOffset = loadScrollOffset(documentId);
-      const requestedPage =
-        typeof startPage === 'number' && Number.isFinite(startPage) ? Math.round(startPage) : 0;
-      const initialPage =
-        requestedPage > 0 && requestedPage <= opened.numPages
-          ? requestedPage
-          : savedPage > 0 && savedPage <= opened.numPages
-            ? savedPage
-            : 1;
+      const initialPage = resolveInitialPageNumber(startPage, savedPage, opened.numPages);
       pendingScrollPageRef.current = initialPage > 1 || savedOffset > 0 ? initialPage : null;
       pendingScrollOffsetRef.current = savedOffset > 0 ? savedOffset : null;
       setCurrentPage(initialPage);
       setFileSizeBytes(storageBuffer.byteLength);
 
-      if (rememberDocThemeRef.current) {
-        const savedDocTheme = loadDocumentTheme(documentId, title);
-        if (savedDocTheme) {
-          changeTheme(savedDocTheme, false);
-        } else if (themeScheduleRef.current !== 'manual') {
-          const scheduled = resolveScheduledTheme(
-            themeScheduleRef.current,
-            dayThemeRef.current,
-            nightThemeRef.current,
-            loadTheme()
-          );
-          changeTheme(scheduled, false);
-        }
-      }
+      applyInitialDocumentTheme({
+        rememberDocTheme: rememberDocThemeRef.current,
+        documentId,
+        title,
+        themeSchedule: themeScheduleRef.current,
+        dayTheme: dayThemeRef.current,
+        nightTheme: nightThemeRef.current,
+        changeTheme,
+      });
 
       if (storageBuffer.byteLength > 0) {
         void saveDocumentToStorage(documentId, title, storageBuffer, opened.numPages, initialPage);
@@ -432,113 +342,15 @@ export function useReaderDocumentLoader(opts: UseReaderDocumentLoaderOptions) {
     loadDocumentRef.current = loadPdfData;
   });
 
-  const openFile = useCallback(
-    async (file: File) => {
-      const fileGeneration = ++fileReadGenerationRef.current;
-      try {
-        const buffer = await file.arrayBuffer();
-        if (fileGeneration !== fileReadGenerationRef.current) return false;
-        return await loadDocumentRef.current(buffer, file.name);
-      } catch (error) {
-        if (fileGeneration !== fileReadGenerationRef.current) return false;
-        setDocumentError(describeDocumentError(error, lang));
-        console.error('Error reading file:', error);
-        return false;
-      }
-    },
-    [lang, setDocumentError]
-  );
-
-  const openFileRef = useRef(openFile);
-  useEffect(() => {
-    openFileRef.current = openFile;
+  const { openFile, openSample, loadDocumentBytes, openRecent } = useReaderFileOpeners({
+    dragDropEnabled,
+    lang,
+    langRef,
+    fileReadGenerationRef,
+    loadDocumentRef,
+    setIsLoading,
+    setDocumentError,
   });
-
-  useEffect(() => {
-    if (!dragDropEnabled) return;
-
-    const handleDragOver = (event: DragEvent) => event.preventDefault();
-    const handleDrop = (event: DragEvent) => {
-      event.preventDefault();
-      const file = event.dataTransfer?.files?.[0];
-      if (!file) return;
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        void openFileRef.current(file);
-      } else {
-        setDocumentError(langRef.current === 'ar' ? 'يرجى اختيار ملف PDF صالح.' : 'Please select a valid PDF file.');
-      }
-    };
-
-    window.addEventListener('dragover', handleDragOver);
-    window.addEventListener('drop', handleDrop);
-    return () => {
-      window.removeEventListener('dragover', handleDragOver);
-      window.removeEventListener('drop', handleDrop);
-    };
-  }, [dragDropEnabled, langRef, setDocumentError]);
-
-  const openSample = useCallback(async () => {
-    setIsLoading(true);
-    setDocumentError(null);
-    try {
-      const response = await fetch(`${import.meta.env.BASE_URL}sample.pdf`);
-      if (!response.ok) throw new Error(`Sample document returned ${response.status}`);
-      const buffer = await response.arrayBuffer();
-      return await loadDocumentRef.current(buffer, SAMPLE_DOCUMENT_NAME);
-    } catch (error) {
-      setDocumentError(describeDocumentError(error, lang));
-      setIsLoading(false);
-      console.error('Error loading sample:', error);
-      return false;
-    }
-  }, [lang, setDocumentError, setIsLoading]);
-
-  const loadDocumentBytes = useCallback(async (data: ArrayBuffer, name: string) => {
-    return await loadDocumentRef.current(data, name);
-  }, []);
-
-  const openRecent = useCallback(
-    async (recent: RecentDocItem) => {
-      if (recent.name === SAMPLE_DOCUMENT_NAME) {
-        return await openSample();
-      }
-
-      if (!recent.available) {
-        setDocumentError(
-          lang === 'ar'
-            ? 'هذا المستند في مكتبتك لكن ملفه غير موجود على هذا الجهاز. أعد فتح ملف الـ PDF لاستعادته.'
-            : 'This book is in your library but its PDF is not on this device. Open the PDF file again to restore it.'
-        );
-        return false;
-      }
-
-      setIsLoading(true);
-      setDocumentError(null);
-      let data: ArrayBuffer | null;
-      try {
-        data = await getDocumentFromStorage(recent.id);
-      } catch {
-        setIsLoading(false);
-        setDocumentError(
-          lang === 'ar'
-            ? 'تعذر قراءة المستند المحفوظ. حاول مجدداً أو أعد استيراد الملف.'
-            : 'Could not read the saved document. Try again or import the file again.'
-        );
-        return false;
-      }
-      if (!data) {
-        setIsLoading(false);
-        setDocumentError(
-          lang === 'ar'
-            ? 'هذا المستند لم يعد محفوظاً على هذا الجهاز.'
-            : 'This document is no longer stored on this device.'
-        );
-        return false;
-      }
-      return await loadDocumentRef.current(data, recent.name);
-    },
-    [lang, openSample, setDocumentError, setIsLoading]
-  );
 
   const handlePasswordSubmit = useCallback(
     (password: string) => {

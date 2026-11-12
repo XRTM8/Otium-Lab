@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { TeacherDock, type InkTool } from './TeacherDock';
 import { useTeaching } from './teachingContextValue';
 import { useAnnotationDelivery } from './useAnnotationDelivery';
@@ -59,12 +59,12 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
 
   const ready = !!reader.doc && loadedId === reader.docId;
   const ar = reader.lang === 'ar';
-  const change = (marks: InkMark[]) => dispatch({ type: 'change', marks });
+  const change = useCallback((marks: InkMark[]) => dispatch({ type: 'change', marks }), []);
   const selectionBroadcast = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (selectionBroadcast.current) clearTimeout(selectionBroadcast.current);
-  }, [reader.docId, reader.beamRoom]);
+  }, []);
 
   const publishSelection = useCallback((selection: { page: number; rects: AnnotationRect[] } | null) => {
     if (selectionBroadcast.current) clearTimeout(selectionBroadcast.current);
@@ -82,7 +82,12 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
     else selectionBroadcast.current = setTimeout(sendSelection, 90);
   }, [reader.docId, reader.beamRoom, reader.beamPeerConnected]);
 
+  const scopeRef = useRef('');
+
   useEffect(() => {
+    const scope = `${teaching.target}:${teaching.layout}`;
+    if (scopeRef.current === scope) return;
+    scopeRef.current = scope;
     publishSelection(null);
   }, [teaching.target, teaching.layout, publishSelection]);
 
@@ -103,10 +108,13 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
 
   useEffect(() => {
     let alive = true;
+    sharedAnnotations.current = [];
     const currentId = reader.docId;
     if (!currentId) return;
     void saveQueue.current
-      .catch(() => {})
+      .then(undefined, (err: unknown) => {
+        console.warn('[DocumentInk] Previous ink save failed before read:', err);
+      })
       .then(() => readInk(currentId))
       .then((marks) => {
         if (!alive) return;
@@ -122,10 +130,6 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
     return () => {
       alive = false;
     };
-  }, [reader.docId]);
-
-  useEffect(() => {
-    sharedAnnotations.current = [];
   }, [reader.docId]);
 
   useEffect(() => {
@@ -199,14 +203,16 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
     sharedMarks.current = history.present;
     if ((!upsert.length && !deleted.length) || !reader.beamPeerConnected || !reader.beamRoom || !reader.docId) return;
     send({ type: 'BEAM_INK_UPDATE', roomCode: reader.beamRoom, ink: { documentId: reader.docId, upsert, deleted }, timestamp: Date.now() });
-  }, [history.revision, history.present, ready, reader.beamPeerConnected, reader.beamRoom, reader.docId, send]);
+  }, [history.present, ready, reader.beamPeerConnected, reader.beamRoom, reader.docId, send]);
 
   useEffect(() => {
     if (!ready || !history.revision) return;
     const id = loadedId;
     let alive = true;
     saveQueue.current = saveQueue.current
-      .catch(() => {})
+      .then(undefined, (err: unknown) => {
+        console.warn('[DocumentInk] Previous ink save failed before write:', err);
+      })
       .then(() => {
         if (alive && documentRef.current === id) {
           setDocSync({ docId: id, loadedId: id, status: 'saving', message: '' });
@@ -262,20 +268,23 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
         ? (ar ? 'لم يُحفظ آخر تعديل. صدّر نسخة قبل الإغلاق.' : 'Save failed. Export a copy before closing.')
         : rawMessage;
 
+  const contextValue = useMemo(
+    () => ({
+      ready,
+      tool: teaching.target === 'document' && !teaching.presentation ? tool : 'hand',
+      color,
+      size,
+      stylus,
+      marks: ready ? history.present : [],
+      change,
+      setTool,
+      publishSelection,
+    }),
+    [ready, teaching.target, teaching.presentation, tool, color, size, stylus, history.present, change, setTool, publishSelection]
+  );
+
   return (
-    <InkContext.Provider
-      value={{
-        ready,
-        tool: teaching.target === 'document' && !teaching.presentation ? tool : 'hand',
-        color,
-        size,
-        stylus,
-        marks: ready ? history.present : [],
-        change,
-        setTool,
-        publishSelection,
-      }}
-    >
+    <InkContext.Provider value={contextValue}>
       {children}
       {/* Phone keeps its document annotation dock (including text selection),
           while the desktop dock appears only in the board workspace. */}

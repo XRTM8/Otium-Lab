@@ -25,26 +25,34 @@ export class BeamObserverHub {
     return () => { set.delete(cb); };
   }
 
+  private safeEmit<T>(listeners: Set<(payload: T) => void>, payload: T, label: string): void {
+    listeners.forEach((l) => {
+      try {
+        l(payload);
+      } catch (err) {
+        console.warn(`[BeamObserverHub] ${label} listener error:`, err);
+      }
+    });
+  }
+
   notifyState(room: string | null, role: 'receiver' | 'sender' | null): void {
     const state = { room, role };
     const serialized = `${room || ''}|${role || ''}`;
     if (serialized === this.lastNotifiedState) return;
     this.lastNotifiedState = serialized;
-    this.stateListeners.forEach((l) => { try { l(state); } catch {} });
+    this.safeEmit(this.stateListeners, state, 'state');
   }
 
   notifyStatus(status: BeamConnectionStatus): void {
-    this.statusListeners.forEach((l) => { try { l(status); } catch {} });
+    this.safeEmit(this.statusListeners, status, 'status');
   }
 
   notifyPeer(peerState: BeamPeerState): void {
-    const snap = { ...peerState };
-    this.peerListeners.forEach((l) => { try { l(snap); } catch {} });
+    this.safeEmit(this.peerListeners, { ...peerState }, 'peer');
   }
 
   notifyTransfer(transferState: BeamTransferState): void {
-    const snap = { ...transferState };
-    this.transferListeners.forEach((l) => { try { l(snap); } catch {} });
+    this.safeEmit(this.transferListeners, { ...transferState }, 'transfer');
   }
 
   notifyMessage(message: BeamMessage, transport: BeamTransport): void {

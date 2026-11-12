@@ -37,7 +37,7 @@ export function useReaderBeamState(docId: string) {
     return () => {
       if (beamSelectionTimer.current) clearTimeout(beamSelectionTimer.current);
     };
-  }, [beamSelectionKey]);
+  }, []);
 
   useEffect(() => beamService.onPeerChange((peer) => setBeamPeerConnected(peer.connected)), []);
   useEffect(() => beamService.onStateChange((state) => setBeamState(state)), []);

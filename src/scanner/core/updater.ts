@@ -97,7 +97,9 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
         if (parsed && (parsed.tag_name || parsed.name) && !parsed.message) {
           apiData = parsed;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('[ScannerUpdater] Failed to parse native release JSON:', err);
+      }
     }
 
     if (!apiData) {

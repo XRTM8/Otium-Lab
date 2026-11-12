@@ -128,7 +128,9 @@ export function attachBeamLocalTransports(handlers: {
       if (event.key === `${LAB_PREFIX}${BEAM_STORAGE_KEY}` && event.newValue) {
         try {
           handlers.onIncoming(JSON.parse(event.newValue) as BeamMessage, 'local');
-        } catch {}
+        } catch (err) {
+          console.warn('[Beam] Failed to parse local storage frame:', err);
+        }
       }
     });
     window.addEventListener('online', handlers.onOnline);
@@ -163,9 +165,17 @@ export async function dispatchBeamMessage(params: {
     }
   }
   if (params.broadcastChannel) {
-    try { params.broadcastChannel.postMessage(outgoing); } catch {}
+    try {
+      params.broadcastChannel.postMessage(outgoing);
+    } catch (err) {
+      console.debug('[Beam] BroadcastChannel postMessage skipped:', err);
+    }
   }
-  try { localStorage.setItem(BEAM_STORAGE_KEY, JSON.stringify(outgoing)); } catch {}
+  try {
+    localStorage.setItem(BEAM_STORAGE_KEY, JSON.stringify(outgoing));
+  } catch (err) {
+    console.debug('[Beam] localStorage relay mirror skipped:', err);
+  }
   await params.publishRelay(outgoing);
 }
 

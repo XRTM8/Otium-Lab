@@ -119,7 +119,9 @@ export function closeBeamEventSource(s: BeamSignalingState): void {
   if (s.activeEventSource) {
     try {
       s.activeEventSource.close();
-    } catch {}
+    } catch (err) {
+      console.debug('[BeamSignaling] EventSource close note:', err);
+    }
     s.activeEventSource = null;
   }
 }

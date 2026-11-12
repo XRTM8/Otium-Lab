@@ -65,7 +65,7 @@ function openDatabase(): Promise<IDBDatabase | null> {
     request.onsuccess = () => {
       const db = request.result;
       db.onversionchange = () => {
-        try { db.close(); } catch {}
+        try { db.close(); } catch (err) { console.debug('[AnnotationsStorage] db close skipped:', err); }
         dbPromise = null;
       };
       db.onclose = () => {
@@ -295,7 +295,9 @@ export function saveStoredAnnotations(
 
   const previous = writeChains.get(docKey) ?? Promise.resolve();
   const next = previous
-    .catch(() => {})
+    .then(undefined, (err: unknown) => {
+      console.warn('[AnnotationsStorage] Previous write chain failed:', err);
+    })
     .then(async () => {
       const stored = await writeDatabase(docKey, annotations);
       const fallback = writeLegacy(docKey, annotations);

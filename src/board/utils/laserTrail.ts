@@ -11,12 +11,13 @@ export function drawLaserTrailFrame(
   trail: LaserPoint[],
   now: number
 ): void {
-  while (trail.length > 0 && now - trail[0].time > 1100) {
+  while (trail[0] && now - trail[0].time > 1100) {
     trail.shift();
   }
 
   ctx.clearRect(0, 0, width, height);
-  if (trail.length === 0) return;
+  const latest = trail[trail.length - 1];
+  if (!latest) return;
 
   ctx.save();
   ctx.scale(width / 1920, height / 1080);
@@ -26,6 +27,7 @@ export function drawLaserTrailFrame(
   for (let i = 1; i < trail.length; i++) {
     const p1 = trail[i - 1];
     const p2 = trail[i];
+    if (!p1 || !p2) continue;
     const age = now - p2.time;
     const alpha = Math.max(0, 1 - age / 1100);
 
@@ -39,7 +41,6 @@ export function drawLaserTrailFrame(
     ctx.stroke();
   }
 
-  const latest = trail[trail.length - 1];
   ctx.beginPath();
   ctx.arc(latest.x, latest.y, 6, 0, Math.PI * 2);
   ctx.fillStyle = '#ef4444';

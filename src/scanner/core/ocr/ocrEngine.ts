@@ -158,12 +158,14 @@ export async function extractPageTextAndMetadata(
           /(فاتورة|تقرير|عقد|شهادة|وصل|كشف|طلب|بيان|وثيقة|invoice|receipt|report|contract|statement)/i.test(l)
         );
         const targetLine = keywordLine || lines[0];
-        const cleaned = targetLine
-          .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
-          .replace(/\s+/g, '_')
-          .slice(0, 32);
-        if (cleaned.length >= 3) {
-          suggestedTitle = cleaned;
+        if (targetLine) {
+          const cleaned = targetLine
+            .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
+            .replace(/\s+/g, '_')
+            .slice(0, 32);
+          if (cleaned.length >= 3) {
+            suggestedTitle = cleaned;
+          }
         }
       }
 
@@ -202,7 +204,9 @@ export async function terminateOcrWorker() {
     try {
       const worker = await promise;
       await worker.terminate();
-    } catch {}
+    } catch (err) {
+      console.warn('[OCR] Worker terminate failed:', err);
+    }
   }
   workers.clear();
 }

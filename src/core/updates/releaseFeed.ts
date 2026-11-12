@@ -31,11 +31,11 @@ function parseVersionPart(version: string): { numbers: number[]; labNumber: numb
   const normalized = normalizeVersion(version);
   // Match bare lab tags like "lab-07" or "lab-14"
   const labMatch = normalized.match(/^lab-(\d+)/i);
-  if (labMatch) {
+  if (labMatch?.[1]) {
     const num = Number.parseInt(labMatch[1], 10);
     return { numbers: [0, 0, 0], labNumber: num, labOnly: true, prerelease: `lab.${num}` };
   }
-  const [main, prerelease = ''] = normalized.split('-', 2);
+  const [main = '', prerelease = ''] = normalized.split('-', 2);
   const numbers = main.split('.').map((part) => {
     const value = Number.parseInt(part, 10);
     return Number.isFinite(value) ? value : 0;
@@ -44,7 +44,7 @@ function parseVersionPart(version: string): { numbers: number[]; labNumber: numb
 
   // Extract lab number from prerelease like "lab.7" or "lab.04"
   const preLabMatch = prerelease.match(/lab\.?(\d+)/i);
-  const labNumber = preLabMatch ? Number.parseInt(preLabMatch[1], 10) : 0;
+  const labNumber = preLabMatch?.[1] ? Number.parseInt(preLabMatch[1], 10) : 0;
 
   return { numbers, labNumber, labOnly: false, prerelease };
 }
@@ -59,7 +59,7 @@ export function compareVersions(candidate: string, current: string): number {
   }
 
   for (let index = 0; index < 3; index += 1) {
-    const difference = left.numbers[index] - right.numbers[index];
+    const difference = (left.numbers[index] ?? 0) - (right.numbers[index] ?? 0);
     if (difference !== 0) return difference;
   }
 

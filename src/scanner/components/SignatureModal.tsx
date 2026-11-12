@@ -81,7 +81,9 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
     if (!canvas) return;
     try {
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      console.debug('[SignatureModal] setPointerCapture skipped:', err);
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -111,7 +113,9 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
     if (!isDrawing) return;
     try {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      console.debug('[SignatureModal] releasePointerCapture skipped:', err);
+    }
     setIsDrawing(false);
   };
 

@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseEnhanceGesturesOptions {
   pageScopeKey: string;
@@ -57,12 +57,14 @@ export function useEnhanceGestures({
   const initialZoomRef = useRef<number>(1);
   const panStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  const applyStageTransform = (transitionCss = 'none') => {
+  const prevScopeRef = useRef<string>(pageScopeKey);
+
+  const applyStageTransform = useCallback((transitionCss = 'none') => {
     const el = stageContainerRef.current;
     if (!el) return;
     el.style.transition = transitionCss;
     el.style.transform = `translateX(${liveSwipeXRef.current}px) translate(${livePanRef.current.x}px, ${livePanRef.current.y}px) scale(${liveZoomRef.current})`;
-  };
+  }, []);
 
   const scheduleStageTransform = () => {
     if (gestureRafRef.current !== null) return;
@@ -72,7 +74,7 @@ export function useEnhanceGestures({
     });
   };
 
-  const resetZoomPanDom = () => {
+  const resetZoomPanDom = useCallback(() => {
     if (gestureRafRef.current !== null) {
       cancelAnimationFrame(gestureRafRef.current);
       gestureRafRef.current = null;
@@ -82,7 +84,7 @@ export function useEnhanceGestures({
     liveSwipeXRef.current = 0;
     liveSwipingRef.current = false;
     applyStageTransform('transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)');
-  };
+  }, [applyStageTransform]);
 
   const resetZoomAndPan = () => {
     resetZoomPanDom();
@@ -90,8 +92,10 @@ export function useEnhanceGestures({
   };
 
   useEffect(() => {
+    if (prevScopeRef.current === pageScopeKey) return;
+    prevScopeRef.current = pageScopeKey;
     resetZoomPanDom();
-  }, [pageScopeKey]);
+  }, [pageScopeKey, resetZoomPanDom]);
 
   useEffect(() => {
     return () => {
@@ -106,9 +110,12 @@ export function useEnhanceGestures({
     if (isRedacting) return;
 
     if (e.touches.length === 2) {
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      if (!t0 || !t1) return;
       const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
+        t0.clientX - t1.clientX,
+        t0.clientY - t1.clientY
       );
       touchDistanceStartRef.current = dist;
       initialZoomRef.current = liveZoomRef.current;
@@ -118,6 +125,7 @@ export function useEnhanceGestures({
     if (e.touches.length === 1) {
       const now = Date.now();
       const touch = e.touches[0];
+      if (!touch) return;
 
       if (now - lastTapTimeRef.current < 280) {
         lastTapTimeRef.current = 0;
@@ -142,9 +150,12 @@ export function useEnhanceGestures({
     if (isRedacting) return;
 
     if (e.touches.length === 2 && touchDistanceStartRef.current !== null) {
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      if (!t0 || !t1) return;
       const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
+        t0.clientX - t1.clientX,
+        t0.clientY - t1.clientY
       );
       const scaleFactor = dist / touchDistanceStartRef.current;
       const newScale = Math.min(4.0, Math.max(1.0, initialZoomRef.current * scaleFactor));
@@ -158,6 +169,7 @@ export function useEnhanceGestures({
 
     if (e.touches.length === 1 && touchStartRef.current) {
       const touch = e.touches[0];
+      if (!touch) return;
       const dx = touch.clientX - touchStartRef.current.x;
       const dy = touch.clientY - touchStartRef.current.y;
 

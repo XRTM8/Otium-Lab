@@ -2,17 +2,12 @@ import { normalizeDigits } from '../core/search/arabic';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Bookmark,
   BookOpen,
-  ChevronLeft,
-  ChevronRight,
   Columns,
   Layers,
   MoreHorizontal,
   Scroll,
   Search,
-  ZoomIn,
-  ZoomOut
 } from 'lucide-react';
 import type { ThemeMode, ViewMode } from '../core/types';
 import type { Language } from '../core/i18n/translations';
@@ -20,6 +15,8 @@ import { getTranslations } from '../core/i18n/translations';
 import { OtiumLogo } from './OtiumLogo';
 import { ToolbarMobileMoreSheet } from './ToolbarMobileMoreSheet';
 import { ToolbarDocumentInspector, ToolbarThemeAndActions } from './ToolbarInspectorAndActions';
+import { ToolbarPageNavigation, ToolbarZoomAndViewControls } from './ToolbarPageAndViewControls';
+import { getThemeOptions } from './themeCatalog';
 
 interface ToolbarProps {
   title: string;
@@ -194,20 +191,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
-  const masterThemesList: { id: ThemeMode; label: string; dot: string }[] = [
-    { id: 'paper', label: t.themes.paper, dot: '#d4c5a9' },
-    { id: 'amber', label: t.themes.amber, dot: '#f59e0b' },
-    { id: 'amoled', label: t.themes.amoled, dot: '#10b981' },
-    { id: 'eink', label: t.themes.eink, dot: '#9ca3af' },
-    { id: 'midnight', label: t.themes.midnight, dot: '#38bdf8' },
-    { id: 'pure', label: t.themes.pure, dot: '#ffffff' },
-    { id: 'parchment', label: t.themes.parchment, dot: '#d97706' },
-    { id: 'sakura', label: t.themes.sakura, dot: '#f472b6' },
-    { id: 'forest', label: t.themes.forest, dot: '#34d399' },
-    { id: 'nordic', label: t.themes.nordic, dot: '#60a5fa' }
-  ];
-
-  const themes = masterThemesList;
+  const themes = getThemeOptions(t);
 
   const isAr = readingDirection === 'rtl';
   const handleLeftStep = () => {
@@ -228,48 +212,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       else onPageChange(Math.min(totalPages, currentPage + 1));
     }
   };
-
-  const pageControls = (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <button
-        type="button"
-        onClick={handleLeftStep}
-        disabled={isAr ? currentPage >= totalPages : currentPage <= 1}
-        title={isAr ? t.nextPage : t.prevPage}
-        aria-label={isAr ? t.nextPage : t.prevPage}
-        className="toolbar-icon disabled:opacity-20"
-      >
-        <ChevronLeft className="w-4 h-4" />
-      </button>
-
-      <form
-        onSubmit={handlePageSubmit}
-        className="flex items-center gap-1 rounded-lg bg-hover-subtle px-1.5 py-1 font-mono text-[11px]"
-      >
-        <input
-          type="text"
-          inputMode="numeric"
-          value={inputPage}
-          onChange={(event) => setInputPage(event.target.value)}
-          onBlur={handlePageSubmit}
-          aria-label={t.pageOf(currentPage, totalPages)}
-          className="w-7 bg-transparent text-center text-ink outline-none focus:text-accent"
-        />
-        <span className="select-none text-ink-faint">/ {totalPages}</span>
-      </form>
-
-      <button
-        type="button"
-        onClick={handleRightStep}
-        disabled={isAr ? currentPage <= 1 : currentPage >= totalPages}
-        title={isAr ? t.prevPage : t.nextPage}
-        aria-label={isAr ? t.prevPage : t.nextPage}
-        className="toolbar-icon disabled:opacity-20"
-      >
-        <ChevronRight className="w-4 h-4" />
-      </button>
-    </div>
-  );
 
   return (
     <div
@@ -344,59 +286,34 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <Search className="w-4 h-4" />
         </button>
 
-        {pageControls}
+        <ToolbarPageNavigation
+          t={t}
+          isAr={isAr}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          inputPage={inputPage}
+          onInputPageChange={setInputPage}
+          onPageSubmit={handlePageSubmit}
+          onLeftStep={handleLeftStep}
+          onRightStep={handleRightStep}
+        />
 
         <div className="hidden shrink-0 items-center gap-0.5 lg:flex">
           <span className="mx-0.5 h-4 w-px bg-line-subtle" />
 
-          <button
-            type="button"
-            onClick={onToggleBookmark}
-            title={isBookmarked ? t.removeBookmark : t.addBookmark}
-            aria-label={isBookmarked ? t.removeBookmark : t.addBookmark}
-            className={`toolbar-icon spring-press ${isBookmarked ? 'text-highlight' : ''}`}
-          >
-            <Bookmark className={`w-3.5 h-3.5 transition-transform ${isBookmarked ? 'fill-current bookmark-pop' : ''}`} />
-          </button>
-
-          <div className="flex items-center gap-0.5 rounded-lg bg-hover-subtle px-0.5">
-            <button
-              type="button"
-              onClick={() => onZoomChange(Math.max(effectiveMinZoom, Number((zoom - zoomStep).toFixed(2))))}
-              title={t.zoomOut}
-              aria-label={t.zoomOut}
-              className="toolbar-icon"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="w-8 select-none text-center font-mono text-[10px] text-ink-muted">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => onZoomChange(Math.min(effectiveMaxZoom, Number((zoom + zoomStep).toFixed(2))))}
-              title={t.zoomIn}
-              aria-label={t.zoomIn}
-              className="toolbar-icon"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="segmented ms-0.5 hidden lg:inline-flex">
-            {VIEW_MODES.map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                data-active={viewMode === mode.id}
-                onClick={() => onViewModeChange(mode.id)}
-                title={t[mode.key] as string}
-                aria-label={t[mode.key] as string}
-              >
-                {mode.icon}
-              </button>
-            ))}
-          </div>
+          <ToolbarZoomAndViewControls
+            t={t}
+            zoom={zoom}
+            effectiveMinZoom={effectiveMinZoom}
+            effectiveMaxZoom={effectiveMaxZoom}
+            zoomStep={zoomStep}
+            isBookmarked={isBookmarked}
+            viewMode={viewMode}
+            viewModes={VIEW_MODES}
+            onToggleBookmark={onToggleBookmark}
+            onZoomChange={onZoomChange}
+            onViewModeChange={onViewModeChange}
+          />
 
           <ToolbarThemeAndActions
             t={t}

@@ -11,7 +11,7 @@ const crcTable = Uint32Array.from({ length: 256 }, (_, value) => {
 export const crc32 = (bytes: Uint8Array) => {
   let crc = 0xffffffff;
   for (const byte of bytes) {
-    crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 255];
+    crc = (crc >>> 8) ^ (crcTable[(crc ^ byte) & 255] ?? 0);
   }
   return (crc ^ 0xffffffff) >>> 0;
 };
@@ -83,7 +83,11 @@ export class LocalZip {
         cancel() { packedPosition = packed.length; },
       }, { highWaterMark: 0 });
       const reader = input.pipeThrough(decoder).getReader();
-      const cancel = () => { void reader.cancel().catch(() => {}); };
+      const cancel = () => {
+        void reader.cancel().then(undefined, (err: unknown) => {
+          console.debug('[Zip] Stream reader cancel skipped:', err);
+        });
+      };
       signal?.addEventListener('abort', cancel, { once: true });
       const chunks: Uint8Array[] = [];
       let size = 0;

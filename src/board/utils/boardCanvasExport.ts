@@ -25,15 +25,21 @@ export async function exportBoardPagesToPdf({
   boardColor: string;
   snippets: BoardSnippet[];
 }): Promise<void> {
-  const pagesToExport: ExportableBoardPage[] = pages.map((p, idx) =>
-    idx === currentPageIndex ? { ...p, strokes, background } : p
-  );
+  const pagesToExport: ExportableBoardPage[] = pages.map((p, idx) => {
+    const activeBg = idx === currentPageIndex ? background : p.background;
+    const activeStrokes = idx === currentPageIndex ? strokes : p.strokes;
+    return {
+      id: p.id,
+      strokes: activeStrokes,
+      redoStack: p.redoStack,
+      undoStack: p.undoStack,
+      background: activeBg,
+      backgroundColor: boardAppearance(activeBg, theme, boardFollowTheme, boardColor).color,
+    };
+  });
 
   await exportAllPagesToPdf(
-    pagesToExport.map((page) => ({
-      ...page,
-      backgroundColor: boardAppearance(page.background, theme, boardFollowTheme, boardColor).color,
-    })),
+    pagesToExport,
     EXPORT_WIDTH,
     EXPORT_HEIGHT,
     snippets

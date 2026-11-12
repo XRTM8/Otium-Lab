@@ -29,7 +29,7 @@ export function useAutoBeamDocument(options: AutoBeamDocument) {
   useEffect(() => beamService.onTransferProgress(setTransfer), []);
   useEffect(() => {
     if (!room || role !== 'sender' || !peerConnected) { attempt.current = null; return; }
-    if (!doc || !docId || loading || transfer.active || busy.current) return;
+    if (!doc || !docId || loading || transfer.active || busy.current || wake < 0) return;
     const key = `${room}:${docId}`;
     if (attempt.current === key) return;
     let cancelled = false;

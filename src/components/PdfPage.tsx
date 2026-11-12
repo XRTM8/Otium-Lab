@@ -32,12 +32,14 @@ interface ActiveAnnotation {
   y: number;
 }
 
+const EMPTY_ANNOTATIONS: TextAnnotation[] = [];
+
 const PdfPageView: React.FC<PdfPageProps> = ({
   doc,
   pageNumber,
   scale,
   theme,
-  annotations = [],
+  annotations = EMPTY_ANNOTATIONS,
   onDeleteAnnotation,
   baseAspectRatio,
   searchQuery,

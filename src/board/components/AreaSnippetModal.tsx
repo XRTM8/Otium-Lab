@@ -46,7 +46,9 @@ export const AreaSnippetModal: React.FC<AreaSnippetModalProps> = ({
     if (!overlay) return;
     try {
       overlay.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      console.debug('[AreaSnippetModal] setPointerCapture skipped:', err);
+    }
 
     const rect = overlay.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -80,7 +82,9 @@ export const AreaSnippetModal: React.FC<AreaSnippetModalProps> = ({
     if (overlay && overlay.hasPointerCapture(e.pointerId)) {
       try {
         overlay.releasePointerCapture(e.pointerId);
-      } catch {}
+      } catch (err) {
+        console.debug('[AreaSnippetModal] releasePointerCapture skipped:', err);
+      }
     }
 
     setIsSelecting(false);

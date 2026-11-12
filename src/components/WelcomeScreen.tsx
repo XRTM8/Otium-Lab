@@ -1,12 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
-  ArrowUpRight,
-  BookOpen,
   Cast,
-  Check,
-  ChevronDown,
   Globe,
-  Palette,
   ScanLine,
   Upload,
   Settings2
@@ -24,16 +19,13 @@ import { triggerHaptic } from '../core/utils/haptics';
 import { BrowserFullscreenButton } from './BrowserFullscreenButton';
 import { APP_FILE_ACCEPT, listMedia, removeMedia } from '../media/library';
 import { ConfirmDialog } from '../library/ConfirmDialog';
-import { registerBackHandler } from '../core/navigation/backHandler';
 import {
   WelcomeFooterDock,
   WelcomeRecentsShelf,
 } from './WelcomeRecentsShelf';
-import {
-  formatLibraryProgressLabel,
-  isPagedLibraryItem,
-  type WelcomeLibraryItem,
-} from './welcomeRecentsHelpers';
+import { type WelcomeLibraryItem } from './welcomeRecentsHelpers';
+import { WelcomeThemeMenu } from './WelcomeThemeMenu';
+import { WelcomeHeroResumeCard } from './WelcomeHeroResumeCard';
 
 type LibraryItem = WelcomeLibraryItem;
 
@@ -63,38 +55,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenSample: _onOpenSample
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const themeButton = useRef<HTMLButtonElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [recents, setRecents] = useState<LibraryItem[]>([]);
   const [libraryError, setLibraryError] = useState('');
   const [libraryLoadFailed, setLibraryLoadFailed] = useState(false);
-  const [showTopThemeMenu, setShowTopThemeMenu] = useState(false);
   const [deleting, setDeleting] = useState<LibraryItem | 'all' | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
 
   const t = getTranslations(currentLang);
-
-  useEffect(() => {
-    if (!showTopThemeMenu) return;
-    const close = () => {
-      setShowTopThemeMenu(false);
-      themeButton.current?.focus();
-      return true;
-    };
-    const unregister = registerBackHandler(close);
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) {
-        event.preventDefault();
-        close();
-      }
-    };
-    document.addEventListener('keydown', escape);
-    return () => {
-      unregister();
-      document.removeEventListener('keydown', escape);
-    };
-  }, [showTopThemeMenu]);
 
   const [referenceNow] = useState(() => Date.now());
 
@@ -135,25 +104,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  const paged = isPagedLibraryItem;
-  const progressLabel = (item: LibraryItem) => formatLibraryProgressLabel(item, currentLang, t);
-
-  // All 10 Themes with pure, simple color names (Zero AI Slop)
-  const allThemes: { id: ThemeMode; label: string; dot: string }[] = [
-    { id: 'paper', label: t.themes.paper, dot: '#d4c5a9' },
-    { id: 'amber', label: t.themes.amber, dot: '#f59e0b' },
-    { id: 'amoled', label: t.themes.amoled, dot: '#10b981' },
-    { id: 'eink', label: t.themes.eink, dot: '#9ca3af' },
-    { id: 'midnight', label: t.themes.midnight, dot: '#38bdf8' },
-    { id: 'pure', label: t.themes.pure, dot: '#ffffff' },
-    { id: 'parchment', label: t.themes.parchment, dot: '#d97706' },
-    { id: 'sakura', label: t.themes.sakura, dot: '#f472b6' },
-    { id: 'forest', label: t.themes.forest, dot: '#34d399' },
-    { id: 'nordic', label: t.themes.nordic, dot: '#60a5fa' }
-  ];
-
-  const activeThemeMeta = allThemes.find((th) => th.id === currentTheme) || allThemes[0];
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -226,89 +176,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </div>
 
         {/* Right: Theme Picker Capsule Button with Direct Dropdown Beneath It */}
-        <div className="pointer-events-auto flex items-center gap-2">
-          <div className="relative">
-            <button
-              ref={themeButton}
-              aria-expanded={showTopThemeMenu}
-              aria-controls="home-reading-themes"
-              onClick={() => {
-                triggerHaptic('light');
-                setShowTopThemeMenu((prev) => !prev);
-              }}
-              title={t.themeLabel}
-              className={`fluid-press group flex items-center gap-2 px-3.5 py-1.5 rounded-full chrome-surface text-xs cursor-pointer hover:border-line-strong hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 ${
-                showTopThemeMenu ? 'border-accent/60 shadow-md ring-1 ring-accent/25' : ''
-              }`}
-            >
-              <span
-                className="w-2.5 h-2.5 rounded-full ring-2 ring-line-strong transition-all duration-300 group-hover:scale-110"
-                style={{ backgroundColor: activeThemeMeta.dot }}
-              />
-              <span className="font-semibold text-[11px] text-ink">
-                {activeThemeMeta.label}
-              </span>
-              <Palette className="w-3.5 h-3.5 text-ink-muted group-hover:text-ink transition-colors" />
-              <ChevronDown
-                className={`w-3 h-3 text-ink-muted transition-transform duration-300 ${
-                  showTopThemeMenu ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {/* Compact Dropdown Menu directly under the top button like before */}
-            {showTopThemeMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowTopThemeMenu(false)}
-                />
-                <div
-                  id="home-reading-themes"
-                  dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
-                  className="chrome-surface absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-2.5 z-50 text-ink fluid-pop shadow-2xl border border-line"
-                >
-                  <div className="flex items-center justify-between px-1.5 pb-2 text-[10px] font-semibold uppercase text-ink-faint border-b border-line-subtle mb-1.5">
-                    <span className={currentLang === 'ar' ? 'font-sans' : 'font-mono tracking-wider'}>{t.readingThemesTitle}</span>
-                    <span className="font-mono text-[9px] opacity-70">10</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {allThemes.map((th) => {
-                      const isSelected = currentTheme === th.id;
-                      return (
-                        <button
-                          key={th.id}
-                          type="button"
-                          onClick={() => {
-                            triggerHaptic('light');
-                            onThemeChange(th.id);
-                            setShowTopThemeMenu(false);
-                          }}
-                          className={`fluid-press group flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all duration-150 cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
-                            isSelected
-                              ? 'bg-hover-strong text-ink font-semibold border border-line shadow-xs'
-                              : 'hover:bg-hover-subtle text-ink-muted hover:text-ink border border-transparent'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className={`w-3.5 h-3.5 rounded-full border border-black/25 shadow-xs shrink-0 transition-transform duration-200 group-hover:scale-115 ${
-                                isSelected ? 'ring-2 ring-accent ring-offset-1 ring-offset-[var(--surface-1)]' : ''
-                              }`}
-                              style={{ backgroundColor: th.dot }}
-                            />
-                            <span className="text-[11px] font-medium truncate group-hover:text-ink transition-colors">{th.label}</span>
-                          </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-accent shrink-0 animate-in zoom-in-75 duration-150" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <WelcomeThemeMenu
+          currentTheme={currentTheme}
+          currentLang={currentLang}
+          t={t}
+          onThemeChange={onThemeChange}
+        />
       </div>
 
       {/* Main Content Stage */}
@@ -333,52 +206,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </div>
 
         {/* Quick Resume Hero: Frosted Glass Banner with interactive elevation */}
-        {recents.length > 0 && recents[0]?.available && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => {
-              triggerHaptic('medium');
-              onOpenRecent(recents[0]);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onOpenRecent(recents[0]);
-              }
-            }}
-            className="fluid-press w-full p-3.5 px-4 rounded-2xl chrome-surface hover:border-accent hover:-translate-y-0.5 shadow-lg hover:shadow-xl flex items-center justify-between gap-3 text-start cursor-pointer group transition-all duration-200"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0 group-hover:scale-105 group-hover:bg-accent/25 transition-all">
-                <BookOpen className="w-5 h-5 text-accent" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-accent font-mono">
-                  {recents[0].mediaKind
-                    ? (currentLang === 'ar' ? 'متابعة العرض' : 'Resume viewing')
-                    : (currentLang === 'ar' ? 'متابعة القراءة' : 'Resume Reading')}
-                </span>
-                <span className="text-xs sm:text-sm font-bold text-ink truncate group-hover:text-accent transition-colors">
-                  <bdi>{recents[0].name}</bdi>
-                </span>
-                <span className="text-[11px] text-ink-muted font-mono">
-                  {progressLabel(recents[0])}
-                  {paged(recents[0]) && recents[0].totalPages > 0 && (
-                    <span className="ml-1 text-accent font-semibold">
-                      ({Math.min(100, Math.round((recents[0].lastPage / recents[0].totalPages) * 100))}%)
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent text-on-accent text-xs font-semibold shrink-0 group-hover:bg-accent-strong shadow-xs group-hover:shadow-md transition-all">
-              <span>{currentLang === 'ar' ? 'متابعة' : 'Resume'}</span>
-              <ArrowUpRight className="w-3.5 h-3.5 rtl:rotate-[-90deg] group-hover:translate-x-0.5 transition-transform" />
-            </div>
-          </div>
-        )}
+        <WelcomeHeroResumeCard
+          heroRecent={recents[0]}
+          currentLang={currentLang}
+          t={t}
+          onOpenRecent={onOpenRecent}
+        />
 
         {/* Master Frosted Translucent Glass Dropzone with Magnetic Hover & Rotation */}
         <div

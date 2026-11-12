@@ -1,119 +1,46 @@
 import { localStorage } from '../../lab/storage';
-import type { BeamPayload, BeamPeerState, BeamTransferState } from '../types';
-import { BEAM_RELAY_ORIGIN } from './beamSecurity';
+import type { BeamMessage, BeamMessageType } from '../types';
+import {
+  RECEIVER_ROOM_KEY,
+  RECENT_ROOMS_KEY,
+  type BeamLaunchParams,
+  type BeamLaunchRole,
+} from './beamTypesAndConstants';
 
-export type BeamConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-export type BeamLaunchRole = 'sender' | 'receiver';
-
-export interface BeamLaunchParams {
-  room: string | null;
-  role: BeamLaunchRole | null;
-  auto: boolean;
-}
-
-export type BeamSendErrorCode =
-  | 'busy'
-  | 'peer-unreachable'
-  | 'too-large'
-  | 'transfer-failed'
-  | 'invalid-document';
-
-export class BeamSendError extends Error {
-  code: BeamSendErrorCode;
-
-  constructor(code: BeamSendErrorCode, message: string) {
-    super(message);
-    this.name = 'BeamSendError';
-    this.code = code;
-  }
-}
-
-export interface LocalDocState {
-  title: string | null;
-  page: number;
-  total: number;
-}
-
-export interface IncomingFileState {
-  transferId: string;
-  title: string;
-  name: string;
-  size: number;
-  sha256?: string;
-  pageNumber: number;
-  totalPages: number;
-  theme: BeamPayload['theme'];
-  parts: ArrayBuffer[];
-  received: number;
-  lastProgressAt: number;
-}
-
-export interface FileCompletion {
-  resolve: () => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
-
-export interface SendDocumentOptions {
-  roomCode: string;
-  buffer: ArrayBuffer;
-  title: string;
-  pageNumber: number;
-  totalPages: number;
-  theme: BeamPayload['theme'];
-}
-
-export const BEAM_CHANNEL_NAME = 'otium_lab_smart_beam_channel';
-export const BEAM_STORAGE_KEY = 'otium_beam_last_event';
-export const RECENT_ROOMS_KEY = 'otium_recent_beam_rooms';
-export const RECEIVER_ROOM_KEY = 'otium_receiver_room_code';
-export const CLOUD_RELAY_BASE = BEAM_RELAY_ORIGIN;
-
-export const SSE_SINCE = '30s';
-export const HANDSHAKE_INTERVAL_MS = 2000;
-export const PING_INTERVAL_MS = 5000;
-export const PEER_TIMEOUT_MS = 20000;
-export const PEER_WAIT_MS = 20000;
-export const P2P_WAIT_MS = 8000;
-export const RTC_RETRY_MS = 6000;
-export const RTC_MAX_ATTEMPTS = 4;
-
-export const RELAY_CHUNK_SIZE = 1.75 * 1024 * 1024;
-// ntfy.sh allows 20 MB per visitor/day and 2 MB per attachment.
-export const RELAY_MAX_BYTES = 18 * 1024 * 1024;
-export const P2P_CHUNK_SIZE = 32 * 1024;
-export const P2P_HIGH_WATER_MARK = 1024 * 1024;
-export const MAX_FILE_BYTES = 300 * 1024 * 1024;
-export const MAX_SEEN_MESSAGES = 600;
-// Delay error banner until both SSE and HTTPS polling fail a few times.
-export const CLOUD_FAILURES_BEFORE_ERROR = 3;
-
-export const EMPTY_PEER: BeamPeerState = {
-  connected: false,
-  peerName: null,
-  transport: null,
-  docTitle: null,
-  pageNumber: null,
-  totalPages: null,
-};
-
-export const EMPTY_TRANSFER: BeamTransferState = {
-  active: false,
-  direction: null,
-  mode: null,
-  phase: 'idle',
-  progress: 0,
-  bytesTransferred: 0,
-  totalBytes: 0,
-  error: null,
-};
-
-export const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-];
+export {
+  BEAM_CHANNEL_NAME,
+  BEAM_STORAGE_KEY,
+  BeamSendError,
+  CLOUD_FAILURES_BEFORE_ERROR,
+  CLOUD_RELAY_BASE,
+  EMPTY_PEER,
+  EMPTY_TRANSFER,
+  HANDSHAKE_INTERVAL_MS,
+  ICE_SERVERS,
+  MAX_FILE_BYTES,
+  MAX_SEEN_MESSAGES,
+  P2P_CHUNK_SIZE,
+  P2P_HIGH_WATER_MARK,
+  P2P_WAIT_MS,
+  PEER_TIMEOUT_MS,
+  PEER_WAIT_MS,
+  PING_INTERVAL_MS,
+  RECEIVER_ROOM_KEY,
+  RECENT_ROOMS_KEY,
+  RELAY_CHUNK_SIZE,
+  RELAY_MAX_BYTES,
+  RTC_MAX_ATTEMPTS,
+  RTC_RETRY_MS,
+  SSE_SINCE,
+  type BeamConnectionStatus,
+  type BeamLaunchParams,
+  type BeamLaunchRole,
+  type BeamSendErrorCode,
+  type FileCompletion,
+  type IncomingFileState,
+  type LocalDocState,
+  type SendDocumentOptions,
+} from './beamTypesAndConstants';
 
 let fallbackRandomCounter = 0;
 
@@ -122,7 +49,9 @@ export function randomId(prefix = ''): string {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return `${prefix}${crypto.randomUUID().replace(/-/g, '')}`;
     }
-  } catch {}
+  } catch (err) {
+    console.debug('[Beam] crypto.randomUUID unavailable, using fallback:', err);
+  }
   fallbackRandomCounter += 1;
   return `${prefix}${Date.now().toString(36)}${fallbackRandomCounter.toString(36)}${Math.random()
     .toString(36)
@@ -196,7 +125,10 @@ export async function mapWithConcurrency<T>(
     while (nextIndex < items.length) {
       const index = nextIndex;
       nextIndex += 1;
-      await worker(items[index], index);
+      const item = items[index];
+      if (item !== undefined) {
+        await worker(item, index);
+      }
     }
   };
   const workers = Math.max(1, Math.min(limit, items.length));
@@ -264,7 +196,9 @@ export function generateNewReceiverRoomCode(): string {
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(RECEIVER_ROOM_KEY, fresh);
-    } catch {}
+    } catch (err) {
+      console.warn('[Beam] Failed to persist receiver room code:', err);
+    }
   }
   return fresh;
 }
@@ -293,7 +227,9 @@ export function parseBeamLaunch(hash = '', search = ''): BeamLaunchParams {
           sortedValues.set(key.toLowerCase(), value);
         }
       });
-    } catch {}
+    } catch (err) {
+      console.debug('[Beam] Ignored malformed query string:', err);
+    }
   };
 
   const rawHash = (hash || '').replace(/^#/, '');
@@ -305,7 +241,7 @@ export function parseBeamLaunch(hash = '', search = ''): BeamLaunchParams {
   let roomRaw = sortedValues.get('room') || sortedValues.get('code') || '';
   if (!roomRaw) {
     const legacy = `${rawHash} ${search || ''}`.match(/(?:^|[#?&\s])room=([A-Za-z0-9_-]+)/i);
-    if (legacy) roomRaw = legacy[1];
+    if (legacy?.[1]) roomRaw = legacy[1];
   }
   if (!roomRaw) {
     const typed = `${rawHash} ${search || ''}`.match(/\bOTM-[A-Za-z0-9]{4,32}\b/i);
@@ -346,10 +282,10 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
   const len = bytes.byteLength;
-  const chunkSize = 0x8000;
+  const chunkSize = 0x4000;
   for (let i = 0; i < len; i += chunkSize) {
     const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
-    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    binary += String.fromCharCode(...chunk);
   }
   return btoa(binary);
 }
@@ -397,11 +333,55 @@ export function getRecentRooms(): string[] {
   }
 }
 
+const BEAM_MESSAGE_TYPES: ReadonlySet<BeamMessageType> = new Set<BeamMessageType>([
+  'BEAM_HANDSHAKE',
+  'BEAM_READY',
+  'BEAM_PING',
+  'BEAM_PONG',
+  'BEAM_PAYLOAD',
+  'BEAM_DOCUMENT_RESULT',
+  'BEAM_DOCUMENT_OPENED',
+  'BEAM_INK_UPDATE',
+  'BEAM_INK_REQUEST',
+  'BEAM_ANNOTATION_ACK',
+  'BEAM_TEXT_ANNOTATIONS',
+  'BEAM_TEXT_ANNOTATIONS_REQUEST',
+  'BEAM_SELECTION',
+  'BEAM_PAGE_CHANGE',
+  'BEAM_VIEW_MODE',
+  'BEAM_STEP',
+  'BEAM_QUERY_STATE',
+  'BEAM_STATE_ANNOUNCE',
+  'BEAM_LASER',
+  'BEAM_DISCONNECT',
+  'BEAM_RTC_OFFER',
+  'BEAM_RTC_ANSWER',
+  'BEAM_RTC_ICE',
+]);
+
+export function isBeamMessage(value: unknown): value is BeamMessage {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as { type?: unknown; roomCode?: unknown };
+  return (
+    typeof candidate.type === 'string' &&
+    typeof candidate.roomCode === 'string' &&
+    BEAM_MESSAGE_TYPES.has(candidate.type as BeamMessageType)
+  );
+}
+
 export function saveRecentRoom(roomCode: string): void {
   if (typeof localStorage === 'undefined' || !roomCode) return;
   try {
     const existing = getRecentRooms().filter((room) => room !== roomCode);
     const updated = [roomCode, ...existing].slice(0, 4);
     localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(updated));
-  } catch {}
+  } catch (err) {
+    console.warn('[Beam] Failed to persist recent room:', err);
+  }
+}
+
+export function formatBeamBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

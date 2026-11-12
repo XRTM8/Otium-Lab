@@ -21,10 +21,18 @@ export function Pdf({ url, page, onReady, onError }: {
     });
     doc.current = task.promise;
     // Handle rejection even if a source is closed before the render effect runs.
-    void task.promise.catch(() => {});
-    return () => { doc.current = null; void task.destroy().catch(() => {}); };
+    void task.promise.then(undefined, (err: unknown) => {
+      console.debug('[MediaLabPdf] Page render promise rejected:', err);
+    });
+    return () => {
+      doc.current = null;
+      void task.destroy().then(undefined, (err: unknown) => {
+        console.debug('[MediaLabPdf] Task destroy skipped:', err);
+      });
+    };
   }, [url]);
   useEffect(() => {
+    if (!url) return;
     let disposed = false;
     let render: ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['render']> | undefined;
     void (async () => {

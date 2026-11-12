@@ -19,9 +19,13 @@ export function useAnnotationDelivery(reader: ReaderController) {
   }, [contextKey]);
   const pending = useRef(new Set<string>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevContextRef = useRef(contextKey);
   useEffect(() => {
-    pending.current.clear();
-    if (timer.current) clearTimeout(timer.current);
+    if (prevContextRef.current !== contextKey) {
+      prevContextRef.current = contextKey;
+      pending.current.clear();
+      if (timer.current) clearTimeout(timer.current);
+    }
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [contextKey]);
   useEffect(() => beamService.subscribe(message => {

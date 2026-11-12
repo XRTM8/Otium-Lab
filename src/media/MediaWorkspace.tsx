@@ -102,7 +102,12 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
   }, [source, kind, setLayout]);
   useEffect(() => {
     if (!stage.current) return;
-    const observer = new ResizeObserver(entries => { const { width, height } = entries[0].contentRect; setSpace({ width, height }); });
+    const observer = new ResizeObserver(entries => {
+      const firstEntry = entries[0];
+      if (!firstEntry) return;
+      const { width, height } = firstEntry.contentRect;
+      setSpace({ width, height });
+    });
     observer.observe(stage.current); return () => observer.disconnect();
   }, []);
   useEffect(() => { if (kind !== 'presentation' || deck) onProgress({ lastPage: page, totalPages: total, position: position.current }); }, [page, total, kind, deck, onProgress]);
@@ -137,7 +142,10 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
         {!persistentInk && kind !== 'text' && <p>{label('شرح المقطع مؤقت ويُمسح عند استئناف التصفح.', 'Video ink is temporary and clears when returning to navigation.')}</p>}
       </div></details>
       <button type="button" className="toolbar-icon min-h-11 min-w-11" aria-label={label('فتح ملف', 'Open file')} onClick={() => input.current?.click()}><FolderOpen size={19} /></button>
-      <button type="button" className="toolbar-icon min-h-11 min-w-11" aria-label={label('تغيير الثيم', 'Change theme')} onClick={() => reader.changeTheme(themes[(themes.indexOf(reader.theme) + 1) % themes.length])}><Palette size={19} /></button>
+      <button type="button" className="toolbar-icon min-h-11 min-w-11" aria-label={label('تغيير الثيم', 'Change theme')} onClick={() => {
+        const nextTheme = themes[(themes.indexOf(reader.theme) + 1) % themes.length];
+        if (nextTheme) reader.changeTheme(nextTheme);
+      }}><Palette size={19} /></button>
       <button type="button" className="toolbar-icon min-h-11 min-w-11" aria-label={label('ملء الشاشة', 'Fullscreen')} onClick={() => void reader.handleToggleFullscreen()}><Maximize size={19} /></button>
     </header>}
     <input hidden ref={input} type="file" accept={APP_FILE_ACCEPT} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onOpen(file); }} />

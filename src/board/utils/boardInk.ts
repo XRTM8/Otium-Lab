@@ -7,7 +7,8 @@ export function drawBoardInk(ctx: CanvasRenderingContext2D, strokes: BoardStroke
   ctx.lineJoin = 'round';
   for (const stroke of strokes) {
     const points = stroke.points;
-    if (!points?.length) continue;
+    const firstPoint = points?.[0];
+    if (!firstPoint) continue;
     const neutral = ['#111827', '#f8fafc'].includes(stroke.color.toLowerCase());
     const color = neutral ? dark ? '#f8fafc' : '#111827' : stroke.color;
     ctx.beginPath();
@@ -17,22 +18,24 @@ export function drawBoardInk(ctx: CanvasRenderingContext2D, strokes: BoardStroke
     ctx.fillStyle = color;
     ctx.lineWidth = stroke.width;
     if (points.length === 1) {
-      ctx.arc(points[0].x, points[0].y, stroke.width / 2, 0, Math.PI * 2);
+      ctx.arc(firstPoint.x, firstPoint.y, stroke.width / 2, 0, Math.PI * 2);
       ctx.fill();
       continue;
     }
-    ctx.moveTo(points[0].x, points[0].y);
+    ctx.moveTo(firstPoint.x, firstPoint.y);
     if (stroke.shape && stroke.shape !== 'circle') {
       for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
       ctx.stroke();
       continue;
     }
     for (let i = 1; i < points.length - 1; i++) {
-      const p = points[i], next = points[i + 1];
+      const p = points[i];
+      const next = points[i + 1];
+      if (!p || !next) continue;
       ctx.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
     }
     const last = points[points.length - 1];
-    ctx.lineTo(last.x, last.y);
+    if (last) ctx.lineTo(last.x, last.y);
     ctx.stroke();
   }
   ctx.restore();

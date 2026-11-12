@@ -26,6 +26,7 @@ export async function exportInkPdf(doc: PDFDocumentProxy, marks: InkMark[], titl
     if (!ink.length && !textAnnotations.length) continue;
     progress(index + 1);
     const page = pages[index];
+    if (!page) continue;
     const placement = overlayPlacement(page.getCropBox(), page.getRotation().angle);
     const ratio = Math.min(2.5, 2200 / Math.max(placement.width, placement.height));
     const canvas = document.createElement('canvas');

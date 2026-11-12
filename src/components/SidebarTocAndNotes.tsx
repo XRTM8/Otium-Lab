@@ -36,9 +36,9 @@ export const SidebarTocTab: React.FC<SidebarTocTabProps> = ({
         {ar ? 'لا يحتوي هذا المستند على فهرس عناوين مدمج' : 'This document has no embedded outline'}
       </div>
     ) : (
-      toc.map((item, idx) => (
+      toc.map((item) => (
         <button
-          key={idx}
+          key={`${item.pageNumber}-${item.depth}-${item.title}`}
           onClick={() => {
             onSelectPage(item.pageNumber);
             onClose();

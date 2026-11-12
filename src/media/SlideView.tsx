@@ -33,17 +33,23 @@ export function Pptx({ deck, page, onError }: { deck: Deck; page: number; onErro
   if (view?.page !== page) return <p className="slide-loading">جارٍ عرض الشريحة…</p>;
   return <svg className="pptx-slide" viewBox={`0 0 ${deck.width} ${deck.height}`} role="img" aria-label={`شريحة ${page}`}>
     <rect width={deck.width} height={deck.height} fill={view.slide.background} />
-    {view.slide.elements.map((item, index) => <g key={index} transform={`${item.parentTransform} translate(${item.x} ${item.y}) rotate(${item.rotation} ${item.width / 2} ${item.height / 2})`}>
-      <Shape item={item} />
-      {view.images[index] && <image href={view.images[index]} width={item.width} height={item.height} preserveAspectRatio="xMidYMid meet" />}
-      {!!item.paragraphs.length && <foreignObject width={item.width} height={item.height}>
-        <div className="slide-text" style={{ width: item.width, height: item.height, padding: item.insets.map(value => `${value}px`).join(' '), justifyContent: item.anchor === 'ctr' ? 'center' : item.anchor === 'b' ? 'flex-end' : 'flex-start' }}>
-          {item.paragraphs.map((paragraph, at) => <p key={at} dir={paragraph.rtl ? 'rtl' : 'auto'} style={{ textAlign: paragraph.align === 'ctr' ? 'center' : paragraph.align === 'r' ? 'right' : 'left' }}>
-            {paragraph.runs.map((run, n) => <span key={n} style={{ fontSize: run.size, color: run.color, fontWeight: run.bold ? 700 : 400, fontStyle: run.italic ? 'italic' : 'normal' }}>{run.text}</span>)}
-          </p>)}
-        </div>
-      </foreignObject>}
-    </g>)}
+    {view.slide.elements.map((item, elementAt) => {
+      const imageHref = view.images[elementAt];
+      return <g key={`${item.geometry}-${item.x}-${item.y}-${item.width}-${item.height}-${item.parentTransform}`} transform={`${item.parentTransform} translate(${item.x} ${item.y}) rotate(${item.rotation} ${item.width / 2} ${item.height / 2})`}>
+        <Shape item={item} />
+        {imageHref && <image href={imageHref} width={item.width} height={item.height} preserveAspectRatio="xMidYMid meet" />}
+        {!!item.paragraphs.length && <foreignObject width={item.width} height={item.height}>
+          <div className="slide-text" style={{ width: item.width, height: item.height, padding: item.insets.map(value => `${value}px`).join(' '), justifyContent: item.anchor === 'ctr' ? 'center' : item.anchor === 'b' ? 'flex-end' : 'flex-start' }}>
+            {item.paragraphs.map((paragraph) => {
+              const paragraphText = paragraph.runs.map(r => r.text).join('');
+              return <p key={`${paragraph.align}-${paragraph.rtl}-${paragraphText.slice(0, 48)}-${paragraph.runs.length}`} dir={paragraph.rtl ? 'rtl' : 'auto'} style={{ textAlign: paragraph.align === 'ctr' ? 'center' : paragraph.align === 'r' ? 'right' : 'left' }}>
+                {paragraph.runs.map((run) => <span key={`${run.text}-${run.size}-${run.color}-${run.bold}-${run.italic}`} style={{ fontSize: run.size, color: run.color, fontWeight: run.bold ? 700 : 400, fontStyle: run.italic ? 'italic' : 'normal' }}>{run.text}</span>)}
+              </p>;
+            })}
+          </div>
+        </foreignObject>}
+      </g>;
+    })}
     {view.slide.limited && <text x={deck.width - 8} y={deck.height - 6} textAnchor="end" fontSize={8} fill="#555">معاينة مبسطة · بعض العناصر غير معروضة</text>}
   </svg>;
 }

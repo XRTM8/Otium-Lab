@@ -230,14 +230,16 @@ export function openDB(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       const db = request.result;
       db.onversionchange = () => {
-        try { db.close(); } catch {}
+        try { db.close(); } catch (err) { console.debug('[DocumentsDb] db close skipped:', err); }
         dbPromise = null;
       };
       db.onclose = () => {
         dbPromise = null;
       };
       void migrateLegacyDatabase(db)
-        .catch(() => {})
+        .then(undefined, (err: unknown) => {
+          console.warn('[DocumentsDb] Legacy database migration failed:', err);
+        })
         .then(() => resolve(db));
     };
 

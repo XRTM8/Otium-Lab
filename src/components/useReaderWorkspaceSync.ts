@@ -209,7 +209,7 @@ export function useReaderWorkspaceSync({
 
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container || !doc) return;
     container.style.touchAction = 'pan-x pan-y';
     const pinch = (event: TouchEvent) => {
       if (interactionMode === 'hand' && event.touches.length > 1) {

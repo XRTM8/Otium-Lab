@@ -9,28 +9,13 @@ export interface DetectedBarcode {
   format: string;
 }
 
-interface NativeBarcodeResult {
-  rawValue: string;
-  format: string;
-}
-
-interface BarcodeDetectorInstance {
-  detect(source: HTMLCanvasElement): Promise<NativeBarcodeResult[]>;
-}
-
-interface BarcodeDetectorConstructor {
-  new (options: { formats: string[] }): BarcodeDetectorInstance;
-  getSupportedFormats(): Promise<string[]>;
-}
-
 export async function detectBarcodesFromCanvas(canvas: HTMLCanvasElement): Promise<DetectedBarcode[]> {
   if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
     return [];
   }
 
   try {
-    const BarcodeDetectorClass = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor })
-      .BarcodeDetector;
+    const BarcodeDetectorClass = window.BarcodeDetector;
     if (!BarcodeDetectorClass) return [];
     const supportedFormats: string[] = await BarcodeDetectorClass.getSupportedFormats().catch(() => [
       'qr_code',

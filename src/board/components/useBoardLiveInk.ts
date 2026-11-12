@@ -100,14 +100,19 @@ export function useBoardLiveInk({
 
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect?.width || !rect.height) return;
-    const recognized = recognizeGeometricShape(
-      pts.map((p) => ({ ...p, x: (p.x * rect.width) / 1920, y: (p.y * rect.height) / 1080 }))
-    );
+    const scaledInput = pts.map((p) => ({
+      x: (p.x * rect.width) / 1920,
+      y: (p.y * rect.height) / 1080,
+      pressure: p.pressure,
+    }));
+    const recognized = recognizeGeometricShape(scaledInput);
     if (recognized) {
       if ('vibrate' in navigator) {
         try {
           navigator.vibrate(18);
-        } catch {}
+        } catch (err) {
+          console.debug('[BoardLiveInk] Haptic vibrate skipped:', err);
+        }
       }
       isShapeSnappedRef.current = true;
       const points = recognized.points.map((p) => ({
@@ -171,7 +176,9 @@ export function useBoardLiveInk({
     if (!canvas) return;
     try {
       canvas.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      console.debug('[BoardLiveInk] setPointerCapture skipped:', err);
+    }
 
     pointer.current = e.pointerId;
     strokeRectRef.current = canvas.getBoundingClientRect();
@@ -278,7 +285,9 @@ export function useBoardLiveInk({
       if (canvas && canvas.hasPointerCapture(e.pointerId)) {
         canvas.releasePointerCapture(e.pointerId);
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[BoardLiveInk] releasePointerCapture skipped:', err);
+    }
     isDrawingRef.current = false;
     currentPointsRef.current = [];
 

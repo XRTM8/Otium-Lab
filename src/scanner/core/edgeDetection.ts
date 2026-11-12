@@ -8,8 +8,13 @@ import {
   getQuadAspectRatio,
   expandQuadSafetyMargin,
 } from './geometry';
+import {
+  calculateLaplacianSharpness,
+  fitRobustBorderLine,
+  intersectBorderLines,
+} from './edgeMath';
 
-export { getFullFrameQuad };
+export { calculateLaplacianSharpness, getFullFrameQuad };
 
 /**
  * CamScanner-Grade Intelligent Document Edge Detector with Illumination Invariance,
@@ -91,7 +96,7 @@ export function detectDocumentCornersWithConfidence(
     const totalPixels = workW * workH;
     const lum = new Uint8Array(totalPixels);
     for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-      lum[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      lum[j] = Math.round(0.299 * (data[i] ?? 0) + 0.587 * (data[i + 1] ?? 0) + 0.114 * (data[i + 2] ?? 0));
     }
 
     // 3. Illumination-Normalized Multi-Channel Sobel Gradient
@@ -109,16 +114,16 @@ export function detectDocumentCornersWithConfidence(
         const botIdx = ((y + 1) * workW + x) * 4;
 
         const gx =
-          Math.abs(data[rightIdx] - data[leftIdx]) +
-          Math.abs(data[rightIdx + 1] - data[leftIdx + 1]) +
-          Math.abs(data[rightIdx + 2] - data[leftIdx + 2]);
+          Math.abs((data[rightIdx] ?? 0) - (data[leftIdx] ?? 0)) +
+          Math.abs((data[rightIdx + 1] ?? 0) - (data[leftIdx + 1] ?? 0)) +
+          Math.abs((data[rightIdx + 2] ?? 0) - (data[leftIdx + 2] ?? 0));
 
         const gy =
-          Math.abs(data[botIdx] - data[topIdx]) +
-          Math.abs(data[botIdx + 1] - data[topIdx + 1]) +
-          Math.abs(data[botIdx + 2] - data[topIdx + 2]);
+          Math.abs((data[botIdx] ?? 0) - (data[topIdx] ?? 0)) +
+          Math.abs((data[botIdx + 1] ?? 0) - (data[topIdx + 1] ?? 0)) +
+          Math.abs((data[botIdx + 2] ?? 0) - (data[topIdx + 2] ?? 0));
 
-        const localLum = Math.max(25, lum[row + x]);
+        const localLum = Math.max(25, lum[row + x] ?? 0);
         // Normalized gradient compensates for shadows on one side of document
         const normalized = Math.min(255, Math.round(((gx + gy) / 3) * (180 / localLum)));
         gradMap[row + x] = normalized;
@@ -135,9 +140,9 @@ export function detectDocumentCornersWithConfidence(
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
           const idx = (y * workW + x) * 4;
-          bgR += data[idx];
-          bgG += data[idx + 1];
-          bgB += data[idx + 2];
+          bgR += data[idx] ?? 0;
+          bgG += data[idx + 1] ?? 0;
+          bgB += data[idx + 2] ?? 0;
           bgCount++;
         }
       }
@@ -165,10 +170,10 @@ export function detectDocumentCornersWithConfidence(
       const row = y * workW;
       for (let x = cx0; x < cx1; x++) {
         const idx = (row + x) * 4;
-        docR += data[idx];
-        docG += data[idx + 1];
-        docB += data[idx + 2];
-        docLumSum += lum[row + x];
+        docR += data[idx] ?? 0;
+        docG += data[idx + 1] ?? 0;
+        docB += data[idx + 2] ?? 0;
+        docLumSum += lum[row + x] ?? 0;
         docCount++;
       }
     }
@@ -201,9 +206,9 @@ export function detectDocumentCornersWithConfidence(
 
     const isDocPixel = (x: number, y: number): boolean => {
       const idx = (y * workW + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
+      const r = data[idx] ?? 0;
+      const g = data[idx + 1] ?? 0;
+      const b = data[idx + 2] ?? 0;
       const colorDiffFromBg =
         Math.abs(r - avgBgR) +
         Math.abs(g - avgBgG) +
@@ -214,13 +219,13 @@ export function detectDocumentCornersWithConfidence(
         Math.abs(g - avgDocG) +
         Math.abs(b - avgDocB);
 
-      const grad = gradMap[y * workW + x];
+      const grad = gradMap[y * workW + x] ?? 0;
 
       // A pixel belongs to the document if:
       // - It has a strong normalized edge gradient
       // - OR its color is significantly different from background border strip
       // - OR it matches the sampled document interior color
-      return grad >= 28 || colorDiffFromBg >= 35 || (colorMatchDoc < 42 && lum[y * workW + x] > Math.min(65, docMeanLum * 0.45));
+      return grad >= 28 || colorDiffFromBg >= 35 || (colorMatchDoc < 42 && (lum[y * workW + x] ?? 0) > Math.min(65, docMeanLum * 0.45));
     };
 
     // Scan Top Edge
@@ -270,70 +275,16 @@ export function detectDocumentCornersWithConfidence(
     }
 
     // 7. Robust Line Fitting with Inlier Filtering and Perspective Angle Regularization
-    const fitHorizontalLine = (pts: Point[], fallbackY: number): { m: number; c: number } => {
-      if (pts.length < 4) return { m: 0, c: fallbackY };
-      const sortedY = [...pts.map((p) => p.y)].sort((a, b) => a - b);
-      const medianY = sortedY[Math.floor(sortedY.length / 2)];
-      const inliers = pts.filter((p) => Math.abs(p.y - medianY) < workH * 0.12);
-      if (inliers.length < 3) return { m: 0, c: medianY };
-
-      let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-      for (const p of inliers) {
-        sumX += p.x;
-        sumY += p.y;
-        sumXY += p.x * p.y;
-        sumXX += p.x * p.x;
-      }
-      const n = inliers.length;
-      const denom = n * sumXX - sumX * sumX;
-      if (Math.abs(denom) < 1e-4) return { m: 0, c: medianY };
-      const m = Math.max(-0.35, Math.min(0.35, (n * sumXY - sumX * sumY) / denom));
-      const c = (sumY - m * sumX) / n;
-      return { m, c };
-    };
-
-    const fitVerticalLine = (pts: Point[], fallbackX: number): { m: number; c: number } => {
-      if (pts.length < 4) return { m: 0, c: fallbackX };
-      const sortedX = [...pts.map((p) => p.x)].sort((a, b) => a - b);
-      const medianX = sortedX[Math.floor(sortedX.length / 2)];
-      const inliers = pts.filter((p) => Math.abs(p.x - medianX) < workW * 0.12);
-      if (inliers.length < 3) return { m: 0, c: medianX };
-
-      let sumY = 0, sumX = 0, sumYX = 0, sumYY = 0;
-      for (const p of inliers) {
-        sumY += p.y;
-        sumX += p.x;
-        sumYX += p.y * p.x;
-        sumYY += p.y * p.y;
-      }
-      const n = inliers.length;
-      const denom = n * sumYY - sumY * sumY;
-      if (Math.abs(denom) < 1e-4) return { m: 0, c: medianX };
-      const m = Math.max(-0.35, Math.min(0.35, (n * sumYX - sumY * sumX) / denom));
-      const c = (sumX - m * sumY) / n;
-      return { m, c };
-    };
-
-    const topLine = fitHorizontalLine(topPts, Math.round(workH * 0.035));
-    const bottomLine = fitHorizontalLine(bottomPts, Math.round(workH * 0.965));
-    const leftLine = fitVerticalLine(leftPts, Math.round(workW * 0.035));
-    const rightLine = fitVerticalLine(rightPts, Math.round(workW * 0.965));
+    const topLine = fitRobustBorderLine(topPts, 'horizontal', Math.round(workH * 0.035), workH * 0.12);
+    const bottomLine = fitRobustBorderLine(bottomPts, 'horizontal', Math.round(workH * 0.965), workH * 0.12);
+    const leftLine = fitRobustBorderLine(leftPts, 'vertical', Math.round(workW * 0.035), workW * 0.12);
+    const rightLine = fitRobustBorderLine(rightPts, 'vertical', Math.round(workW * 0.965), workW * 0.12);
 
     // 8. Intersect lines to find 4 corners
-    const intersect = (hLine: { m: number; c: number }, vLine: { m: number; c: number }): Point => {
-      const denom = 1 - hLine.m * vLine.m;
-      const y = Math.abs(denom) > 1e-4 ? (hLine.m * vLine.c + hLine.c) / denom : hLine.c;
-      const x = vLine.m * y + vLine.c;
-      return {
-        x: Math.max(0, Math.min(workW, x)),
-        y: Math.max(0, Math.min(workH, y)),
-      };
-    };
-
-    const cTL = intersect(topLine, leftLine);
-    const cTR = intersect(topLine, rightLine);
-    const cBR = intersect(bottomLine, rightLine);
-    const cBL = intersect(bottomLine, leftLine);
+    const cTL = intersectBorderLines(topLine, leftLine, workW, workH);
+    const cTR = intersectBorderLines(topLine, rightLine, workW, workH);
+    const cBR = intersectBorderLines(bottomLine, rightLine, workW, workH);
+    const cBL = intersectBorderLines(bottomLine, leftLine, workW, workH);
 
     // 9. Scale corners back to natural image coordinates
     const scaleUp = (p: Point): Point => ({
@@ -429,70 +380,4 @@ export function detectDocumentCornersWithConfidence(
       sharpness: 30,
     };
   }
-}
-
-/**
- * Calculates focus sharpness of an image using Laplacian operator variance.
- */
-export function calculateLaplacianSharpness(
-  sourceImage: HTMLImageElement | HTMLCanvasElement
-): number {
-  const w = 'naturalWidth' in sourceImage ? sourceImage.naturalWidth : sourceImage.width;
-  const h = 'naturalHeight' in sourceImage ? sourceImage.naturalHeight : sourceImage.height;
-
-  if (w === 0 || h === 0) return 0;
-
-  const scale = Math.min(1, 160 / Math.max(w, h));
-  const workW = Math.max(10, Math.round(w * scale));
-  const workH = Math.max(10, Math.round(h * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = workW;
-  canvas.height = workH;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return 100;
-
-  ctx.drawImage(sourceImage, 0, 0, workW, workH);
-  const imgData = ctx.getImageData(0, 0, workW, workH);
-  const data = imgData.data;
-  canvas.width = 1;
-  canvas.height = 1;
-
-  const total = workW * workH;
-  const gray = new Uint8Array(total);
-  for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-    gray[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-  }
-
-  let sum = 0;
-  let count = 0;
-  const lapScores = new Float32Array(total);
-
-  for (let y = 1; y < workH - 1; y++) {
-    const row = y * workW;
-    for (let x = 1; x < workW - 1; x++) {
-      const idx = row + x;
-      const val =
-        gray[idx - workW] +
-        gray[idx + workW] +
-        gray[idx - 1] +
-        gray[idx + 1] -
-        4 * gray[idx];
-
-      lapScores[count] = val;
-      sum += val;
-      count++;
-    }
-  }
-
-  if (count === 0) return 0;
-  const mean = sum / count;
-
-  let variance = 0;
-  for (let i = 0; i < count; i++) {
-    const diff = lapScores[i] - mean;
-    variance += diff * diff;
-  }
-
-  return Math.round(variance / count);
 }

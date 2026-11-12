@@ -29,7 +29,7 @@ export function measureRefreshRate(callback?: (hz: number) => void): void {
       // Calculate median frame time to avoid outliers
       frameTimes.sort((a, b) => a - b);
       const medianDelta = frameTimes[Math.floor(frameTimes.length / 2)];
-      if (medianDelta > 0) {
+      if (medianDelta && medianDelta > 0) {
         const rawHz = 1000 / medianDelta;
         // Snap to common standard display refresh rates
         let hz = 60;

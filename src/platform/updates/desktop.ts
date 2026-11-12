@@ -86,7 +86,9 @@ export const desktopUpdateAdapter: UpdateAdapter = {
       throw error;
     }
     if (signal?.aborted) {
-      await update?.close().catch(() => {});
+      await update?.close().then(undefined, (err: unknown) => {
+        console.debug('[DesktopUpdater] Aborted update close skipped:', err);
+      });
       throw new Error('Update check cancelled.');
     }
 
@@ -100,12 +102,16 @@ export const desktopUpdateAdapter: UpdateAdapter = {
     }
 
     if (pendingUpdate && pendingUpdate !== update) {
-      await pendingUpdate.close().catch(() => {});
+      await pendingUpdate.close().then(undefined, (err: unknown) => {
+        console.debug('[DesktopUpdater] Stale update close skipped:', err);
+      });
     }
     pendingUpdate = update;
 
     if (!isNewerVersion(update.version, current)) {
-      await update.close().catch(() => {});
+      await update.close().then(undefined, (err: unknown) => {
+        console.debug('[DesktopUpdater] Current update close skipped:', err);
+      });
       pendingUpdate = null;
       return {
         phase: 'up-to-date',

@@ -10,16 +10,16 @@ const SINGLE_LIMIT = 128 * 1024 ** 2, TOTAL_LIMIT = 256 * 1024 ** 2, COUNT_LIMIT
 let database: Promise<IDBDatabase> | undefined;
 function db() {
   if (!database) database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = labIndexedDB.open('otium_media_library', 2);
-    request.onupgradeneeded = () => {
-      const connection = request.result;
+    const openRequest = labIndexedDB.open('otium_media_library', 2);
+    openRequest.onupgradeneeded = () => {
+      const connection = openRequest.result;
       if (!connection.objectStoreNames.contains('items')) connection.createObjectStore('items', { keyPath: 'id' });
       if (!connection.objectStoreNames.contains('files')) connection.createObjectStore('files');
       if (!connection.objectStoreNames.contains('drawings')) connection.createObjectStore('drawings');
     };
-    request.onsuccess = () => { const value = request.result; value.onversionchange = () => { value.close(); database = undefined; }; resolve(value); };
-    request.onerror = () => { database = undefined; reject(request.error); };
-    request.onblocked = () => { database = undefined; reject(new Error('Media storage is blocked by another tab.')); };
+    openRequest.onsuccess = () => { const value = openRequest.result; value.onversionchange = () => { value.close(); database = undefined; }; resolve(value); };
+    openRequest.onerror = () => { database = undefined; reject(openRequest.error); };
+    openRequest.onblocked = () => { database = undefined; reject(new Error('Media storage is blocked by another tab.')); };
   });
   return database;
 }

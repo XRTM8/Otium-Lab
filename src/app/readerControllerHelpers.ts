@@ -1,6 +1,10 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import type { ThemeMode } from '../core/types';
+import type { ThemeMode, ViewMode } from '../core/types';
 import type { Language } from '../core/i18n/translations';
+import { ignoreBenignRejection } from '../core/utils/bestEffort';
+import { saveViewMode } from '../core/settings/preferences';
+import { computeOptimalPageScale } from '../core/reader/device';
+import { beamService } from '../board/beam/beamService';
 
 export interface ReaderCapabilities {
   keyboard: boolean;
@@ -53,7 +57,7 @@ export interface ZoomAnchor {
 export function destroyDocumentSoon(doc: PDFDocumentProxy | null): void {
   if (!doc) return;
   window.setTimeout(() => {
-    void doc.loadingTask.destroy().catch(() => {});
+    ignoreBenignRejection(doc.loadingTask.destroy(), 'pdf-loading-task-destroy');
   }, 250);
 }
 
@@ -133,7 +137,7 @@ export function toggleDocumentFullscreen(): void {
       root.mozRequestFullScreen ||
       root.msRequestFullscreen;
     if (typeof request === 'function') {
-      void request.call(root).catch(() => {});
+      ignoreBenignRejection(request.call(root), 'fullscreen-request');
     }
   } else {
     const exit =
@@ -142,7 +146,7 @@ export function toggleDocumentFullscreen(): void {
       docWithVendor.mozCancelFullScreen ||
       docWithVendor.msExitFullscreen;
     if (typeof exit === 'function') {
-      void exit.call(document).catch(() => {});
+      ignoreBenignRejection(exit.call(document), 'fullscreen-exit');
     }
   }
 }
@@ -174,4 +178,22 @@ export function observeDocumentFullscreen(onChange: (fullscreen: boolean) => voi
     document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
     document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
   };
+}
+
+export function computeNextViewModeFitScale(
+  nextMode: ViewMode,
+  basePageSize: { width: number; height: number },
+  container: HTMLDivElement | null,
+  chromeInset: number,
+): number | null {
+  saveViewMode(nextMode);
+  if (beamService.getRole() === 'sender') beamService.sendViewMode(nextMode);
+  if (!basePageSize.width || !basePageSize.height || typeof window === 'undefined') return null;
+  return computeOptimalPageScale(
+    basePageSize.width,
+    basePageSize.height,
+    container?.clientWidth || window.innerWidth,
+    (container?.clientHeight || window.innerHeight) - chromeInset,
+    nextMode,
+  );
 }

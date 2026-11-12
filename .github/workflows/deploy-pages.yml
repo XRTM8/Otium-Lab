@@ -36,6 +36,9 @@ jobs:
       - name: Verify Lab isolation and build identity
         run: npm run lab:check
 
+      - name: Verify single-version alignment
+        run: npm run version:check
+
       - name: Run automated regression suite
         run: npm test -- --reporter=dot
 
@@ -48,11 +51,15 @@ jobs:
       - name: Audit dependency advisories
         run: npm audit --audit-level=high
 
-      - name: Build Web Application
+      - name: Build Media Lab & Web Application
         run: |
+          npm run lab:media:build
           npm run prebuild
-          npx tsc -b
+          npx tsc -b --force --pretty false
           npx vite build
+
+      - name: Verify Real Headless Browser E2E Suite
+        run: npm run e2e:verify
 
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3

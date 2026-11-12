@@ -58,7 +58,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
     if ('vibrate' in navigator) {
       try {
         navigator.vibrate(duration);
-      } catch {}
+      } catch (err) {
+        console.debug('[CameraView] Haptic vibrate skipped:', err);
+      }
     }
   };
 
@@ -174,7 +176,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
         setAutoCapture(next);
         try {
           localStorage.setItem('otium_scan_auto_capture', String(next));
-        } catch {}
+        } catch (err) {
+          console.warn('[CameraView] Failed to persist auto-capture setting:', err);
+        }
         setCaptureToast(next ? '✓ تم تفعيل الالتقاط التلقائي الذكي' : 'الالتقاط اليدوي');
         setTimeout(() => setCaptureToast(''), 2200);
         triggerHaptic(15);

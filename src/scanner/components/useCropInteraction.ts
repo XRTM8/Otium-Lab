@@ -3,22 +3,23 @@ import type React from 'react';
 import type { Point, Quad } from '../core/types';
 import { getDefaultQuad, getFullFrameQuad, warpPerspectiveAsync, isQuadConvex } from '../core/geometry';
 import { detectDocumentCorners } from '../core/edgeDetection';
+import {
+  buildAspectRatioQuad,
+  clampDraggedCorner,
+  clampDraggedEdge,
+  rotateImageAndQuad90,
+  triggerCropHaptic,
+  type CornerKey,
+  type EdgeKey,
+} from './cropGeometryHelpers';
 
-export type CornerKey = 'topLeft' | 'topRight' | 'bottomRight' | 'bottomLeft';
-export type EdgeKey = 'top' | 'right' | 'bottom' | 'left';
+export type { CornerKey, EdgeKey };
+export { triggerCropHaptic };
 
 interface UseCropInteractionOptions {
   imageSrc: string;
   initialQuad?: Quad;
   onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void;
-}
-
-export function triggerCropHaptic(duration = 10): void {
-  if ('vibrate' in navigator) {
-    try {
-      navigator.vibrate(duration);
-    } catch {}
-  }
 }
 
 export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCropInteractionOptions) {
@@ -50,6 +51,7 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
 
   useEffect(() => {
     const img = imageRef.current;
+    if (!currentSrc) return;
     const onResize = () => syncImageRect();
     window.addEventListener('resize', onResize);
     let observer: ResizeObserver | null = null;
@@ -70,18 +72,18 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
   }, []);
 
   const handleUndo = () => {
-    if (undoStack.length === 0 || !quad) return;
-    triggerCropHaptic(10);
     const prev = undoStack[undoStack.length - 1];
+    if (!prev || !quad) return;
+    triggerCropHaptic(10);
     setRedoStack((r) => [...r, { ...quad }]);
     setUndoStack((u) => u.slice(0, -1));
     setQuad(prev);
   };
 
   const handleRedo = () => {
-    if (redoStack.length === 0 || !quad) return;
-    triggerCropHaptic(10);
     const next = redoStack[redoStack.length - 1];
+    if (!next || !quad) return;
+    triggerCropHaptic(10);
     setUndoStack((u) => [...u, { ...quad }]);
     setRedoStack((r) => r.slice(0, -1));
     setQuad(next);
@@ -91,27 +93,7 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
     if (!imageRef.current || imageSize.width === 0 || imageSize.height === 0 || !quad) return;
     triggerCropHaptic(15);
     pushHistory(quad);
-
-    const imgW = imageSize.width;
-    const imgH = imageSize.height;
-    let targetW = imgW * 0.90;
-    let targetH = targetW / ratio;
-    if (targetH > imgH * 0.90) {
-      targetH = imgH * 0.90;
-      targetW = targetH * ratio;
-    }
-
-    const x0 = Math.round((imgW - targetW) / 2);
-    const y0 = Math.round((imgH - targetH) / 2);
-    const x1 = Math.round(x0 + targetW);
-    const y1 = Math.round(y0 + targetH);
-
-    setQuad({
-      topLeft: { x: x0, y: y0 },
-      topRight: { x: x1, y: y0 },
-      bottomRight: { x: x1, y: y1 },
-      bottomLeft: { x: x0, y: y1 },
-    });
+    setQuad(buildAspectRatioQuad(imageSize.width, imageSize.height, ratio));
   };
 
   const handleImageLoad = () => {
@@ -119,14 +101,13 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
     const { naturalWidth, naturalHeight } = imageRef.current;
     setImageSize({ width: naturalWidth, height: naturalHeight });
     syncImageRect();
-
     if (!hasInitializedRef.current) {
       hasInitializedRef.current = true;
-      if (initialQuad && isQuadConvex(initialQuad)) {
-        setQuad(initialQuad);
-      } else {
-        setQuad(getFullFrameQuad(naturalWidth, naturalHeight, 0.005));
-      }
+      setQuad(
+        initialQuad && isQuadConvex(initialQuad)
+          ? initialQuad
+          : getFullFrameQuad(naturalWidth, naturalHeight, 0.005)
+      );
     }
   };
 
@@ -161,11 +142,9 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
       if (!imageRef.current || imageSize.width <= 0 || imageSize.height <= 0) return { x: 0, y: 0 };
       const rect = imageBoundsRef.current ?? imageRef.current.getBoundingClientRect();
       if (!rect || rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
-      const scaleX = imageSize.width / rect.width;
-      const scaleY = imageSize.height / rect.height;
       return {
-        x: Math.max(0, Math.min(imageSize.width, (clientX - rect.left) * scaleX)),
-        y: Math.max(0, Math.min(imageSize.height, (clientY - rect.top) * scaleY)),
+        x: Math.max(0, Math.min(imageSize.width, (clientX - rect.left) * (imageSize.width / rect.width))),
+        y: Math.max(0, Math.min(imageSize.height, (clientY - rect.top) * (imageSize.height / rect.height))),
       };
     },
     [imageSize]
@@ -176,11 +155,9 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
       if (!imageRect || imageSize.width <= 0 || imageSize.height <= 0 || imageRect.width <= 0 || imageRect.height <= 0) {
         return { x: 0, y: 0 };
       }
-      const scaleX = imageRect.width / imageSize.width;
-      const scaleY = imageRect.height / imageSize.height;
       return {
-        x: imageRect.left + point.x * scaleX,
-        y: imageRect.top + point.y * scaleY,
+        x: imageRect.left + point.x * (imageRect.width / imageSize.width),
+        y: imageRect.top + point.y * (imageRect.height / imageSize.height),
       };
     },
     [imageRect, imageSize]
@@ -191,7 +168,9 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
     e.stopPropagation();
     pushHistory(quad);
     imageBoundsRef.current = imageRef.current?.getBoundingClientRect() ?? null;
-    try { containerRef.current?.setPointerCapture(e.pointerId); } catch {}
+    try { containerRef.current?.setPointerCapture(e.pointerId); } catch (err) {
+      console.debug('[Crop] Corner setPointerCapture skipped:', err);
+    }
     setActiveCorner(corner);
     setActiveEdge(null);
     setPointerPos({ x: e.clientX, y: e.clientY });
@@ -204,7 +183,9 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
     if (!quad) return;
     pushHistory(quad);
     imageBoundsRef.current = imageRef.current?.getBoundingClientRect() ?? null;
-    try { containerRef.current?.setPointerCapture(e.pointerId); } catch {}
+    try { containerRef.current?.setPointerCapture(e.pointerId); } catch (err) {
+      console.debug('[Crop] Edge setPointerCapture skipped:', err);
+    }
     setActiveEdge(edge);
     setActiveCorner(null);
     setEdgeDragStart({ client: { x: e.clientX, y: e.clientY }, quad: { ...quad } });
@@ -214,54 +195,16 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!quad) return;
-
     if (activeCorner) {
       e.preventDefault();
       setPointerPos({ x: e.clientX, y: e.clientY });
       const imgCoord = clientToImageCoords(e.clientX, e.clientY);
       const rect = imageBoundsRef.current ?? imageRef.current?.getBoundingClientRect();
-      const scaleX = rect && rect.width > 0 ? imageSize.width / rect.width : 1;
-      const scaleY = rect && rect.height > 0 ? imageSize.height / rect.height : 1;
-      const snapX = 16 * scaleX;
-      const snapY = 16 * scaleY;
-
-      if (Math.abs(imgCoord.x) < snapX) {
-        imgCoord.x = 0;
-        triggerCropHaptic(8);
-      } else if (Math.abs(imgCoord.x - imageSize.width) < snapX) {
-        imgCoord.x = imageSize.width;
-        triggerCropHaptic(8);
-      }
-
-      if (Math.abs(imgCoord.y) < snapY) {
-        imgCoord.y = 0;
-        triggerCropHaptic(8);
-      } else if (Math.abs(imgCoord.y - imageSize.height) < snapY) {
-        imgCoord.y = imageSize.height;
-        triggerCropHaptic(8);
-      }
-
-      const minGapX = Math.max(24, Math.round(imageSize.width * 0.07));
-      const minGapY = Math.max(24, Math.round(imageSize.height * 0.07));
-
-      setQuad((prev) => {
-        if (!prev) return prev;
-        const nextCoord = { ...imgCoord };
-        if (activeCorner === 'topLeft') {
-          nextCoord.x = Math.max(0, Math.min(nextCoord.x, prev.topRight.x - minGapX));
-          nextCoord.y = Math.max(0, Math.min(nextCoord.y, prev.bottomLeft.y - minGapY));
-        } else if (activeCorner === 'topRight') {
-          nextCoord.x = Math.min(imageSize.width, Math.max(nextCoord.x, prev.topLeft.x + minGapX));
-          nextCoord.y = Math.max(0, Math.min(nextCoord.y, prev.bottomRight.y - minGapY));
-        } else if (activeCorner === 'bottomRight') {
-          nextCoord.x = Math.min(imageSize.width, Math.max(nextCoord.x, prev.bottomLeft.x + minGapX));
-          nextCoord.y = Math.min(imageSize.height, Math.max(nextCoord.y, prev.topRight.y + minGapY));
-        } else if (activeCorner === 'bottomLeft') {
-          nextCoord.x = Math.max(0, Math.min(nextCoord.x, prev.bottomRight.x - minGapX));
-          nextCoord.y = Math.min(imageSize.height, Math.max(nextCoord.y, prev.topLeft.y + minGapY));
-        }
-        return { ...prev, [activeCorner]: nextCoord };
-      });
+      const snapX = 16 * (rect && rect.width > 0 ? imageSize.width / rect.width : 1);
+      const snapY = 16 * (rect && rect.height > 0 ? imageSize.height / rect.height : 1);
+      setQuad((prev) =>
+        prev ? clampDraggedCorner(prev, activeCorner, imgCoord, imageSize.width, imageSize.height, snapX, snapY) : prev
+      );
       return;
     }
 
@@ -269,93 +212,35 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
       e.preventDefault();
       setPointerPos({ x: e.clientX, y: e.clientY });
       const rect = imageBoundsRef.current ?? imageRef.current.getBoundingClientRect();
-      const scaleX = imageSize.width / rect.width;
-      const scaleY = imageSize.height / rect.height;
-      const dx = (e.clientX - edgeDragStart.client.x) * scaleX;
-      const dy = (e.clientY - edgeDragStart.client.y) * scaleY;
-      const orig = edgeDragStart.quad;
-      const clampPt = (pt: Point, deltaX: number, deltaY: number): Point => ({
-        x: Math.max(0, Math.min(imageSize.width, Math.round(pt.x + deltaX))),
-        y: Math.max(0, Math.min(imageSize.height, Math.round(pt.y + deltaY))),
-      });
-
-      setQuad((prev) => {
-        if (!prev) return prev;
-        const next = { ...prev };
-        if (activeEdge === 'top') {
-          next.topLeft = clampPt(orig.topLeft, dx, dy);
-          next.topRight = clampPt(orig.topRight, dx, dy);
-        } else if (activeEdge === 'right') {
-          next.topRight = clampPt(orig.topRight, dx, dy);
-          next.bottomRight = clampPt(orig.bottomRight, dx, dy);
-        } else if (activeEdge === 'bottom') {
-          next.bottomLeft = clampPt(orig.bottomLeft, dx, dy);
-          next.bottomRight = clampPt(orig.bottomRight, dx, dy);
-        } else if (activeEdge === 'left') {
-          next.topLeft = clampPt(orig.topLeft, dx, dy);
-          next.bottomLeft = clampPt(orig.bottomLeft, dx, dy);
-        }
-        return next;
-      });
+      const dx = (e.clientX - edgeDragStart.client.x) * (imageSize.width / rect.width);
+      const dy = (e.clientY - edgeDragStart.client.y) * (imageSize.height / rect.height);
+      setQuad((prev) =>
+        prev ? clampDraggedEdge(edgeDragStart.quad, activeEdge, dx, dy, imageSize.width, imageSize.height) : prev
+      );
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (activeCorner || activeEdge) {
-      try { containerRef.current?.releasePointerCapture(e.pointerId); } catch {}
-      imageBoundsRef.current = null;
-      setActiveCorner(null);
-      setActiveEdge(null);
-      setEdgeDragStart(null);
-      setPointerPos(null);
-      triggerCropHaptic(10);
+    if (!activeCorner && !activeEdge) return;
+    try { containerRef.current?.releasePointerCapture(e.pointerId); } catch (err) {
+      console.debug('[Crop] releasePointerCapture skipped:', err);
     }
+    imageBoundsRef.current = null;
+    setActiveCorner(null);
+    setActiveEdge(null);
+    setEdgeDragStart(null);
+    setPointerPos(null);
+    triggerCropHaptic(10);
   };
 
   const rotateImageAndQuad = (clockwise: boolean) => {
     triggerCropHaptic(15);
     if (!imageRef.current || imageSize.width === 0 || imageSize.height === 0) return;
-
-    const rotCanvas = document.createElement('canvas');
-    rotCanvas.width = imageSize.height;
-    rotCanvas.height = imageSize.width;
-    const ctx = rotCanvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, rotCanvas.width, rotCanvas.height);
-    ctx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
-    ctx.rotate(((clockwise ? 90 : -90) * Math.PI) / 180);
-    ctx.drawImage(imageRef.current, -imageSize.width / 2, -imageSize.height / 2);
-
-    const rotatedDataUrl = rotCanvas.toDataURL('image/jpeg', 0.95);
-    const oldW = imageSize.width;
-    const oldH = imageSize.height;
-    const rotPt = (p: Point): Point =>
-      clockwise
-        ? { x: Math.round(oldH - p.y), y: Math.round(p.x) }
-        : { x: Math.round(p.y), y: Math.round(oldW - p.x) };
-
-    if (quad) {
-      setQuad(
-        clockwise
-          ? {
-              topLeft: rotPt(quad.bottomLeft),
-              topRight: rotPt(quad.topLeft),
-              bottomRight: rotPt(quad.topRight),
-              bottomLeft: rotPt(quad.bottomRight),
-            }
-          : {
-              topLeft: rotPt(quad.topRight),
-              topRight: rotPt(quad.bottomRight),
-              bottomRight: rotPt(quad.bottomLeft),
-              bottomLeft: rotPt(quad.topLeft),
-            }
-      );
-    }
-
-    setImageSize({ width: imageSize.height, height: imageSize.width });
-    setCurrentSrc(rotatedDataUrl);
+    const rotated = rotateImageAndQuad90(imageRef.current, imageSize.width, imageSize.height, quad, clockwise);
+    if (!rotated) return;
+    if (rotated.nextQuad) setQuad(rotated.nextQuad);
+    setImageSize(rotated.nextSize);
+    setCurrentSrc(rotated.dataUrl);
   };
 
   const handleApply = async () => {
@@ -371,29 +256,10 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
   };
 
   return {
-    containerRef,
-    imageRef,
-    currentSrc,
-    quad,
-    activeCorner,
-    activeEdge,
-    pointerPos,
-    imageSize,
-    isApplying,
-    undoStack,
-    redoStack,
-    handleUndo,
-    handleRedo,
-    applyAspectRatio,
-    handleImageLoad,
-    handleAutoDetect,
-    handleSelectFullImage,
-    handleResetQuad,
-    imageToClientCoords,
-    handleCornerPointerDown,
-    handleEdgePointerDown,
-    handlePointerMove,
-    handlePointerUp,
+    containerRef, imageRef, currentSrc, quad, activeCorner, activeEdge, pointerPos, imageSize,
+    isApplying, undoStack, redoStack, handleUndo, handleRedo, applyAspectRatio,
+    handleImageLoad, handleAutoDetect, handleSelectFullImage, handleResetQuad,
+    imageToClientCoords, handleCornerPointerDown, handleEdgePointerDown, handlePointerMove, handlePointerUp,
     handleRotateCw: () => rotateImageAndQuad(true),
     handleRotateCcw: () => rotateImageAndQuad(false),
     handleApply,

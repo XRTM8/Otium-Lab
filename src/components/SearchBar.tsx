@@ -107,9 +107,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             done: true
           });
 
-          if (matches.length > 0) {
-            onNavigateToPageRef.current(matches[0]);
-            onQueryChangeRef.current(trimmed, matches[0]);
+          const firstMatch = matches[0];
+          if (firstMatch !== undefined) {
+            onNavigateToPageRef.current(firstMatch);
+            onQueryChangeRef.current(trimmed, firstMatch);
           } else {
             onQueryChangeRef.current(trimmed, null);
           }
@@ -133,7 +134,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (results.length === 0) return;
     const next = (currentIndex + 1) % results.length;
     setCurrentIndex(next);
-    const targetPage = results[next].pageNumber;
+    const targetPage = results[next]?.pageNumber;
+    if (targetPage === undefined) return;
     onNavigateToPage(targetPage);
     onQueryChange(query.trim(), targetPage);
   };
@@ -142,7 +144,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (results.length === 0) return;
     const prev = (currentIndex - 1 + results.length) % results.length;
     setCurrentIndex(prev);
-    const targetPage = results[prev].pageNumber;
+    const targetPage = results[prev]?.pageNumber;
+    if (targetPage === undefined) return;
     onNavigateToPage(targetPage);
     onQueryChange(query.trim(), targetPage);
   };

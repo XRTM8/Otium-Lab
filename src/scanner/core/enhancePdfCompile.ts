@@ -49,11 +49,14 @@ export async function burnRedactionOnPageCanvas({
   ctx.lineJoin = 'round';
 
   for (const stroke of strokes) {
-    if (stroke.length === 0) continue;
+    const firstPt = stroke[0];
+    if (!firstPt) continue;
     ctx.beginPath();
-    ctx.moveTo(stroke[0].x * scaleX, stroke[0].y * scaleY);
+    ctx.moveTo(firstPt.x * scaleX, firstPt.y * scaleY);
     for (let i = 1; i < stroke.length; i++) {
-      ctx.lineTo(stroke[i].x * scaleX, stroke[i].y * scaleY);
+      const pt = stroke[i];
+      if (!pt) continue;
+      ctx.lineTo(pt.x * scaleX, pt.y * scaleY);
     }
     ctx.stroke();
   }
@@ -91,6 +94,7 @@ export async function compileScannedPdfDocument({
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i];
+    if (!page) continue;
     const rawCanvas = await loadPageCanvasFromDisk(page.id);
     const processed = curvature > 0 ? await dewarpBookCurvatureAsync(rawCanvas, curvature, spinePos) : rawCanvas;
 
@@ -140,7 +144,7 @@ export async function cacheCompiledPdfInLibrary(
         docTitle.trim() ||
         `Scan — ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       pageCount: pages.length,
-      thumbnail: pages[0].thumbnailDataUrl,
+      thumbnail: pages[0]?.thumbnailDataUrl ?? '',
       pdfBlob,
     });
   } catch (e) {

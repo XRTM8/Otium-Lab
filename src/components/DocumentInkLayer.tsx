@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2 } from 'lucide-react';
-import { createPortal } from 'react-dom';
 import { clampPoint, hitInk, type InkMark, type InkPoint } from '../core/annotations/ink';
 import { InkContext } from './documentInkContext';
+import { DocumentInkNoteDialog } from './DocumentInkNoteDialog';
+import type { InkTool } from './TeacherDock';
 
 const newMarkId = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -46,20 +46,28 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
   const lastPen = useRef(0);
   const ar = lang === 'ar';
 
+  const prevToolPageRef = useRef<{ tool: InkTool | undefined; page: number }>({ tool: ink?.tool, page });
   useEffect(() => {
-    drawing.current = null;
-    gesture.current = null;
-    noteDrag.current = null;
-    surfaceRectRef.current = null;
-    draftPointsStrRef.current = '';
+    if (prevToolPageRef.current.tool !== ink?.tool || prevToolPageRef.current.page !== page) {
+      prevToolPageRef.current = { tool: ink?.tool, page };
+      drawing.current = null;
+      gesture.current = null;
+      noteDrag.current = null;
+      surfaceRectRef.current = null;
+      draftPointsStrRef.current = '';
+    }
     return () => {
       if (noteFrame.current !== null) cancelAnimationFrame(noteFrame.current);
       noteFrame.current = null;
     };
   }, [ink?.tool, page]);
 
+  const prevSizeRef = useRef({ width, height });
   useEffect(() => {
-    surfaceRectRef.current = null;
+    if (prevSizeRef.current.width !== width || prevSizeRef.current.height !== height) {
+      prevSizeRef.current = { width, height };
+      surfaceRectRef.current = null;
+    }
   }, [width, height]);
 
   const marks = (ink?.marks ?? []).filter((mark) => mark.page === page);
@@ -146,12 +154,14 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
     setDraftHeader(null);
   };
 
-  const renderMark = (mark: InkMark) =>
-    mark.type === 'note' ? (
+  const renderMark = (mark: InkMark) => {
+    const firstPoint = mark.points[0];
+    if (!firstPoint) return null;
+    return mark.type === 'note' ? (
       <text
         key={mark.id}
-        x={mark.points[0].x * width}
-        y={mark.points[0].y * height}
+        x={firstPoint.x * width}
+        y={firstPoint.y * height}
         fill={mark.color}
         fontSize={mark.width * width}
         fontFamily="Tajawal, Arial, sans-serif"
@@ -174,15 +184,16 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
         }}
         onPointerMove={(e) => {
           const drag = noteDrag.current;
-          if (!drag || drag.id !== e.pointerId) return;
+          const originFirst = drag?.origin.points[0];
+          if (!drag || drag.id !== e.pointerId || !originFirst || !surface.current) return;
           e.preventDefault();
           e.stopPropagation();
           const dx = e.clientX - drag.x;
           const dy = e.clientY - drag.y;
           if (!drag.moved && Math.hypot(dx, dy) < 5) return;
           drag.moved = true;
-          const box = surface.current!.getBoundingClientRect();
-          drag.current = { ...drag.origin, points: [clampPoint(drag.origin.points[0].x + dx / box.width, drag.origin.points[0].y + dy / box.height)] };
+          const box = surface.current.getBoundingClientRect();
+          drag.current = { ...drag.origin, points: [clampPoint(originFirst.x + dx / box.width, originFirst.y + dy / box.height)] };
           if (noteFrame.current === null) {
             noteFrame.current = requestAnimationFrame(() => {
               noteFrame.current = null;
@@ -201,17 +212,24 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
           }
         }}
       >
-        {(mark.text || '').split('\n').map((line, i) => (
-          <tspan key={i} x={mark.points[0].x * width} dy={i ? '1.35em' : '0'}>
-            {line}
-          </tspan>
-        ))}
+        {(() => {
+          const lineCounts = new Map<string, number>();
+          return (mark.text || '').split('\n').map((line, i) => {
+            const seen = lineCounts.get(line) ?? 0;
+            lineCounts.set(line, seen + 1);
+            return (
+              <tspan key={`${line}:${seen}`} x={firstPoint.x * width} dy={i ? '1.35em' : '0'}>
+                {line}
+              </tspan>
+            );
+          });
+        })()}
       </text>
     ) : mark.points.length === 1 ? (
       <circle
         key={mark.id}
-        cx={mark.points[0].x * width}
-        cy={mark.points[0].y * height}
+        cx={firstPoint.x * width}
+        cy={firstPoint.y * height}
         r={(mark.width * width) / 2}
         fill={mark.color}
         opacity={mark.type === 'highlighter' ? 0.3 : 1}
@@ -228,6 +246,7 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
         opacity={mark.type === 'highlighter' ? 0.3 : 1}
       />
     );
+  };
 
   return (
     <div
@@ -266,7 +285,7 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
         if (!drawing.current || drawing.current.points.length >= 5000) return;
         const p = point(e, true);
         const last = drawing.current.points[drawing.current.points.length - 1];
-        if (Math.hypot((p.x - last.x) * width, (p.y - last.y) * height) < 1) return;
+        if (last && Math.hypot((p.x - last.x) * width, (p.y - last.y) * height) < 1) return;
         drawing.current.points.push(p);
         draftPointsStrRef.current += ` ${p.x * width},${p.y * height}`;
         if (draftPolylineRef.current) {
@@ -298,93 +317,23 @@ export function DocumentInkLayer({ page, width, height, lang }: { page: number; 
           </g>
         )}
       </svg>
-      {note &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-scrim pointer-events-auto"
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              if (e.target === e.currentTarget) closeNote();
-            }}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Escape') closeNote();
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={ar ? 'ملاحظة على الصفحة' : 'Page note'}
-              dir={ar ? 'rtl' : 'ltr'}
-              className="w-80 max-w-full max-h-[85dvh] overflow-auto rounded-2xl border border-line bg-surface text-ink shadow-xl p-4"
-              onPointerDown={(e) => e.stopPropagation()}
-              onPointerMove={(e) => e.stopPropagation()}
-            >
-              <textarea
-                autoFocus
-                aria-label={ar ? 'نص الملاحظة' : 'Note text'}
-                value={note.text}
-                maxLength={2000}
-                onChange={(e) => setNote({ ...note, text: e.target.value })}
-                className="w-full min-h-24 rounded-xl p-2 bg-hover text-sm resize-y"
-              />
-              <div className="flex flex-wrap items-center gap-2 py-2">
-                <label className="flex items-center gap-2 text-xs">
-                  {ar ? 'لون الملاحظة' : 'Note color'}
-                  <input
-                    type="color"
-                    aria-label={ar ? 'لون الملاحظة' : 'Note color'}
-                    value={note.color}
-                    onChange={(e) => setNote({ ...note, color: e.target.value })}
-                    className="h-10 w-10 cursor-pointer"
-                  />
-                </label>
-                {['#e11d48', '#2563eb', '#059669', '#111827', '#f8fafc'].map((c) => (
-                  <button
-                    type="button"
-                    key={c}
-                    aria-label={`${ar ? 'لون الملاحظة' : 'Note color'} ${c}`}
-                    aria-pressed={note.color === c}
-                    onClick={() => setNote({ ...note, color: c })}
-                    className="h-8 w-8 rounded-full border border-line"
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center gap-2 pt-2 text-xs">
-                <button
-                  className="min-h-11 rounded-lg bg-accent text-on-accent px-3 py-2"
-                  disabled={!note.text?.trim()}
-                  onClick={() => {
-                    ink.change([...ink.marks.filter((mark) => mark.id !== note.id), { ...note, text: note.text!.trim() }]);
-                    closeNote();
-                  }}
-                >
-                  {ar ? 'حفظ' : 'Save'}
-                </button>
-                <button className="min-h-11 px-3" onClick={closeNote}>
-                  {ar ? 'إلغاء' : 'Cancel'}
-                </button>
-                {ink.marks.some((mark) => mark.id === note.id) && (
-                  <button
-                    aria-label={ar ? 'حذف الملاحظة' : 'Delete note'}
-                    className="ms-auto min-h-11 flex items-center gap-2 text-danger-ink"
-                    onClick={() => {
-                      ink.change(ink.marks.filter((mark) => mark.id !== note.id));
-                      closeNote();
-                    }}
-                  >
-                    <Trash2 size={16} />
-                    {ar ? 'حذف' : 'Delete'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      {note && (
+        <DocumentInkNoteDialog
+          note={note}
+          ar={ar}
+          canDelete={ink.marks.some((mark) => mark.id === note.id)}
+          onChange={setNote}
+          onSave={() => {
+            ink.change([...ink.marks.filter((mark) => mark.id !== note.id), { ...note, text: note.text!.trim() }]);
+            closeNote();
+          }}
+          onDelete={() => {
+            ink.change(ink.marks.filter((mark) => mark.id !== note.id));
+            closeNote();
+          }}
+          onClose={closeNote}
+        />
+      )}
     </div>
   );
 }

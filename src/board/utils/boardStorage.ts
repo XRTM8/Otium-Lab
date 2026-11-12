@@ -17,7 +17,7 @@ function database(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       const db = request.result;
       db.onversionchange = () => {
-        try { db.close(); } catch {}
+        try { db.close(); } catch (err) { console.debug('[BoardStorage] db close skipped:', err); }
         if (dbCache?.promise === promise) dbCache = null;
       };
       db.onclose = () => {

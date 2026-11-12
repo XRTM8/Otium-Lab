@@ -1,15 +1,14 @@
 import React, { useMemo, useRef } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { TextAnnotation } from '../core/types';
 import type { ReaderController } from '../app/useReaderController';
-import { PdfPage } from './PdfPage';
-import { ErrorBoundary } from './ErrorBoundary';
 import { PageSlot } from './ReaderPageSlot';
 import { useDocumentInteraction } from './documentInkContext';
 import { useTeaching } from './teachingContextValue';
 import { useChromeTap } from '../core/reader/useChromeTap';
 import { useReaderWorkspaceSync } from './useReaderWorkspaceSync';
 import { ReaderWorkspaceProgressBar, ReaderWorkspaceReadingPill } from './ReaderWorkspaceProgress';
+import { ReaderWorkspacePagedSpreads } from './ReaderWorkspacePagedSpreads';
 
 interface ReaderWorkspaceProps {
   reader: ReaderController;
@@ -107,7 +106,6 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
   if (!doc) return null;
 
   const pagedAnimation = dualFlipKey > 0 ? 'otiumPageIn 160ms cubic-bezier(.2,.8,.2,1) both' : undefined;
-  const dualAnimation = pagedAnimation;
 
   // Odd pages sit on the right in Arabic / RTL books and on the left in Latin / LTR books.
   // Using docIsRtl guarantees English books in Arabic UI are never mirrored or reversed.
@@ -276,172 +274,26 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
             );
           })}
         </div>
-      ) : viewMode === 'dual' ? (
-        <div className="min-h-full w-max min-w-full flex items-start justify-center py-2 sm:py-4 overflow-hidden">
-          <div
-            style={{
-              willChange: 'transform'
-            }}
-          >
-            <div
-              key={`dual-${dualFlipKey}`}
-              className="flex items-center justify-center gap-0 shadow-2xl rounded-sm overflow-hidden"
-              style={{
-                animation: dualAnimation,
-                willChange: 'transform, opacity',
-                flexDirection: reverseSpread ? 'row-reverse' : 'row'
-              }}
-            >
-              <div className={`relative shrink-0 ${reverseSpread ? 'book-gutter-inner-left' : 'book-gutter-inner-right'}`}>
-                <ErrorBoundary
-                  resetKey={`dual-${currentPage}-${zoom}`}
-                  fallback={(_err, reset) => (
-                    <div
-                      style={{
-                        width: Math.round(basePageSize.width * zoom),
-                        height: Math.round(basePageSize.height * zoom)
-                      }}
-                      className="flex flex-col items-center justify-center p-6 text-center border border-dashed border-danger-ink/30 bg-surface/50 rounded-xl select-none"
-                    >
-                      <AlertTriangle className="w-8 h-8 text-danger-ink mb-2 opacity-80" />
-                      <span className="text-xs font-semibold text-ink mb-1">
-                        {lang === 'ar' ? `تعذر عرض الصفحة ${currentPage}` : `Failed to render page ${currentPage}`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={reset}
-                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium cursor-pointer"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</span>
-                      </button>
-                    </div>
-                  )}
-                >
-                  <PdfPage
-                    doc={doc}
-                    pageNumber={currentPage}
-                    scale={zoom}
-                    theme={theme}
-                    annotations={annotationsByPage ? (annotationsByPage.get(currentPage) ?? EMPTY_ANNOTATIONS) : EMPTY_ANNOTATIONS}
-                    onDeleteAnnotation={deleteAnnotation}
-                    baseAspectRatio={baseAspectRatio}
-                    searchQuery={searchQuery}
-                    isCurrentSearchPage={activeSearchPage === currentPage}
-                    lang={lang}
-                    renderPriority={0}
-                  />
-                </ErrorBoundary>
-              </div>
-
-              {currentPage + 1 <= numPages ? (
-                <div className={`relative shrink-0 ${reverseSpread ? 'border-r book-gutter-inner-right' : 'border-l book-gutter-inner-left'} border-line/40`}>
-                  <ErrorBoundary
-                    resetKey={`dual-${currentPage + 1}-${zoom}`}
-                    fallback={(_err, reset) => (
-                      <div
-                        style={{
-                          width: Math.round(basePageSize.width * zoom),
-                          height: Math.round(basePageSize.height * zoom)
-                        }}
-                        className="flex flex-col items-center justify-center p-6 text-center border border-dashed border-danger-ink/30 bg-surface/50 rounded-xl select-none"
-                      >
-                        <AlertTriangle className="w-8 h-8 text-danger-ink mb-2 opacity-80" />
-                        <span className="text-xs font-semibold text-ink mb-1">
-                          {lang === 'ar' ? `تعذر عرض الصفحة ${currentPage + 1}` : `Failed to render page ${currentPage + 1}`}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={reset}
-                          className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium cursor-pointer"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          <span>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</span>
-                        </button>
-                      </div>
-                    )}
-                  >
-                    <PdfPage
-                      doc={doc}
-                      pageNumber={currentPage + 1}
-                      scale={zoom}
-                      theme={theme}
-                      annotations={annotationsByPage ? (annotationsByPage.get(currentPage + 1) ?? EMPTY_ANNOTATIONS) : EMPTY_ANNOTATIONS}
-                      onDeleteAnnotation={deleteAnnotation}
-                      baseAspectRatio={baseAspectRatio}
-                      searchQuery={searchQuery}
-                      isCurrentSearchPage={activeSearchPage === currentPage + 1}
-                      lang={lang}
-                      renderPriority={1}
-                    />
-                  </ErrorBoundary>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    width: Math.round(basePageSize.width * zoom),
-                    height: Math.round(basePageSize.height * zoom)
-                  }}
-                  className="hidden sm:flex items-center justify-center border border-dashed border-line rounded-xs text-xs text-ink-faint font-mono"
-                >
-                  {lang === 'ar' ? 'نهاية المستند' : 'End of Document'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       ) : (
-        <div
-          style={{
-            willChange: 'transform'
-          }}
-          className="min-h-full w-max min-w-full flex items-start justify-center py-2 sm:py-4 overflow-hidden"
-        >
-          <div
-            key={`single-${dualFlipKey}`}
-            style={{ animation: pagedAnimation, willChange: 'transform, opacity' }}
-          >
-            <ErrorBoundary
-              resetKey={`single-${currentPage}-${zoom}`}
-              fallback={(_err, reset) => (
-                <div
-                  style={{
-                    width: Math.round(basePageSize.width * zoom),
-                    height: Math.round(basePageSize.height * zoom)
-                  }}
-                  className="flex flex-col items-center justify-center p-6 text-center border border-dashed border-danger-ink/30 bg-surface/50 rounded-xl select-none"
-                >
-                  <AlertTriangle className="w-8 h-8 text-danger-ink mb-2 opacity-80" />
-                  <span className="text-xs font-semibold text-ink mb-1">
-                    {lang === 'ar' ? `تعذر عرض الصفحة ${currentPage}` : `Failed to render page ${currentPage}`}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={reset}
-                    className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium cursor-pointer"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</span>
-                  </button>
-                </div>
-              )}
-            >
-              <PdfPage
-                doc={doc}
-                pageNumber={currentPage}
-                scale={zoom}
-                theme={theme}
-                annotations={annotationsByPage ? (annotationsByPage.get(currentPage) ?? EMPTY_ANNOTATIONS) : EMPTY_ANNOTATIONS}
-                onDeleteAnnotation={deleteAnnotation}
-                baseAspectRatio={baseAspectRatio}
-                searchQuery={searchQuery}
-                isCurrentSearchPage={activeSearchPage === currentPage}
-                lang={lang}
-                renderPriority={0}
-              />
-            </ErrorBoundary>
-          </div>
-        </div>
+        <ReaderWorkspacePagedSpreads
+          viewMode={viewMode}
+          doc={doc}
+          numPages={numPages}
+          currentPage={currentPage}
+          zoom={zoom}
+          theme={theme}
+          lang={lang}
+          baseAspectRatio={baseAspectRatio}
+          basePageSize={basePageSize}
+          annotationsByPage={annotationsByPage}
+          emptyAnnotations={EMPTY_ANNOTATIONS}
+          deleteAnnotation={deleteAnnotation}
+          searchQuery={searchQuery}
+          activeSearchPage={activeSearchPage}
+          dualFlipKey={dualFlipKey}
+          reverseSpread={reverseSpread}
+          pagedAnimation={pagedAnimation}
+        />
       )}
       </div>
 

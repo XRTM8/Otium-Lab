@@ -69,7 +69,7 @@ export function TeacherDock({ reader, ink }: { reader: ReaderController; ink: Do
     resize();
     const observer = new ResizeObserver(resize); observer.observe(element);
     return () => observer.disconnect();
-  }, [reader.doc, presentation, reader.isImmersive]);
+  }, []);
   useEffect(() => {
     if (mobile && reader.isImmersive) document.documentElement.style.removeProperty('--teacher-bottom-inset');
     else document.documentElement.style.setProperty('--teacher-bottom-inset', `${dockHeight + (mobile ? 8 : prefs.offset) + 18}px`);
@@ -106,7 +106,7 @@ export function TeacherDock({ reader, ink }: { reader: ReaderController; ink: Do
       {!presentation && panel && <div className="teacher-popover" aria-label={panel === 'settings' ? label('تخصيص أدوات المعلم', 'Customize teacher controls') : label('خيارات الأدوات', 'Tool options')}>
         <div className="teacher-popover-heading"><strong>{panel === 'background' ? label('خلفية السبورة', 'Board background') : panel === 'pen' ? label('إعدادات القلم', 'Pen settings') : panel === 'settings' ? label('راحة المعلّم', 'Teacher comfort') : label('المزيد', 'More')}</strong><button type="button" aria-label={label('إغلاق الخيارات', 'Close options')} onClick={() => setPanel(null)}><X size={18} /></button></div>
         {panel === 'pen' && <div className="teacher-pen-options">
-          <div className="teacher-palette" aria-label={label('ألوان سريعة', 'Quick colors')}>{[['#e11d48', label('أحمر', 'Red')], ['#2563eb', label('أزرق', 'Blue')], ['#059669', label('أخضر', 'Green')], [onBoard && board?.isDark ? '#f8fafc' : '#111827', label('حبر أساسي', 'Basic ink')]].map(([color, name]) => <button type="button" key={color} aria-label={name} style={{ backgroundColor: color }} onClick={() => { updatePrefs({ color }); if (onBoard) board?.setColor(color); }} />)}</div>
+          <div className="teacher-palette" aria-label={label('ألوان سريعة', 'Quick colors')}>{([['#e11d48', label('أحمر', 'Red')], ['#2563eb', label('أزرق', 'Blue')], ['#059669', label('أخضر', 'Green')], [onBoard && board?.isDark ? '#f8fafc' : '#111827', label('حبر أساسي', 'Basic ink')]] satisfies ReadonlyArray<[string, string]>).map(([color, name]) => <button type="button" key={color} aria-label={name} style={{ backgroundColor: color }} onClick={() => { updatePrefs({ color }); if (onBoard) board?.setColor(color); }} />)}</div>
           <label>{label('اللون', 'Color')}<input type="color" value={onBoard ? board?.color || prefs.color : prefs.color} onChange={e => { updatePrefs({ color: e.target.value }); if (onBoard) board?.setColor(e.target.value); }} /></label>
           <label>{label('السُمك', 'Width')} <output>{onBoard ? board?.width : prefs.width}</output><input type="range" min="2" max="12" step="1" value={onBoard ? board?.width || prefs.width : prefs.width} onChange={e => { updatePrefs({ width: +e.target.value }); if (onBoard) board?.setWidth(+e.target.value); }} /></label>
           <label className="teacher-check"><input type="checkbox" checked={prefs.stylusOnly} onChange={e => updatePrefs({ stylusOnly: e.target.checked })} />{onBoard ? label('الكتابة بالقلم الإلكتروني فقط', 'Stylus-only writing') : label('القلم الإلكتروني للكتابة، والإصبع للتنقل', 'Write with stylus, navigate with finger')}</label>

@@ -142,7 +142,7 @@ export function useReaderNavigation({
   );
 
   useEffect(() => {
-    if (viewMode !== 'continuous' || pendingScrollPageRef.current === null) return;
+    if (!doc || currentPage < 1 || viewMode !== 'continuous' || pendingScrollPageRef.current === null) return;
     const pageNumber = pendingScrollPageRef.current;
     const offsetRatio = pendingScrollOffsetRef.current ?? undefined;
     pendingScrollPageRef.current = null;
@@ -151,7 +151,7 @@ export function useReaderNavigation({
   }, [currentPage, doc, viewMode, scrollToRenderedPage, pendingScrollPageRef, pendingScrollOffsetRef]);
 
   useEffect(() => {
-    if (viewMode === 'continuous') return;
+    if (viewMode === 'continuous' || currentPage < 1) return;
     const container = scrollContainerRef.current;
     if (!container) return;
     const resetViewport = () => {
@@ -165,7 +165,7 @@ export function useReaderNavigation({
     });
     resetWheelTurnAccum();
     return () => window.cancelAnimationFrame(first);
-  }, [currentPage, viewMode, scrollContainerRef, resetWheelTurnAccum]);
+  }, [currentPage, viewMode, resetWheelTurnAccum, scrollContainerRef]);
 
   const handlePageVisible = useCallback(
     (pageNumber: number) => {

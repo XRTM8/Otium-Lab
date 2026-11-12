@@ -1,10 +1,9 @@
 import React from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { TextAnnotation, ThemeMode } from '../core/types';
 import type { Language } from '../core/i18n/translations';
 import { PdfPage } from './PdfPage';
-import { ErrorBoundary } from './ErrorBoundary';
+import { PageErrorBoundary } from './PageErrorBoundary';
 
 export interface PageSlotProps {
   pageNum: number;
@@ -55,30 +54,13 @@ const PageSlotView: React.FC<PageSlotProps> = ({
       className="pdf-page-frame my-4 sm:my-5 mx-auto flex items-center justify-center"
     >
       {isNear ? (
-        <ErrorBoundary
+        <PageErrorBoundary
+          pageNum={pageNum}
+          width={standardWidth}
+          height={standardHeight}
+          lang={lang}
           resetKey={`${pageNum}-${scale}`}
-          fallback={(err, reset) => (
-            <div
-              style={{ width: `${standardWidth}px`, height: `${standardHeight}px` }}
-              className="flex flex-col items-center justify-center p-6 text-center border border-dashed border-danger-ink/30 bg-surface/50 rounded-xl select-none"
-            >
-              <AlertTriangle className="w-8 h-8 text-danger-ink mb-2 opacity-80" />
-              <span className="text-xs font-semibold text-ink mb-1">
-                {lang === 'ar' ? `تعذر عرض الصفحة ${pageNum}` : `Failed to render page ${pageNum}`}
-              </span>
-              <p className="text-[10px] text-ink-muted mb-3 max-w-[220px] truncate">
-                {err.message || (lang === 'ar' ? 'خطأ غير متوقع' : 'Unexpected error')}
-              </p>
-              <button
-                type="button"
-                onClick={reset}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium cursor-pointer active:scale-95 transition-transform"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</span>
-              </button>
-            </div>
-          )}
+          includeErrorDetail
         >
           <PdfPage
             doc={doc}
@@ -93,7 +75,7 @@ const PageSlotView: React.FC<PageSlotProps> = ({
             lang={lang}
             renderPriority={renderPriority}
           />
-        </ErrorBoundary>
+        </PageErrorBoundary>
       ) : (
         <div
           style={{ width: `${standardWidth}px`, height: `${standardHeight}px` }}

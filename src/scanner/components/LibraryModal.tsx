@@ -13,19 +13,12 @@ import { nativeSharePdf, nativeSavePdf, nativeOpenInOtium } from '../core/native
 import { APP_CURRENT_VERSION } from '../core/updater';
 import { OtiumLogo } from './OtiumLogo';
 import { LibraryAboutModal } from './LibraryAboutModal';
+import { LibraryDocumentCard } from './LibraryDocumentCard';
+import { LibraryHeaderBar } from './LibraryHeaderBar';
 import {
-  X,
-  Trash2,
-  Share2,
-  BookOpen,
-  Clock,
   Search,
-  DownloadCloud,
-  UploadCloud,
   CheckCircle2,
   Camera,
-  Download,
-  Info,
 } from 'lucide-react';
 
 interface LibraryModalProps {
@@ -57,7 +50,9 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
     if ('vibrate' in navigator) {
       try {
         navigator.vibrate(duration);
-      } catch {}
+      } catch (err) {
+        console.debug('[LibraryModal] Haptic vibrate skipped:', err);
+      }
     }
   };
 
@@ -172,72 +167,22 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       aria-label={lang === 'ar' ? 'مكتبة المستندات' : 'Document Library'}
       className="fixed inset-0 z-50 bg-[#07090e]/95 backdrop-blur-2xl flex flex-col justify-between select-none animate-in fade-in duration-200"
     >
-      {/* Top Header Bar with Safe Area Inset */}
-      <div
-        style={{
-          paddingTop: 'max(env(safe-area-inset-top, 0px) + 10px, 48px)',
+      <LibraryHeaderBar
+        theme={theme}
+        lang={lang}
+        documentCount={documents.length}
+        onExportBackup={handleExportBackup}
+        onTriggerRestore={() => backupInputRef.current?.click()}
+        onOpenSettingsOrAbout={() => {
+          triggerHaptic(15);
+          if (onOpenSettings) {
+            onOpenSettings();
+          } else {
+            setShowAboutModal(true);
+          }
         }}
-        className="flex items-center justify-between px-5 pb-3.5 otium-chrome border-b border-white/[0.08]"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.08]">
-            <OtiumLogo size={20} theme={theme} />
-            <span className="text-xs font-black tracking-widest text-white">OTIUM</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-gray-200">{lang === 'ar' ? 'مكتبة المستندات' : 'Document Library'}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent font-black border border-accent/25">
-              {documents.length}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {/* Backup Vault Archive */}
-          {documents.length > 0 && (
-            <button
-              onClick={handleExportBackup}
-              className="fluid-press p-2 rounded-full glass-button text-gray-300 active:text-accent cursor-pointer"
-              title={lang === 'ar' ? 'نسخ احتياطي للمستندات (.otiumvault)' : 'Backup documents (.otiumvault)'}
-            >
-              <DownloadCloud className="w-4 h-4" />
-            </button>
-          )}
-
-          {/* Restore Vault Archive */}
-          <button
-            onClick={() => backupInputRef.current?.click()}
-            className="fluid-press p-2 rounded-full glass-button text-gray-300 active:text-accent cursor-pointer"
-            title={lang === 'ar' ? 'استرجاع من نسخة احتياطية (.otiumvault)' : 'Restore from backup (.otiumvault)'}
-          >
-            <UploadCloud className="w-4 h-4" />
-          </button>
-
-          {/* About & Updates Modal Trigger */}
-          <button
-            onClick={() => {
-              triggerHaptic(15);
-              if (onOpenSettings) {
-                onOpenSettings();
-              } else {
-                setShowAboutModal(true);
-              }
-            }}
-            className="fluid-press p-2 rounded-full glass-button text-gray-300 active:text-accent cursor-pointer"
-            title={lang === 'ar' ? 'الإعدادات والتحقق من التحديثات' : 'Settings & Updates'}
-          >
-            <Info className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={onClose}
-            className="fluid-press p-2 rounded-full glass-button text-gray-300 active:text-white cursor-pointer"
-            title={lang === 'ar' ? 'إغلاق' : 'Close'}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
+        onClose={onClose}
+      />
 
       {/* Floating Status Notification */}
       {toastMsg && (
@@ -341,75 +286,15 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
           </div>
         ) : (
           filteredDocs.map((doc) => (
-            <div
+            <LibraryDocumentCard
               key={doc.id}
-              className="fluid-press otium-card p-3.5 rounded-2xl flex items-center justify-between gap-3 border border-white/[0.08] hover:border-accent/35 shadow-md group cursor-pointer"
-            >
-              {/* Thumbnail */}
-              <div className="w-14 h-18 rounded-xl bg-black/60 border border-white/10 overflow-hidden flex-shrink-0 relative shadow-inner">
-                <img src={doc.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 text-[9px] font-bold text-white border border-white/10">
-                  {doc.pageCount}p
-                </span>
-              </div>
-
-              {/* Meta */}
-              <div className="flex-1 min-w-0 text-start">
-                <h4 className="text-sm font-bold text-gray-100 truncate group-hover:text-accent transition-colors">
-                  {doc.title}
-                </h4>
-                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
-                  <span className="flex items-center gap-1">
-                    <BookOpen className="w-3 h-3 text-accent" />
-                    <span>{doc.pageCount} {lang === 'ar' ? (doc.pageCount === 1 ? 'صفحة' : 'صفحات') : 'pages'}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-gray-500" />
-                    <span>
-                      {new Date(doc.createdAt).toLocaleDateString([], {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                  </span>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  onClick={() => handleOpenInOtium(doc)}
-                  className="fluid-press p-2 rounded-xl glass-button text-accent hover:border-accent/40 cursor-pointer"
-                  title={lang === 'ar' ? 'فتح في قارئ أو تيوم' : 'Open in Otium Reader'}
-                >
-                  <BookOpen className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => handleSaveToDownloads(doc)}
-                  className="fluid-press p-2 rounded-xl glass-button text-gray-300 active:text-accent hover:border-accent/40 cursor-pointer"
-                  title={lang === 'ar' ? 'حفظ في التنزيلات' : 'Save to Downloads'}
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => handleShare(doc)}
-                  className="p-2 rounded-xl glass-button text-gray-300 active:text-emerald-400 hover:border-emerald-500/40"
-                  title="مشاركة المستند PDF"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => handleDelete(doc.id)}
-                  className="p-2 rounded-xl glass-button text-gray-400 active:text-red-400 hover:border-red-500/40"
-                  title="حذف"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+              doc={doc}
+              lang={lang}
+              onOpen={handleOpenInOtium}
+              onSave={handleSaveToDownloads}
+              onShare={handleShare}
+              onDelete={handleDelete}
+            />
           ))
         )}
       </div>

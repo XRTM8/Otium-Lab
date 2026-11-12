@@ -80,11 +80,7 @@ export function useBeamModalCamera({
         await videoRef.current.play();
       }
 
-      const BarcodeDetectorApi = (window as unknown as {
-        BarcodeDetector?: new (opts: { formats: string[] }) => {
-          detect: (video: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
-        };
-      }).BarcodeDetector;
+      const BarcodeDetectorApi = window.BarcodeDetector;
       if (!BarcodeDetectorApi) {
         setCameraError(
           lang === 'ar'
@@ -100,20 +96,23 @@ export function useBeamModalCamera({
         if (!videoRef.current || !mediaStreamRef.current) return;
         try {
           const barcodes = await detector.detect(videoRef.current);
-          if (barcodes.length > 0) {
-            const raw = barcodes[0].rawValue || '';
+          const firstBarcode = barcodes[0];
+          if (firstBarcode) {
+            const raw = firstBarcode.rawValue || '';
             const match =
               raw.match(/room=([A-Za-z0-9_-]+)/) ||
               raw.match(/(OTM-[A-Za-z0-9_-]+)/i) ||
               raw.match(/([0-9]{4,6})/);
-            const detected = match ? match[1].toUpperCase() : raw.toUpperCase();
+            const detected = match?.[1] ? match[1].toUpperCase() : raw.toUpperCase();
             if (detected) {
               stopCamera();
               onDetectedRoom(detected, Boolean(readerDoc));
               return;
             }
           }
-        } catch {}
+        } catch (err) {
+          console.debug('[BeamModalCamera] Frame barcode detection skipped:', err);
+        }
         scanAnimFrameRef.current = requestAnimationFrame(scanLoop);
       };
       scanAnimFrameRef.current = requestAnimationFrame(scanLoop);

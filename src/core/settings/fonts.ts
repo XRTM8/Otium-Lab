@@ -106,6 +106,7 @@ export function saveFont(fontId: FontFamilyId): void {
 export function applyFontFamily(fontId: FontFamilyId): void {
   if (typeof document === 'undefined') return;
   const fontDef = FONTS_LIST.find((f) => f.id === fontId) || FONTS_LIST[0];
+  if (!fontDef) return;
   const root = document.documentElement;
 
   // Both variables live on the document root so every surface (reader,
