@@ -16,18 +16,14 @@ export const PAGE_BACKGROUND: Record<ThemeMode, string> = {
 };
 
 const THEME_FILTERS: Partial<Record<ThemeMode, string>> = {
-  // 1. OLED Black: Invert white canvas, calibrate text to soft silver-white (#E6E6E6) to prevent darkroom glare
-  amoled: 'invert(1) hue-rotate(180deg) contrast(1.04) brightness(0.92)',
-  // 2. Warm Sepia: Deep candlelit amber warmth with 100% blue-light suppression for late night reading
-  amber: 'invert(0.92) sepia(0.72) hue-rotate(-22deg) contrast(1.04) brightness(0.88)',
-  // 3. Day Paper: Authentic warm paper texture tint, softens stark digital white PDFs into comfortable daylight book paper
+  // Cap the brightest ink in dark themes and preserve grayscale detail.
+  amoled: 'invert(1) hue-rotate(180deg) brightness(0.82)',
+  amber: 'invert(0.93) sepia(0.36) hue-rotate(-12deg) brightness(0.84)',
   paper: 'sepia(0.20) contrast(0.98) brightness(0.98)',
-  // 4. E-Ink Mono: Pristine grayscale contrast mirroring Kindle Paperwhite
-  eink: 'grayscale(1) contrast(1.15) brightness(0.96)',
-  // Legacy aliases for backward compatibility
-  midnight: 'invert(0.92) hue-rotate(185deg) contrast(1.02) brightness(0.96)',
-  forest: 'invert(0.92) sepia(0.35) hue-rotate(90deg) contrast(1.02) brightness(0.96)',
-  nordic: 'invert(0.92) hue-rotate(175deg) contrast(1.02) brightness(0.94)'
+  eink: 'grayscale(1) brightness(0.93)',
+  midnight: 'invert(0.93) hue-rotate(185deg) brightness(0.86)',
+  forest: 'invert(0.93) sepia(0.28) hue-rotate(90deg) brightness(0.86)',
+  nordic: 'invert(0.91) hue-rotate(175deg) brightness(0.86)'
 };
 
 export function themeFilter(theme: ThemeMode): string | null {

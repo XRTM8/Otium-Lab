@@ -91,6 +91,7 @@ interface OtiumWasmExports {
 
 let wasmUrlLoaded = '';
 let wasmPromise: Promise<OtiumWasmExports | null> | null = null;
+let retryWasmAt = 0;
 
 // Persistent previous-frame luminance buffer kept inside WASM memory across camera ticks.
 let prevLumPtr = 0;
@@ -155,12 +156,22 @@ async function instantiateOtiumWasm(wasmUrl: string): Promise<OtiumWasmExports |
 }
 
 function getWasm(wasmUrl: string): Promise<OtiumWasmExports | null> {
+  if (!wasmPromise && wasmUrlLoaded === wasmUrl && Date.now() < retryWasmAt) {
+    return Promise.resolve(null);
+  }
   if (!wasmPromise || wasmUrlLoaded !== wasmUrl) {
     wasmUrlLoaded = wasmUrl;
     prevLumPtr = 0;
     prevLumPixels = 0;
     hasPrevFrame = false;
-    wasmPromise = instantiateOtiumWasm(wasmUrl);
+    const attempt = instantiateOtiumWasm(wasmUrl).then((exports) => {
+      if (!exports && wasmPromise === attempt) {
+        wasmPromise = null;
+        retryWasmAt = Date.now() + 1000;
+      }
+      return exports;
+    });
+    wasmPromise = attempt;
   }
   return wasmPromise;
 }

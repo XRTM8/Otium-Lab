@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { ThemeMode } from '../core/types';
 import { scheduleIdleWork, scheduleRender } from '../core/reader/renderScheduler';
+import { isLightTheme } from '../platform/theme';
 import { supportsCanvasFilter, themeFilter } from './pdfPageCanvas';
 import { applySearchHighlightsToLayer, renderPdfPageToCanvas } from './pdfPageRenderHelpers';
 
@@ -36,30 +38,33 @@ export function usePdfPageRender({
   const priorityRef = useRef(renderPriority);
 
   const [isVisible, setIsVisible] = useState(() => typeof IntersectionObserver === 'undefined');
-  const [renderedTarget, setRenderedTarget] = useState<{ doc: PDFDocumentProxy; page: number } | null>(null);
+  const [renderedTarget, setRenderedTarget] = useState<{ doc: PDFDocumentProxy; page: number; theme: ThemeMode } | null>(null);
   const [rasterState, setRasterState] = useState<{ doc: PDFDocumentProxy; page: number; scale: number }>(() => ({ doc, page: pageNumber, scale }));
   const [errorTarget, setErrorTarget] = useState<{ doc: PDFDocumentProxy; page: number; message: string } | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [textLayerVersion, setTextLayerVersion] = useState(0);
 
   const hasRenderedOnce = renderedTarget?.doc === doc && renderedTarget?.page === pageNumber;
+  const pageTheme = hasRenderedOnce ? renderedTarget.theme : theme;
   const renderError = errorTarget?.doc === doc && errorTarget?.page === pageNumber ? errorTarget.message : null;
   const rasterScale = rasterState.doc === doc && rasterState.page === pageNumber ? rasterState.scale : scale;
 
   const rasterScaleRef = useRef(rasterScale);
   const hasRenderedOnceRef = useRef(hasRenderedOnce);
   const wasVisibleRef = useRef(false);
-  const isDark = theme === 'amoled' || theme === 'midnight' || theme === 'amber' || theme === 'forest' || theme === 'nordic';
+  const isDark = !isLightTheme(pageTheme);
   const cssThemeFilter = useMemo(() => {
-    const filter = themeFilter(theme);
+    const filter = themeFilter(pageTheme);
     return filter && !supportsCanvasFilter() ? filter : undefined;
-  }, [theme]);
+  }, [pageTheme]);
+  const pageThemeRef = useRef(pageTheme);
 
   useLayoutEffect(() => {
     priorityRef.current = renderPriority;
     rasterScaleRef.current = rasterScale;
     hasRenderedOnceRef.current = hasRenderedOnce;
-  }, [renderPriority, rasterScale, hasRenderedOnce]);
+    pageThemeRef.current = pageTheme;
+  }, [renderPriority, rasterScale, hasRenderedOnce, pageTheme]);
 
   // The PDF page's unscaled size is fixed; scaling it synchronously keeps
   // gesture zoom anchored to the fingers instead of waiting for a render.
@@ -224,8 +229,13 @@ export function usePdfPageRender({
 
         currentRenderTaskRef.current = null;
         renderedKeyRef.current = renderKey;
-        setRenderedTarget({ doc, page: pageNumber });
-        setErrorTarget(null);
+        const commit = () => {
+          setRenderedTarget({ doc, page: pageNumber, theme });
+          setErrorTarget(null);
+        };
+        // The new raster and the surrounding palette must reach the same frame.
+        if (hasRenderedOnceRef.current && pageThemeRef.current !== theme) flushSync(commit);
+        else commit();
       } catch (error) {
         const name = (error as { name?: string } | null)?.name;
         if (!cancelled && name !== 'RenderingCancelledException') {
@@ -333,6 +343,7 @@ export function usePdfPageRender({
     renderError,
     dimensions,
     pageSize,
+    pageTheme,
     isDark,
     cssThemeFilter,
     retryRender,

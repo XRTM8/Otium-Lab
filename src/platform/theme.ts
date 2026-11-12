@@ -40,108 +40,30 @@ export function applyDomTheme(theme: ThemeMode): void {
   if (meta) meta.setAttribute('content', background);
 }
 
-/**
- * Physical Sovereign Curtain Transition (بردة الثيمات الملكية)
- * Hardware-accelerated top-to-bottom descending sheet with glowing edge.
- */
-/**
- * Silky Top-to-Bottom Sovereign Theme Waterfall
- * Uses the browser-native View Transitions API with polygon clip-path wipe.
- * Content remains 100% visible — no cheap blank colored curtain blocking the page!
- */
-export function triggerThemeTransition(_theme: ThemeMode, updateThemeCallback: () => void): void {
+let themePaintFrame: number | undefined;
+
+/** Commit the new palette before CSS can interpolate text and surfaces independently. */
+export function applyThemeWithoutTransition(updateTheme: () => void): void {
   if (typeof document === 'undefined') {
-    updateThemeCallback();
+    updateTheme();
     return;
   }
 
-  // Unit test environments (Vitest / Happy-DOM) execute synchronously
-  const isTestEnv =
-    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') ||
-    Boolean(typeof window !== 'undefined' && window.__VITEST__) ||
-    !document.body;
-
-  if (isTestEnv) {
-    updateThemeCallback();
-    return;
-  }
-
-  const doc = document as Document & {
-    startViewTransition?: (cb: () => void | Promise<void>) => {
-      ready?: Promise<void>;
-      finished?: Promise<void>;
-    };
-  };
-
-  if (typeof doc.startViewTransition === 'function') {
-    try {
-      // Instantly freeze background transitions so the new DOM snapshot captures 100% final colors
-      document.documentElement.classList.add('theme-transitioning');
-
-      const transition = doc.startViewTransition(() => {
-        updateThemeCallback();
-      });
-
-      if (transition && typeof transition.ready?.then === 'function') {
-        transition.ready
-          .then(() => {
-            try {
-              document.documentElement.animate(
-                {
-                  clipPath: [
-                    'ellipse(135% 0% at 50% -10%)',
-                    'ellipse(135% 150% at 50% -10%)'
-                  ]
-                },
-                {
-                  duration: 500,
-                  easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-                  pseudoElement: '::view-transition-new(root)'
-                }
-              );
-            } catch {
-              // CSS otiumThemeWaterfall fallback is active
-            }
-          })
-          .catch(() => {
-            document.documentElement.classList.remove('theme-transitioning');
-          });
-
-        transition.finished
-          ?.then(undefined, (err: unknown) => {
-            console.debug('[Theme] View transition finished listener:', err);
-          })
-          .finally(() => {
-            document.documentElement.classList.remove('theme-transitioning');
-          });
-      } else {
-        window.setTimeout(() => {
-          document.documentElement.classList.remove('theme-transitioning');
-        }, 500);
-      }
-      return;
-    } catch {
-      document.documentElement.classList.remove('theme-transitioning');
-    }
-  }
-
-  // Smooth fallback for browsers without View Transitions: scoped CSS color transition
+  const root = document.documentElement;
+  if (themePaintFrame !== undefined) window.cancelAnimationFrame(themePaintFrame);
+  root.classList.add('theme-transitioning');
   try {
-    document.documentElement.classList.add('theme-fallback-transition');
-    updateThemeCallback();
-    window.setTimeout(() => {
-      document.documentElement.classList.remove('theme-fallback-transition');
-    }, 400);
-  } catch {
-    updateThemeCallback();
+    updateTheme();
+  } finally {
+    // Keep transitions disabled through the first paint of the new palette.
+    themePaintFrame = window.requestAnimationFrame(() => {
+      themePaintFrame = window.requestAnimationFrame(() => {
+        root.classList.remove('theme-transitioning');
+        themePaintFrame = undefined;
+      });
+    });
   }
 }
-
-export const triggerThemeCurtain = (theme: ThemeMode, onMidpoint?: () => void) => {
-  triggerThemeTransition(theme, () => {
-    onMidpoint?.();
-  });
-};
 
 /**
  * Keeps the native chrome in step with the in-app theme:

@@ -114,7 +114,7 @@ function applyFilter(sourceCanvas: HTMLCanvasElement, filter: FilterType): HTMLC
   destCanvas.height = height;
 
   const ctx = destCanvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return destCanvas;
+  if (!ctx) return sourceCanvas;
 
   ctx.drawImage(sourceCanvas, 0, 0, width, height);
   if (filter === 'original') return destCanvas;

@@ -80,12 +80,17 @@ export async function transformFilteredRecord(
   warpedCanvas.width = warpedImg.naturalWidth;
   warpedCanvas.height = warpedImg.naturalHeight;
   const ctx = warpedCanvas.getContext('2d');
-  if (ctx) ctx.drawImage(warpedImg, 0, 0);
+  if (!ctx) throw new Error('Could not prepare the scan for filtering');
+  ctx.drawImage(warpedImg, 0, 0);
 
   const filteredCanvas = await applyFilterAsync(warpedCanvas, filter);
+  if (filter !== 'original' && filteredCanvas === warpedCanvas) {
+    throw new Error('Could not apply the requested scan filter');
+  }
   const newFilteredBlob = await new Promise<Blob>((resolve) =>
     filteredCanvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.88)
   );
+  if (!newFilteredBlob.size) throw new Error('Could not encode the filtered scan');
   const aspect = filteredCanvas.width / Math.max(1, filteredCanvas.height);
 
   return {

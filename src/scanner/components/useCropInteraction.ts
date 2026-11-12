@@ -19,7 +19,7 @@ export { triggerCropHaptic };
 interface UseCropInteractionOptions {
   imageSrc: string;
   initialQuad?: Quad;
-  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void;
+  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void | Promise<void>;
 }
 
 export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCropInteractionOptions) {
@@ -37,6 +37,7 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
   const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [imageRect, setImageRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  const [applyError, setApplyError] = useState(false);
   const [undoStack, setUndoStack] = useState<Quad[]>([]);
   const [redoStack, setRedoStack] = useState<Quad[]>([]);
 
@@ -246,10 +247,14 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
   const handleApply = async () => {
     if (!imageRef.current || !quad || isApplying) return;
     setIsApplying(true);
+    setApplyError(false);
     triggerCropHaptic(20);
     try {
       const warped = await warpPerspectiveAsync(imageRef.current, quad);
-      onConfirm(warped, quad);
+      await onConfirm(warped, quad);
+    } catch (error) {
+      console.warn('Could not apply and save the crop:', error);
+      setApplyError(true);
     } finally {
       setIsApplying(false);
     }
@@ -257,7 +262,7 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
 
   return {
     containerRef, imageRef, currentSrc, quad, activeCorner, activeEdge, pointerPos, imageSize,
-    isApplying, undoStack, redoStack, handleUndo, handleRedo, applyAspectRatio,
+    isApplying, applyError, undoStack, redoStack, handleUndo, handleRedo, applyAspectRatio,
     handleImageLoad, handleAutoDetect, handleSelectFullImage, handleResetQuad,
     imageToClientCoords, handleCornerPointerDown, handleEdgePointerDown, handlePointerMove, handlePointerUp,
     handleRotateCw: () => rotateImageAndQuad(true),

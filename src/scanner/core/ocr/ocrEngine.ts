@@ -19,7 +19,7 @@ export interface ExtractedPageTextResult {
  */
 export function resolveOcrAssetBase(
   baseURI: string = typeof document !== 'undefined' ? document.baseURI : '',
-  locationHref: string = typeof window !== 'undefined' ? window.location.href : ''
+  locationHref: string = typeof window !== 'undefined' ? window.location?.href ?? '' : ''
 ): string {
   const anchor = baseURI || locationHref;
   if (anchor) {
@@ -44,8 +44,12 @@ function workerOptions() {
 export function isOcrLanguageCached(lang: string = 'ara+eng'): boolean {
   // Arabic and English traineddata models are bundled locally with Otium
   if (lang === 'ara+eng' || lang === 'ara' || lang === 'eng') return true;
-  if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem(`${OCR_CACHE_KEY_PREFIX}${lang}`) === 'true';
+  try {
+    return localStorage.getItem(`${OCR_CACHE_KEY_PREFIX}${lang}`) === 'true';
+  } catch (error) {
+    console.debug('[OCR] Could not read the language cache hint:', error);
+    return false;
+  }
 }
 
 export async function preloadOcrLanguage(
@@ -53,53 +57,74 @@ export async function preloadOcrLanguage(
   onProgress?: (progress: number, status: string) => void
 ): Promise<boolean> {
   try {
-    const { createWorker } = await import('tesseract.js');
-    const worker = await createWorker(lang, 1, {
-      ...workerOptions(),
-      cacheMethod: 'write',
-      gzip: true,
-      logger: (m: { progress?: number; status?: string }) => {
-        if (typeof m.progress === 'number') {
-          onProgress?.(m.progress, m.status || '');
-        }
-      },
-    });
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(`${OCR_CACHE_KEY_PREFIX}${lang}`, 'true');
-    }
-    workers.set(lang, Promise.resolve(worker));
-    return true;
+    return await runOcrTask(lang, 15_000, async () => true, onProgress);
   } catch (err) {
     console.warn('Failed to preload OCR language pack:', err);
     return false;
   }
 }
 
-async function getWorker(lang: string = 'ara+eng') {
-  if (!workers.has(lang)) {
-    const promise = (async () => {
-      try {
-        // Configure local cache persistence so language weights are saved to IndexedDB
-        const { createWorker } = await import('tesseract.js');
-        const worker = await createWorker(lang, 1, {
-          ...workerOptions(),
-          cacheMethod: 'write',
-          gzip: true,
-          logger: () => {}, // silent
-        });
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(`${OCR_CACHE_KEY_PREFIX}${lang}`, 'true');
-        }
-        return worker;
-      } catch (err) {
-        workers.delete(lang);
-        throw err;
-      }
-    })();
-    workers.set(lang, promise);
+function getWorker(lang: string, onProgress?: (progress: number, status: string) => void): Promise<Worker> {
+  const existing = workers.get(lang);
+  if (existing) return existing;
+  let reportProgress = onProgress;
+
+  const worker = import('tesseract.js').then(({ createWorker }) => createWorker(lang, 1, {
+    ...workerOptions(),
+    cacheMethod: 'write',
+    gzip: true,
+    errorHandler: (error: unknown) => console.debug('[OCR] Worker reported an error:', error),
+    logger: ({ progress, status }) => {
+      if (typeof progress === 'number' && workers.get(lang) === worker) reportProgress?.(progress, status || '');
+    },
+  })).then((ready) => {
+    reportProgress = undefined;
+    try {
+      localStorage.setItem(`${OCR_CACHE_KEY_PREFIX}${lang}`, 'true');
+    } catch (error) {
+      console.debug('[OCR] Could not record the language cache hint:', error);
+    }
+    return ready;
+  });
+  workers.set(lang, worker);
+  return worker;
+}
+
+async function disposeWorker(pending: Promise<Worker>): Promise<void> {
+  try {
+    const worker = await pending;
+    await worker.terminate();
+  } catch (error) {
+    console.debug('[OCR] Worker cleanup skipped:', error);
   }
-  return workers.get(lang)!;
+}
+
+async function runOcrTask<T>(
+  lang: string,
+  timeoutMs: number,
+  run: (worker: Worker) => Promise<T>,
+  onProgress?: (progress: number, status: string) => void,
+): Promise<T> {
+  const worker = getWorker(lang, onProgress);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const task = worker.then((ready) => {
+      if (workers.get(lang) !== worker) throw new Error('OCR worker was replaced');
+      return run(ready);
+    });
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`OCR timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+    return await Promise.race([task, deadline]);
+  } catch (error) {
+    if (workers.get(lang) === worker) {
+      workers.delete(lang);
+      void disposeWorker(worker);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -111,79 +136,61 @@ export async function extractPageTextAndMetadata(
   timeoutMs: number = 8000
 ): Promise<ExtractedPageTextResult> {
   const isCached = isOcrLanguageCached(lang);
-  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
 
   if (!isOnline && !isCached && !workers.has(lang)) {
-    return { text: '', words: [] };
+    throw new Error('OCR language is unavailable offline');
   }
 
-  const effectiveTimeout =
-    typeof navigator !== 'undefined' && !navigator.onLine && !workers.has(lang)
-      ? 1500
-      : timeoutMs;
+  const effectiveTimeout = !isOnline && !workers.has(lang) ? Math.min(1500, timeoutMs) : timeoutMs;
 
-  const task = async (): Promise<ExtractedPageTextResult> => {
-    try {
-      const worker = await getWorker(lang);
-      const ret = await worker.recognize(canvas);
-      const pageData = ret.data as {
-        text?: string;
-        words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }>;
-        lines?: Array<{ words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> }>;
-      };
-      const fullText = typeof pageData.text === 'string' ? pageData.text.trim() : '';
+  return runOcrTask(lang, effectiveTimeout, async (worker) => {
+    const ret = await worker.recognize(canvas);
+    const pageData = ret.data as {
+      text?: string;
+      words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }>;
+      lines?: Array<{ words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> }>;
+    };
+    const fullText = typeof pageData.text === 'string' ? pageData.text.trim() : '';
 
-      const words: OcrWordToken[] = [];
-      const width = canvas.width;
-      const height = canvas.height;
-      const rawWords = pageData.words || pageData.lines?.flatMap((l) => l.words || []) || [];
+    const words: OcrWordToken[] = [];
+    const width = canvas.width;
+    const height = canvas.height;
+    const rawWords = pageData.words || pageData.lines?.flatMap((l) => l.words || []) || [];
 
-      for (const w of rawWords) {
-        if (!w || !w.text || typeof w.text !== 'string' || w.text.trim().length === 0) continue;
-        const bbox = w.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 };
-        words.push({
-          text: w.text.trim(),
-          x: bbox.x0 / width,
-          y: bbox.y0 / height,
-          width: Math.max(0.01, (bbox.x1 - bbox.x0) / width),
-          height: Math.max(0.01, (bbox.y1 - bbox.y0) / height),
-        });
-      }
+    for (const w of rawWords) {
+      if (!w || !w.text || typeof w.text !== 'string' || w.text.trim().length === 0) continue;
+      const bbox = w.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 };
+      words.push({
+        text: w.text.trim(),
+        x: bbox.x0 / width,
+        y: bbox.y0 / height,
+        width: Math.max(0.01, (bbox.x1 - bbox.x0) / width),
+        height: Math.max(0.01, (bbox.y1 - bbox.y0) / height),
+      });
+    }
 
-      // Smart title extraction from recognized lines:
-      let suggestedTitle: string | undefined = undefined;
-      const lines: string[] = fullText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length >= 3);
-      if (lines.length > 0) {
-        const keywordLine = lines.find((l: string) =>
-          /(فاتورة|تقرير|عقد|شهادة|وصل|كشف|طلب|بيان|وثيقة|invoice|receipt|report|contract|statement)/i.test(l)
-        );
-        const targetLine = keywordLine || lines[0];
-        if (targetLine) {
-          const cleaned = targetLine
-            .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
-            .replace(/\s+/g, '_')
-            .slice(0, 32);
-          if (cleaned.length >= 3) {
-            suggestedTitle = cleaned;
-          }
+    // Smart title extraction from recognized lines:
+    let suggestedTitle: string | undefined = undefined;
+    const lines: string[] = fullText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length >= 3);
+    if (lines.length > 0) {
+      const keywordLine = lines.find((l: string) =>
+        /(فاتورة|تقرير|عقد|شهادة|وصل|كشف|طلب|بيان|وثيقة|invoice|receipt|report|contract|statement)/i.test(l)
+      );
+      const targetLine = keywordLine || lines[0];
+      if (targetLine) {
+        const cleaned = targetLine
+          .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
+          .replace(/\s+/g, '_')
+          .slice(0, 32);
+        if (cleaned.length >= 3) {
+          suggestedTitle = cleaned;
         }
       }
-
-      return { text: fullText, words, suggestedTitle };
-    } catch (err) {
-      console.warn('OCR text extraction failed:', err);
-      return { text: '', words: [] };
     }
-  };
 
-  const timeoutPromise = new Promise<ExtractedPageTextResult>((resolve) =>
-    setTimeout(() => {
-      console.warn(`OCR timed out after ${effectiveTimeout}ms; proceeding.`);
-      resolve({ text: '', words: [] });
-    }, effectiveTimeout)
-  );
-
-  return Promise.race([task(), timeoutPromise]);
+    return { text: fullText, words, suggestedTitle };
+  });
 }
 
 /**
@@ -195,18 +202,16 @@ export async function performOcr(
   lang: string = 'ara+eng',
   timeoutMs: number = 7000
 ): Promise<OcrWordToken[]> {
-  const result = await extractPageTextAndMetadata(canvas, lang, timeoutMs);
-  return result.words;
+  try {
+    return (await extractPageTextAndMetadata(canvas, lang, timeoutMs)).words;
+  } catch (error) {
+    console.warn('OCR unavailable; exporting the scanned image:', error);
+    return [];
+  }
 }
 
-export async function terminateOcrWorker() {
-  for (const [, promise] of workers.entries()) {
-    try {
-      const worker = await promise;
-      await worker.terminate();
-    } catch (err) {
-      console.warn('[OCR] Worker terminate failed:', err);
-    }
-  }
+export async function terminateOcrWorker(): Promise<void> {
+  const pending = [...workers.values()];
   workers.clear();
+  await Promise.all(pending.map(disposeWorker));
 }

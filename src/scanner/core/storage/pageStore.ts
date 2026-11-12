@@ -81,9 +81,10 @@ function writePageRecord(db: IDBDatabase, record: StoredPageRecord): Promise<voi
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.put(record);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('Saving the scan was interrupted'));
   });
 }
 
@@ -121,6 +122,9 @@ export async function storePageToDisk(
       filteredCanvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.88)
     ),
   ]);
+  if (!originalBlob.size || !warpedBlob.size || !filteredBlob.size) {
+    throw new Error('Could not encode the scanned page');
+  }
 
   const aspect = filteredCanvas.width / Math.max(1, filteredCanvas.height);
   const thumbnailDataUrl = generateThumbnailDataUrl(filteredCanvas, aspect, 0.65);
@@ -135,14 +139,9 @@ export async function storePageToDisk(
     timestamp: Date.now(),
   };
 
-  try {
-    const db = await getDB();
-    await writePageRecord(db, record);
-    return thumbnailDataUrl;
-  } catch (e) {
-    console.warn('storePageToDisk failed, falling back to memory thumbnail:', e);
-    return thumbnailDataUrl;
-  }
+  const db = await getDB();
+  await writePageRecord(db, record);
+  return thumbnailDataUrl;
 }
 
 export async function loadOriginalDataUrlFromDisk(id: string): Promise<string> {

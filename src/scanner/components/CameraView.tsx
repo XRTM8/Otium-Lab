@@ -190,7 +190,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
         const nextMode = facingMode === 'environment' ? 'user' : 'environment';
         setFacingMode(nextMode);
         setTorchOn(false);
-        initCamera(nextMode);
       }}
       onOpenSettingsClick={() => {
         triggerHaptic(15);

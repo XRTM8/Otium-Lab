@@ -98,4 +98,26 @@ describe('document filters engine', () => {
     const ctx = destCanvas.getContext('2d') as unknown as { putImageData: ReturnType<typeof vi.fn> };
     expect(ctx.putImageData).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the source canvas when no drawing context is available', async () => {
+    vi.stubGlobal('document', { createElement: () => ({ getContext: () => null }) });
+    const source = makeStubCanvas(8, 8);
+    expect(await applyFilterAsync(source, 'magic')).toBe(source);
+    expect(filterMocks.runWasmFilter).not.toHaveBeenCalled();
+  });
+
+  it('uses the JS filter after a WASM failure and can use the worker on retry', async () => {
+    const destCanvas = makeStubCanvas(8, 8);
+    vi.stubGlobal('document', { createElement: () => destCanvas });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    filterMocks.runWasmFilter.mockRejectedValueOnce(new Error('WASM crashed'));
+    const source = makeStubCanvas(8, 8);
+    expect(await applyFilterAsync(source, 'magic')).toBe(destCanvas);
+    const context = destCanvas.getContext('2d');
+    expect(context?.putImageData).toHaveBeenCalledOnce();
+    filterMocks.runWasmFilter.mockResolvedValueOnce(new Uint8ClampedArray(8 * 8 * 4).fill(110));
+    expect(await applyFilterAsync(source, 'magic')).toBe(destCanvas);
+    expect(context?.createImageData).toHaveBeenCalledWith(8, 8);
+    expect(context?.putImageData).toHaveBeenCalledTimes(2);
+  });
 });

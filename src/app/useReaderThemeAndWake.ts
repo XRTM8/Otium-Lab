@@ -25,7 +25,7 @@ import {
   saveThemeSchedule,
   type ThemeScheduleMode,
 } from '../core/settings/preferences';
-import { applyDomTheme, syncNativeTheme, triggerThemeCurtain } from '../platform/theme';
+import { applyDomTheme, applyThemeWithoutTransition, syncNativeTheme } from '../platform/theme';
 import { flushSync } from 'react-dom';
 import { THEME_ORDER } from './readerControllerHelpers';
 
@@ -111,11 +111,11 @@ export function useReaderThemeAndWake({ doc, docIdRef }: UseReaderThemeAndWakeOp
       saveDocumentTheme(docIdRef.current, nextTheme);
     }
 
-    triggerThemeCurtain(nextTheme, () => {
+    applyThemeWithoutTransition(() => {
+      applyDomTheme(nextTheme);
       flushSync(() => {
         setTheme(nextTheme);
       });
-      applyDomTheme(nextTheme);
     });
   }, [docIdRef]);
 

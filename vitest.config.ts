@@ -13,7 +13,7 @@ export default defineConfig({
       include: ['src/{core,scanner,board,platform,app}/**/*.{ts,tsx}'],
       reporter: ['text-summary', 'html', 'json'],
       // Prevent regressions across the five modules while expanding coverage toward 85%.
-      thresholds: { lines: 53, branches: 42 },
+      thresholds: { lines: 55, branches: 43 },
     },
   }
 });

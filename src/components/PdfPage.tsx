@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { AlertTriangle, RefreshCw, StickyNote, Trash2, X } from 'lucide-react';
 import type { ThemeMode, TextAnnotation } from '../core/types';
@@ -59,6 +59,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
     renderError,
     dimensions,
     pageSize,
+    pageTheme,
     isDark,
     cssThemeFilter,
     retryRender,
@@ -81,7 +82,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
   // Highlights are painted once into one canvas per page. The previous DOM
   // implementation created a blended, animated layer for every line box,
   // which became both visually muddy and expensive on long highlighted pages.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = annotationCanvasRef.current;
     if (!canvas) return;
 
@@ -144,7 +145,7 @@ const PdfPageView: React.FC<PdfPageProps> = ({
       style={{
         width: `${dimensions.width}px`,
         height: `${dimensions.height}px`,
-        backgroundColor: PAGE_BACKGROUND[theme]
+        backgroundColor: PAGE_BACKGROUND[pageTheme]
       }}
     >
       {(isVisible || hasRenderedOnce) && (

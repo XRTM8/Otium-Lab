@@ -1,67 +1,9 @@
-/* ==========================================================================
-   Otium Sovereign Theme Waterfall (View Transitions API)
-   Organic curved liquid cascade with tactile depth & compositor shadows.
-   Zero content occlusion, zero blank cheap block, 60/120 FPS compositor.
-   ========================================================================== */
+/* Paint the complete reader palette together when changing themes. */
 html.theme-transitioning,
 html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
   transition: none !important;
-}
-
-::view-transition-image-pair(root) {
-  isolation: isolate;
-}
-
-::view-transition-old(root),
-::view-transition-new(root) {
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(root) {
-  animation: 500ms cubic-bezier(0.16, 1, 0.3, 1) both otiumThemeOldRecede;
-  z-index: 1;
-}
-
-::view-transition-new(root) {
-  z-index: 2;
-}
-
-@keyframes otiumThemeWaterfall {
-  0% {
-    clip-path: ellipse(135% 0% at 50% -10%);
-  }
-  100% {
-    clip-path: ellipse(135% 150% at 50% -10%);
-  }
-}
-
-@keyframes otiumThemeOldRecede {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(0.995);
-    opacity: 0.92;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-  }
-}
-
-/* Scoped fallback transitions when View Transitions is not supported */
-html.theme-fallback-transition,
-html.theme-fallback-transition body,
-html.theme-fallback-transition #root {
-  transition: background-color 350ms cubic-bezier(0.16, 1, 0.3, 1),
-              color 350ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-panel {

@@ -25,7 +25,7 @@ export function warpPerspective(
   canvas.width = Math.max(outW, 100);
   canvas.height = Math.max(outH, 100);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return canvas;
+  if (!ctx) throw new Error('Could not prepare the cropped image');
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);

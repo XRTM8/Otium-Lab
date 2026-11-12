@@ -3,6 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScannedPage } from '../core/types';
+import { extractPageTextAndMetadata } from '../core/ocr/ocrEngine';
+import { loadPageCanvasFromDisk } from '../core/storage/pageStore';
 import { EnhanceView } from './EnhanceView';
 
 vi.mock('../core/storage/pageStore', () => ({
@@ -14,6 +16,7 @@ vi.mock('../core/barcode', () => ({
 }));
 
 vi.mock('../core/ocr/ocrEngine', () => ({
+  extractPageTextAndMetadata: vi.fn(),
   terminateOcrWorker: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -124,5 +127,34 @@ describe('EnhanceView', () => {
     if (!confirmReset) throw new Error('Missing confirm reset button');
     await act(async () => confirmReset.click());
     expect(props.onResetAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the scan visible and allows another OCR attempt after recognition fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const canvas = document.createElement('canvas');
+    const preview = 'data:image/jpeg;base64,AAAA';
+    vi.spyOn(canvas, 'toDataURL').mockReturnValue(preview);
+    const loadPage = vi.mocked(loadPageCanvasFromDisk).mockResolvedValue(canvas);
+    const recognition = Promise.withResolvers<Awaited<ReturnType<typeof extractPageTextAndMetadata>>>();
+    vi.mocked(extractPageTextAndMetadata)
+      .mockReturnValueOnce(recognition.promise)
+      .mockResolvedValueOnce({ text: 'Recovered text', words: [] });
+    try {
+      await act(async () => root.render(<EnhanceView {...makeEnhanceProps(samplePages.slice(0, 1))} />));
+      const ocr = host.querySelector<HTMLButtonElement>('button[title*="(OCR)"]');
+      if (!ocr) throw new Error('Missing OCR button');
+      await act(async () => ocr.click());
+      expect(ocr.disabled).toBe(true);
+      await act(async () => { recognition.reject(new Error('Worker failed')); });
+      expect(ocr.disabled).toBe(false);
+      expect(host.textContent).toContain('تعذّر استخراج النص');
+      expect(host.querySelector('img')?.getAttribute('src')).toBe(preview);
+      await act(async () => ocr.click());
+      expect(host.textContent).toContain('Recovered text');
+      expect(ocr.disabled).toBe(false);
+      expect(extractPageTextAndMetadata).toHaveBeenCalledTimes(2);
+    } finally {
+      loadPage.mockReset();
+    }
   });
 });

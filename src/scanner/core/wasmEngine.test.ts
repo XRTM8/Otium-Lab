@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   resolveWasmAssetUrl,
   runWasmDewarpSpine,
   runWasmFilter,
   runWasmMotionAndSharpness,
   runWasmWarpPerspective,
+  terminateScannerWorker,
 } from './wasmEngine';
+
+afterEach(() => {
+  terminateScannerWorker();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe('Rust scanner WASM engine helpers', () => {
   it('resolves subpath-safe WASM URLs for GitHub Pages and local origins', () => {
@@ -35,5 +42,35 @@ describe('Rust scanner WASM engine helpers', () => {
     ).toBeNull();
     expect(await runWasmDewarpSpine(rgba, 16, 16, 0.5, 0.5)).toBeNull();
     expect(await runWasmMotionAndSharpness(rgba, 16, 16)).toBeNull();
+  });
+
+  it('falls back after a worker crash and creates a new worker for a later scan', async () => {
+    const workers: TestWorker[] = [];
+    class TestWorker {
+      onerror?: () => void;
+      onmessage?: (event: { data: { id: number; ok: boolean; buffer: ArrayBuffer } }) => void;
+      terminate = vi.fn();
+      postMessage = vi.fn<(request: { id: number }) => void>();
+      constructor() { workers.push(this); }
+    }
+    vi.stubGlobal('Worker', TestWorker);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const first = runWasmFilter(new Uint8ClampedArray(16), 2, 2, 'magic');
+    const crashed = workers[0];
+    if (!crashed) throw new Error('Worker did not start');
+    crashed.onerror?.();
+    expect(await first).toBeNull();
+    expect(crashed.terminate).toHaveBeenCalledOnce();
+    expect(await runWasmFilter(new Uint8ClampedArray(16), 2, 2, 'magic')).toBeNull();
+    expect(workers).toHaveLength(1);
+
+    vi.setSystemTime(Date.now() + 1000);
+    const retry = runWasmFilter(new Uint8ClampedArray(16), 2, 2, 'magic');
+    const replacement = workers[1];
+    const request = replacement?.postMessage.mock.calls[0]?.[0];
+    if (!replacement || !request) throw new Error('Replacement did not receive the scan');
+    const pixels = new Uint8ClampedArray(16).fill(200);
+    replacement.onmessage?.({ data: { id: request.id, ok: true, buffer: pixels.buffer } });
+    expect(await retry).toEqual(pixels);
   });
 });

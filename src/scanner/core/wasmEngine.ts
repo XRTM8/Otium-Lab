@@ -12,6 +12,7 @@ const FILTER_IDS: Record<Exclude<FilterType, 'original'>, number> = {
 
 const WORKER_TIMEOUT_MS = 12000;
 const CV_TIMEOUT_MS = 1500;
+const WORKER_RETRY_DELAY_MS = 1000;
 
 interface PendingJob {
   resolve: (response: ScannerWorkerResponse | null) => void;
@@ -19,7 +20,7 @@ interface PendingJob {
 }
 
 let scannerWorker: Worker | null = null;
-let workerDisabled = false;
+let retryWorkerAt = 0;
 let nextRequestId = 1;
 const pendingJobs = new Map<number, PendingJob>();
 
@@ -30,7 +31,7 @@ const pendingJobs = new Map<number, PendingJob>();
  */
 export function resolveWasmAssetUrl(
   baseURI: string = typeof document !== 'undefined' ? document.baseURI : '',
-  locationHref: string = typeof window !== 'undefined' ? window.location.href : ''
+  locationHref: string = typeof window !== 'undefined' ? window.location?.href ?? '' : ''
 ): string {
   const anchor = baseURI || locationHref;
   if (anchor) {
@@ -53,7 +54,7 @@ function rejectAllPending(): void {
 
 function ensureWorker(): Worker | null {
   if (
-    workerDisabled ||
+    Date.now() < retryWorkerAt ||
     typeof window === 'undefined' ||
     typeof Worker === 'undefined' ||
     typeof WebAssembly === 'undefined'
@@ -74,25 +75,24 @@ function ensureWorker(): Worker | null {
       window.clearTimeout(pending.timer);
       pending.resolve(payload);
     };
-    worker.onerror = () => {
-      workerDisabled = true;
-      scannerWorker = null;
-      rejectAllPending();
-      try {
-        worker.terminate();
-      } catch {
-        // Ignore terminate errors.
-      }
+    const recover = () => {
+      if (scannerWorker !== worker) return;
+      terminateScannerWorker();
+      retryWorkerAt = Date.now() + WORKER_RETRY_DELAY_MS;
     };
+    worker.onerror = recover;
+    worker.onmessageerror = recover;
     scannerWorker = worker;
     return worker;
-  } catch {
-    workerDisabled = true;
+  } catch (error) {
+    console.debug('[Scanner] WASM worker start failed:', error);
+    retryWorkerAt = Date.now() + WORKER_RETRY_DELAY_MS;
     return null;
   }
 }
 
 export function terminateScannerWorker(): void {
+  retryWorkerAt = 0;
   if (scannerWorker) {
     try {
       scannerWorker.terminate();
@@ -133,6 +133,7 @@ function postWorkerRequest(
     const timer = window.setTimeout(() => {
       pendingJobs.delete(id);
       resolve(null);
+      if (timeoutMs === WORKER_TIMEOUT_MS && scannerWorker === worker) terminateScannerWorker();
     }, timeoutMs);
 
     pendingJobs.set(id, { resolve, timer });

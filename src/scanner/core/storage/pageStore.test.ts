@@ -1,14 +1,20 @@
 import { localStorage } from '../../../lab/storage';
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearActiveSessionPages,
   clearScanSession,
   duplicateStoredPage,
   getActiveSessionPages,
   saveActiveSessionPages,
+  storePageToDisk,
 } from './pageStore';
 import type { ScannedPage } from '../types';
+
+vi.mock(import('./pageImageOps'), async (load) => ({
+  ...await load(),
+  generateThumbnailDataUrl: () => 'data:image/jpeg;base64,YQ==',
+}));
 
 describe('pageStore persistence and sessions', () => {
   beforeEach(async () => {
@@ -59,5 +65,31 @@ describe('pageStore persistence and sessions', () => {
 
   it('safely handles duplication of nonexistent page without crash', async () => {
     await expect(duplicateStoredPage('ghost_id', 'new_ghost_id')).resolves.toBeUndefined();
+  });
+
+  it('reports an aborted scan write and allows the same image to be saved on retry', async () => {
+    const canvas = {
+      width: 10,
+      height: 10,
+      toBlob: (callback: BlobCallback) => callback(new Blob(['image'], { type: 'image/jpeg' })),
+    } as Partial<HTMLCanvasElement> as HTMLCanvasElement;
+    const source = 'data:image/jpeg;base64,YQ==';
+    const put = IDBObjectStore.prototype.put;
+    const abort = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementationOnce(function (this: IDBObjectStore, value, key) {
+      const request = put.call(this, value, key);
+      request.addEventListener('success', () => this.transaction.abort());
+      return request;
+    });
+    await expect(storePageToDisk('retry', source, canvas, canvas, 'magic')).rejects.toThrow('Saving the scan was interrupted');
+    abort.mockRestore();
+    await expect(storePageToDisk('retry', source, canvas, canvas, 'magic')).resolves.toBe(source);
+  });
+
+  it('does not record a thumbnail when encoding the full scan fails', async () => {
+    const canvas = { width: 10, height: 10, toBlob: (callback: BlobCallback) => callback(null) } as Partial<HTMLCanvasElement> as HTMLCanvasElement;
+    const put = vi.spyOn(IDBObjectStore.prototype, 'put');
+    await expect(storePageToDisk('broken', 'data:image/jpeg;base64,YQ==', canvas, canvas, 'magic'))
+      .rejects.toThrow('Could not encode the scanned page');
+    expect(put).not.toHaveBeenCalled();
   });
 });

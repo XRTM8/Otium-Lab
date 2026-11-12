@@ -7,7 +7,7 @@ import { useCropInteraction, type CornerKey, type EdgeKey } from './useCropInter
 interface CropViewProps {
   imageSrc: string;
   initialQuad?: Quad;
-  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void;
+  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -22,6 +22,7 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
     pointerPos,
     imageSize,
     isApplying,
+    applyError,
     undoStack,
     redoStack,
     handleUndo,
@@ -327,6 +328,11 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
 
       {/* Bottom Confirm Bar */}
       <div className="relative z-30 flex items-center justify-between px-5 pt-3 pb-8 glass-panel border-t-0">
+        {applyError && (
+          <p role="alert" className="absolute inset-x-0 bottom-full bg-[#201317] px-4 py-2 text-center text-xs text-rose-200">
+            تعذّر تجهيز الصفحة أو حفظها. الصورة ما زالت متاحة، أعد المحاولة.
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <button
             onClick={handleSelectFullImage}
@@ -354,7 +360,7 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
           }`}
         >
           <Check className="w-5 h-5 stroke-[3]" />
-          <span>{isValidQuad ? 'تطبيق القص' : 'زوايا متقاطعة'}</span>
+          <span>{isApplying ? 'جارٍ حفظ الصفحة…' : isValidQuad ? 'تطبيق القص' : 'زوايا متقاطعة'}</span>
         </button>
       </div>
     </div>

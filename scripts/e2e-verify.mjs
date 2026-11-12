@@ -574,6 +574,61 @@ async function auditLocalBuild() {
     res.pdfZoom = { beforeZoom, afterZoom, grew: !!(beforeZoom && afterZoom && afterZoom.width > beforeZoom.width) };
     if (!res.pdfZoom.grew) allPassed = false;
 
+    await waitForBrowser(cdp, `!!document.querySelector('[data-pdf-page="1"] canvas[data-viewport-width]')`, 'PDF page raster');
+    res.pdfThemeSwitch = await cdp.evalJs(`(async () => {
+      const slot = document.querySelector('[data-pdf-page="1"]');
+      const canvas = slot?.querySelector('canvas[data-viewport-width]');
+      const context = canvas?.getContext('2d');
+      if (!context || document.documentElement.dataset.theme !== 'paper') return null;
+      const sample = () => {
+        const pixel = context.getImageData(4, 4, 1, 1).data;
+        return Math.max(pixel[0], pixel[1], pixel[2]);
+      };
+      const results = [];
+      for (const [theme, color, dark] of [
+        ['amber', 'rgb(24, 19, 14)', true],
+        ['amoled', 'rgb(0, 0, 0)', true],
+        ['eink', 'rgb(234, 234, 234)', false],
+      ]) {
+        let synchronized = true;
+        let ready = false;
+        document.activeElement?.blur?.();
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 't', bubbles: true }));
+        for (let frame = 0; frame < 120; frame++) {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          const background = sample();
+          const slotColor = getComputedStyle(slot).backgroundColor;
+          const palette = slotColor.match(/\\d+/g).slice(0, 3).map(Number);
+          const darkPalette = Math.max(...palette) < 100;
+          synchronized &&= (background < 100) === darkPalette;
+          const blend = slot.querySelector('canvas[style*="mix-blend-mode"]')?.style.mixBlendMode;
+          synchronized &&= blend === (darkPalette ? 'screen' : 'multiply');
+          if (document.documentElement.dataset.theme === theme &&
+              slotColor === color && (dark ? background < 50 : background >= 220 && background < 250)) {
+            ready = true;
+            break;
+          }
+        }
+        const width = Math.ceil(canvas.width * .24);
+        const height = Math.ceil(canvas.height * .05);
+        const ink = context.getImageData(Math.floor(canvas.width * .116), Math.floor(canvas.height * .09), width, height).data;
+        let lightestInk = 0;
+        let darkestInk = 255;
+        for (let i = 0; i < ink.length; i += 4) {
+          const peak = Math.max(ink[i], ink[i + 1], ink[i + 2]);
+          lightestInk = Math.max(lightestInk, peak);
+          darkestInk = Math.min(darkestInk, peak);
+        }
+        results.push({ theme, ready, synchronized, background: sample(), lightestInk, darkestInk });
+      }
+      return results;
+    })()`);
+    if (res.pdfThemeSwitch?.length !== 3 ||
+        res.pdfThemeSwitch.some(({ theme, ready, synchronized, lightestInk, darkestInk }) =>
+          !ready || !synchronized || (theme === 'eink' ? darkestInk > 75 : lightestInk < 150 || lightestInk > 230))) {
+      allPassed = false;
+    }
+
     await cdp.evalJs(`(() => {
       const boardBtn = Array.from(document.querySelectorAll('button')).find(b => /السبورة|Smartboard/i.test((b.getAttribute('aria-label')||'') + ' ' + (b.getAttribute('title')||'')));
       boardBtn?.click();

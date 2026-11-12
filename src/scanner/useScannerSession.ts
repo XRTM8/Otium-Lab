@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Quad, ScannedPage, ScanStep } from './core/types';
 import { applyFilterAsync } from './core/filters';
 import { registerBackHandler } from '../core/navigation/backHandler';
@@ -16,6 +16,14 @@ import {
 import { getFullFrameQuad } from './core/edgeDetection';
 import { warpPerspectiveAsync } from './core/geometry';
 import { terminateScannerWorker } from './core/wasmEngine';
+
+async function saveScannedPage(imageSrc: string, warpedCanvas: HTMLCanvasElement, quad: Quad): Promise<ScannedPage> {
+  const id = `page_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const filteredCanvas = await applyFilterAsync(warpedCanvas, 'magic');
+  const filter = filteredCanvas === warpedCanvas ? 'original' : 'magic';
+  const thumbnailDataUrl = await storePageToDisk(id, imageSrc, warpedCanvas, filteredCanvas, filter);
+  return { id, thumbnailDataUrl, quad, filter, timestamp: Date.now() };
+}
 
 export function useScannerSession(onClose: () => void) {
   const [{ initialStep, initialPages }] = useState(() => {
@@ -35,6 +43,7 @@ export function useScannerSession(onClose: () => void) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [isOpeningInReader, setIsOpeningInReader] = useState(false);
+  const latestCaptureRef = useRef(0);
 
   useEffect(() => () => { terminateScannerWorker(); }, []);
 
@@ -44,6 +53,7 @@ export function useScannerSession(onClose: () => void) {
   }, [pages]);
 
   const handleCapture = (imageSrc: string, isBatchMode: boolean, detectedQuad?: Quad) => {
+    const capture = ++latestCaptureRef.current;
     setCurrentRawImage(imageSrc);
     if (!isBatchMode || retakeTargetIndex !== null) {
       setCurrentInitialQuad(detectedQuad ?? null);
@@ -56,44 +66,43 @@ export function useScannerSession(onClose: () => void) {
       try {
         const quad = detectedQuad ?? getFullFrameQuad(img.naturalWidth, img.naturalHeight, 0.005);
         const warpedCanvas = await warpPerspectiveAsync(img, quad);
-        const filteredCanvas = await applyFilterAsync(warpedCanvas, 'magic');
-        const pageId = `page_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        const thumbnailDataUrl = await storePageToDisk(pageId, imageSrc, warpedCanvas, filteredCanvas, 'magic');
-        const newPage: ScannedPage = { id: pageId, thumbnailDataUrl, quad, filter: 'magic', timestamp: Date.now() };
+        const newPage = await saveScannedPage(imageSrc, warpedCanvas, quad);
         setPages((prev) => [...prev, newPage]);
       } catch (err) {
         console.warn('Batch page capture error:', err);
+        if (capture === latestCaptureRef.current) {
+          setCurrentInitialQuad(detectedQuad ?? null);
+          setStep('crop');
+        }
       }
     };
     img.src = imageSrc;
   };
 
   const handleCropConfirm = async (warpedCanvas: HTMLCanvasElement, quad: Quad) => {
-    try {
-      const pageId = `page_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const filteredCanvas = await applyFilterAsync(warpedCanvas, 'magic');
-      const thumbnailDataUrl = await storePageToDisk(pageId, currentRawImage, warpedCanvas, filteredCanvas, 'magic');
-      const newPage: ScannedPage = { id: pageId, thumbnailDataUrl, quad, filter: 'magic', timestamp: Date.now() };
-      if (retakeTargetIndex !== null) {
-        setPages((prev) => {
-          const updated = [...prev];
-          if (retakeTargetIndex >= 0 && retakeTargetIndex < updated.length) updated[retakeTargetIndex] = newPage;
-          return updated;
-        });
-        setRetakeTargetIndex(null);
-      } else {
-        setPages((prev) => [...prev, newPage]);
-      }
-    } catch (err) {
-      console.warn('Crop confirm error:', err);
-    } finally {
-      setCurrentRawImage('');
-      setCurrentInitialQuad(null);
-      setStep('review');
+    const capture = latestCaptureRef.current;
+    const newPage = await saveScannedPage(currentRawImage, warpedCanvas, quad);
+    if (capture !== latestCaptureRef.current) {
+      void deleteStoredPage(newPage.id).catch(console.warn);
+      return;
     }
+    if (retakeTargetIndex !== null) {
+      setPages((prev) => {
+        const updated = [...prev];
+        if (retakeTargetIndex >= 0 && retakeTargetIndex < updated.length) updated[retakeTargetIndex] = newPage;
+        return updated;
+      });
+      setRetakeTargetIndex(null);
+    } else {
+      setPages((prev) => [...prev, newPage]);
+    }
+    setCurrentRawImage('');
+    setCurrentInitialQuad(null);
+    setStep('review');
   };
 
   const handleCropCancel = useCallback(() => {
+    latestCaptureRef.current++;
     setCurrentRawImage('');
     setCurrentInitialQuad(null);
     setRetakeTargetIndex(null);
@@ -103,6 +112,7 @@ export function useScannerSession(onClose: () => void) {
   const handleEditCrop = async (index: number) => {
     const page = pages[index];
     if (!page) return;
+    latestCaptureRef.current++;
     try {
       const originalDataUrl = await loadOriginalDataUrlFromDisk(page.id);
       setCurrentRawImage(originalDataUrl);
@@ -175,6 +185,7 @@ export function useScannerSession(onClose: () => void) {
   };
 
   const handleResetAll = () => {
+    latestCaptureRef.current++;
     clearScanSession();
     clearActiveSessionPages();
     setPages([]);

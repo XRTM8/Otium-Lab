@@ -50,7 +50,7 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevFrameLumRef = useRef<Uint8Array | null>(null);
   const stabilityStepRef = useRef<number>(0);
-  const analysisBusyRef = useRef<boolean>(false);
+  const cameraRequestRef = useRef(0);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -66,12 +66,21 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
   const effectiveLiveDocPresent = Boolean(hasPermission && stream && !capturing && liveDocPresent);
   const effectiveStabilityProgress = hasPermission && stream && !capturing ? stabilityProgress : 0;
 
-  const initCamera = useCallback(async (targetFacingMode?: 'environment' | 'user') => {
-    const activeFacing = targetFacingMode || facingMode;
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
+  const stopCamera = useCallback(() => {
+    cameraRequestRef.current++;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }, []);
+
+  const initCamera = useCallback(async () => {
+    stopCamera();
+    const request = cameraRequestRef.current;
+    setStream(null);
+    setHasPermission(null);
+    setLiveDocPresent(false);
+    setStabilityProgress(0);
+    stabilityStepRef.current = 0;
+    prevFrameLumRef.current = null;
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       console.warn('Camera API (navigator.mediaDevices.getUserMedia) is not available');
       setHasPermission(false);
@@ -79,8 +88,8 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
     }
 
     const constraintList: MediaStreamConstraints[] = [
-      { video: { facingMode: { ideal: activeFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
-      { video: { facingMode: activeFacing }, audio: false },
+      { video: { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+      { video: { facingMode }, audio: false },
       { video: true, audio: false },
     ];
 
@@ -90,23 +99,28 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
         acquiredStream = await navigator.mediaDevices.getUserMedia(constraints);
         if (acquiredStream) break;
       } catch (err) {
+        if (request !== cameraRequestRef.current) return;
+        if (err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+          setHasPermission(false);
+          return;
+        }
         console.warn('Camera constraint tier failed, trying next:', err);
       }
     }
 
+    if (request !== cameraRequestRef.current) {
+      acquiredStream?.getTracks().forEach((track) => track.stop());
+      return;
+    }
     if (acquiredStream) {
       streamRef.current = acquiredStream;
       setStream(acquiredStream);
       setHasPermission(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = acquiredStream;
-        videoRef.current.play().catch(console.warn);
-      }
     } else {
       console.warn('All camera constraints failed');
       setHasPermission(false);
     }
-  }, [facingMode]);
+  }, [facingMode, stopCamera]);
 
   useEffect(() => {
     let mounted = true;
@@ -114,8 +128,7 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setTorchOn(false);
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
+        stopCamera();
         setStream(null);
       } else {
         void initCamera();
@@ -125,10 +138,9 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
     return () => {
       mounted = false;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+      stopCamera();
     };
-  }, [initCamera, setTorchOn]);
+  }, [initCamera, setTorchOn, stopCamera]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -274,12 +286,13 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
     if (!hasPermission || !stream) return;
     let cancelled = false;
     let resetWasmPrev = true;
+    let analysisBusy = false;
 
     const intervalId = window.setInterval(async () => {
-      if (analysisBusyRef.current || cancelled) return;
+      if (analysisBusy || cancelled) return;
       const video = videoRef.current;
       if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0 || capturing) return;
-      analysisBusyRef.current = true;
+      analysisBusy = true;
       try {
         if (!scratchCanvasRef.current) {
           scratchCanvasRef.current = document.createElement('canvas');
@@ -304,14 +317,19 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
           stabilityStepRef.current = 0;
           setStabilityProgress(0);
         }
+      } catch (error) {
+        if (cancelled) return;
+        console.warn('Camera frame analysis failed:', error);
+        stabilityStepRef.current = 0;
+        setLiveDocPresent(false);
+        setStabilityProgress(0);
       } finally {
-        analysisBusyRef.current = false;
+        analysisBusy = false;
       }
     }, 220);
 
     return () => {
       cancelled = true;
-      analysisBusyRef.current = false;
       window.clearInterval(intervalId);
     };
   }, [capturing, hasPermission, stream]);

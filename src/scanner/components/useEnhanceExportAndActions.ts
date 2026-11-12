@@ -114,14 +114,16 @@ export function useEnhanceExportAndActions(options: UseEnhanceExportActionsOptio
   const handleFilterSelect = async (newFilter: FilterType) => {
     if (!currentPage) return;
     triggerHaptic(10);
-    setActiveFilter(newFilter);
+    setToastMsg('');
     try {
       await updateStoredPageFilter(currentPage.id, newFilter);
+      setActiveFilter(newFilter);
       const canvas = await loadPageCanvasFromDisk(currentPage.id);
       const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
       setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
     } catch (e) {
       console.warn('Filter update failed:', e);
+      setToastMsg('تعذّر تطبيق الفلتر. أعد المحاولة.');
     }
   };
 
@@ -129,13 +131,18 @@ export function useEnhanceExportAndActions(options: UseEnhanceExportActionsOptio
     if (!currentPage) return;
     triggerHaptic(15);
     setToastMsg(`Applying ${activeFilter} to all pages...`);
-    for (const p of pages) {
-      await updateStoredPageFilter(p.id, activeFilter);
+    try {
+      for (const p of pages) {
+        await updateStoredPageFilter(p.id, activeFilter);
+      }
+      const canvas = await loadPageCanvasFromDisk(currentPage.id);
+      const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
+      setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
+      setToastMsg(`Applied ${activeFilter} to all pages`);
+    } catch (error) {
+      console.warn('Could not apply the filter to all pages:', error);
+      setToastMsg('تعذّر تطبيق الفلتر على كل الصفحات. يمكنك إعادة المحاولة.');
     }
-    const canvas = await loadPageCanvasFromDisk(currentPage.id);
-    const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
-    setFullResPreviewUrl(finalCanvas.toDataURL('image/jpeg', 0.9));
-    setToastMsg(`Applied ${activeFilter} to all pages`);
     setTimeout(() => setToastMsg(''), 2200);
   };
 
@@ -234,7 +241,7 @@ export function useEnhanceExportAndActions(options: UseEnhanceExportActionsOptio
       setToastMsg('');
     } catch (err) {
       console.warn('OCR error:', err);
-      setToastMsg('تعذر استخراج النص من الصفحة');
+      setToastMsg('تعذّر استخراج النص. الصورة ما زالت متاحة، أعد المحاولة.');
       setTimeout(() => setToastMsg(''), 2000);
     } finally {
       setIsExtractingText(false);

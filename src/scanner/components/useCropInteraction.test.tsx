@@ -3,6 +3,7 @@ import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Quad } from '../core/types';
+import * as geometry from '../core/geometry';
 import { useCropInteraction } from './useCropInteraction';
 
 vi.mock('../core/edgeDetection', () => ({
@@ -32,7 +33,7 @@ describe('useCropInteraction', () => {
     vi.unstubAllGlobals();
   });
 
-  it('initializes quad from loaded image dimensions and supports aspect ratio + undo/redo', async () => {
+  async function mountCrop(onConfirm = vi.fn()) {
     const ref: { current: ReturnType<typeof useCropInteraction> | null } = { current: null };
     const mockImg = document.createElement('img');
     Object.defineProperty(mockImg, 'naturalWidth', { value: 1000, configurable: true });
@@ -41,7 +42,6 @@ describe('useCropInteraction', () => {
       value: () => ({ left: 0, top: 0, width: 500, height: 400, right: 500, bottom: 400 }),
       configurable: true,
     });
-    const onConfirm = vi.fn();
 
     function Harness() {
       const hook = useCropInteraction({
@@ -62,6 +62,11 @@ describe('useCropInteraction', () => {
       ref.current!.imageRef.current = mockImg;
       ref.current!.handleImageLoad();
     });
+    return ref;
+  }
+
+  it('initializes quad from loaded image dimensions and supports aspect ratio + undo/redo', async () => {
+    const ref = await mountCrop();
     expect(ref.current!.imageSize).toEqual({ width: 1000, height: 800 });
     expect(ref.current!.quad).not.toBeNull();
     const initialQuad = ref.current!.quad;
@@ -82,5 +87,26 @@ describe('useCropInteraction', () => {
       ref.current!.handleRedo();
     });
     expect(ref.current!.quad).not.toEqual(initialQuad);
+  });
+
+  it('keeps the source and crop geometry when saving fails, then retries the same image', async () => {
+    const canvas = document.createElement('canvas');
+    vi.spyOn(geometry, 'warpPerspectiveAsync').mockResolvedValue(canvas);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const pending = Promise.withResolvers<void>();
+    const confirm = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce(undefined);
+    const ref = await mountCrop(confirm);
+    const { currentSrc, quad } = ref.current!;
+    let saving: Promise<void> | undefined;
+    await act(async () => { saving = ref.current!.handleApply(); });
+    expect(ref.current!.isApplying).toBe(true);
+    await act(async () => {
+      pending.reject(new Error('Quota exceeded'));
+      await saving;
+    });
+    expect(ref.current).toMatchObject({ currentSrc, quad, isApplying: false, applyError: true });
+    await act(async () => { await ref.current!.handleApply(); });
+    expect(confirm.mock.calls).toEqual([[canvas, quad], [canvas, quad]]);
+    expect(ref.current).toMatchObject({ currentSrc, quad, isApplying: false, applyError: false });
   });
 });
