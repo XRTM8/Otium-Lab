@@ -71,7 +71,11 @@ const explicitTag =
   args.find((argument) => !argument.startsWith('--')) ??
   args.find((argument) => argument.startsWith('--tag='))?.slice('--tag='.length) ??
   '';
-const tag = explicitTag || process.env.GITHUB_REF_NAME || '';
+const envTag =
+  process.env.GITHUB_REF_TYPE === 'tag' || process.env.GITHUB_REF?.startsWith('refs/tags/')
+    ? process.env.GITHUB_REF_NAME || ''
+    : '';
+const tag = explicitTag || envTag;
 
 const packageJson = parseJson('package.json');
 if (!packageJson) {
