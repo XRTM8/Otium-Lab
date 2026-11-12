@@ -21,17 +21,21 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
         with:
           key: android-aarch64
-      - name: Install Android SDK and NDK
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Install Android platform and NDK
         run: |
           sdkmanager "platforms;android-36" "ndk;28.2.13676358"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          sdk_root="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$sdk_root/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - run: npm ci
       - name: Assemble ARM64 debug APK
         run: |
