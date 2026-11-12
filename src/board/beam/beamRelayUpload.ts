@@ -14,8 +14,8 @@ import {
   safeTopicPart,
   sleep,
   topicForRoom,
-  type SendDocumentOptions,
 } from './beamUtils';
+import type { BeamDocumentAttempt } from './beamDocumentCheckpoint';
 
 export async function putRelayAttachment(
   topic: string,
@@ -140,7 +140,7 @@ export async function uploadAndBroadcastViaRelay({
 }: {
   connectedRoom: string;
   sessionId: string | null;
-  options: SendDocumentOptions;
+  options: BeamDocumentAttempt;
   assertActive: () => void;
   putChunk: (topic: string, chunk: ArrayBuffer, filename: string) => Promise<string>;
   onTransferPatch: (patch: Partial<BeamTransferState>) => void;
@@ -148,15 +148,20 @@ export async function uploadAndBroadcastViaRelay({
   broadcastPayload: (msg: BeamMessage) => Promise<void>;
 }): Promise<void> {
   const totalBytes = options.buffer.byteLength;
-  const sha256 = await computeSha256(options.buffer);
+  const checkpoint = options.checkpoint;
+  const sha256 = checkpoint ? checkpoint.sha256 : await computeSha256(options.buffer);
   assertActive();
-  const transferId = randomId('t');
+  const transferId = checkpoint?.transferId ?? randomId('t');
   const chunkCount = Math.ceil(totalBytes / RELAY_CHUNK_SIZE);
   const baseTopic = topicForRoom(connectedRoom);
   const safeName = encodeURIComponent(
     (options.title || 'document').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60)
   );
-  const chunks: string[] = [];
+  const chunks = checkpoint?.relayChunks ?? [];
+  if (checkpoint && Date.now() - checkpoint.relayStartedAt > 5 * 60_000) {
+    checkpoint.relayStartedAt = Date.now();
+    chunks.length = 0;
+  }
 
   onTransferPatch({
     active: true,
@@ -164,12 +169,12 @@ export async function uploadAndBroadcastViaRelay({
     mode: 'relay',
     phase: 'transferring',
     progress: 2,
-    bytesTransferred: 0,
+    bytesTransferred: Math.min(chunks.length * RELAY_CHUNK_SIZE, totalBytes),
     totalBytes,
     error: null,
   });
 
-  for (let index = 0; index < chunkCount; index++) {
+  for (let index = chunks.length; index < chunkCount; index++) {
     const start = index * RELAY_CHUNK_SIZE;
     const end = Math.min(start + RELAY_CHUNK_SIZE, totalBytes);
     const chunk = options.buffer.slice(start, end);
@@ -198,7 +203,7 @@ export async function uploadAndBroadcastViaRelay({
       pageNumber: options.pageNumber,
       totalPages: options.totalPages,
       theme: options.theme,
-      chunks,
+      chunks: [...chunks],
       totalSize: totalBytes,
       sha256: sha256 || undefined,
       transferId,

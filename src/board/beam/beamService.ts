@@ -8,6 +8,8 @@ import {
 } from './beamUtils';
 import { attachBeamLocalTransports, deliverBeamDocumentToListeners, dispatchBeamMessage, rememberBeamMessage } from './beamSessionFrames';
 import { BeamCompletionTracker, BeamObserverHub, createEmptyPeerState, createEmptyTransferState } from './beamServiceHosts';
+import { BeamDocumentDeliveries } from './beamDocumentDeliveries';
+import type { BeamDocumentAttempt } from './beamDocumentCheckpoint';
 import {
   buildBeamHostFactories, buildBeamStateAnnounceMessage, computePeerConnectedState,
   computePeerDocumentState, runBeamRelayUpload, sendBeamProtocolFrame, startBeamMaintenanceLoop,
@@ -18,7 +20,7 @@ import {
 } from './beamRelayTransport';
 import { dispatchReceiverBeamMessage, dispatchSenderBeamMessage } from './beamProtocolHandlers';
 import {
-  closeBeamRtcPeer, createBeamPeerConnection, finishBeamIncomingFile, handleBeamRtcIce,
+  clearBeamFileCheckpoint, closeBeamRtcPeer, createBeamPeerConnection, finishBeamIncomingFile, handleBeamRtcIce,
   handleBeamRtcOffer, initiateBeamRtc, processDataChannelPayload, sendFileOverBeamChannel,
   type BeamWebRtcState,
 } from './beamWebRtcTransport';
@@ -40,6 +42,7 @@ export class BeamService {
   private broadcastChannel: BroadcastChannel | null = null;
   private readonly observers = new BeamObserverHub();
   private readonly completions = new BeamCompletionTracker();
+  private readonly documentDeliveries = new BeamDocumentDeliveries();
   private sigState: BeamSignalingState = {
     activeEventSource: null, activeRoomCode: null, connectedRoom: null, role: null,
     connectionStatus: 'disconnected', sessionId: null, relayCursor: SSE_SINCE,
@@ -68,7 +71,7 @@ export class BeamService {
     sigState: this.sigState, rtcState: this.rtcState, observers: this.observers,
     completions: this.completions, closedSessions: this.closedSessions,
     getDeviceId: () => this.deviceId, getPeerState: () => this.peerState,
-    getPeerSessionId: () => this.peerSessionId, setPeerSessionId: (id) => { this.peerSessionId = id; },
+    getPeerSessionId: () => this.peerSessionId, setPeerSessionId: (id) => this.setPeerSession(id),
     isCurrentSession: (id) => this.isCurrentSession(id), setLastPeerSeen: (ts) => { this.lastPeerSeen = ts; },
     setConnectionStatus: (s) => this.setConnectionStatus(s),
     closeEventSource: () => this.closeEventSource(), openEventSource: () => this.openEventSource(),
@@ -159,7 +162,7 @@ export class BeamService {
     this.connectedRoom = formatted;
     this.role = role;
     this.sessionId = role === 'sender' ? randomId('s') : null;
-    this.peerSessionId = null;
+    this.setPeerSession(null); this.sigState.documentCheckpoint = undefined;
     this.closedSessions.clear();
     this.lastPeerSeen = 0;
     this.sigState.reconnectAttempt = 0;
@@ -226,7 +229,7 @@ export class BeamService {
   public async sendDocument(options: SendDocumentOptions): Promise<{ mode: BeamTransport }> {
     return executeBeamSendDocument({
       sigState: this.sigState, isSendingDocument: () => this.sendingDocument, setSendingDocument: (v) => { this.sendingDocument = v; },
-      startSender: (r, f) => this.startSender(r, f), isPeerConnected: () => this.peerState.connected, isRtcSupported: () => this.isRtcSupported,
+      startSender: (r, f) => this.startSender(r, f), isRtcSupported: () => this.isRtcSupported,
       updateTransfer: (p) => this.updateTransfer(p), waitForPeer: (ms) => this.waitForPeer(ms),
       waitForDataChannel: (ms) => this.waitForDataChannel(ms),
       sendFileOverDataChannel: (o) => this.sendFileOverDataChannel(o), sendFileOverRelay: (o) => this.sendFileOverRelay(o),
@@ -240,6 +243,7 @@ export class BeamService {
 
   public async broadcast(message: BeamMessage): Promise<void> {
     await dispatchBeamMessage({
+      sessionId: this.connectedRoom && this.isMatchingRoom(message.roomCode, this.connectedRoom) ? (this.sessionId || this.peerSessionId || undefined) : undefined,
       message, deviceId: this.deviceId, dataChannel: this.rtcDataChannel, broadcastChannel: this.broadcastChannel,
       seenMessages: this.seenMessages, publishRelay: (msg) => this.publishMessage(msg),
     });
@@ -299,7 +303,7 @@ export class BeamService {
     this.maintenanceTimer = startBeamMaintenanceLoop({
       sigState: this.sigState, isPeerConnected: () => this.peerState.connected,
       getLastPeerSeen: () => this.lastPeerSeen, getLastPingAt: () => this.lastPingAt,
-      clearPeerSessionId: () => { this.peerSessionId = null; }, closeRtc: () => this.closeRtc(),
+      closeRtc: () => this.closeRtc(),
       resetPeer: () => this.resetPeer(), sendHandshake: () => this.sendFrame('handshake'), sendPing: () => this.sendFrame('ping'),
     });
   }
@@ -312,7 +316,8 @@ export class BeamService {
 
   private finishDisconnect(): void {
     this.closeRtc(); this.closeEventSource(); this.stopMaintenance(); this.resetTransfer(); this.resetPeer();
-    this.activeRoomCode = null; this.connectedRoom = null; this.role = null; this.sessionId = null; this.peerSessionId = null;
+    this.activeRoomCode = null; this.connectedRoom = null; this.role = null; this.sessionId = null;
+    this.setPeerSession(null); this.sigState.documentCheckpoint = undefined;
     this.setConnectionStatus('disconnected');
     this.observers.notifyState(this.connectedRoom, this.role);
   }
@@ -329,8 +334,16 @@ export class BeamService {
     if (this.role === 'receiver') return Boolean(sessionId && this.peerSessionId && sessionId === this.peerSessionId);
     return Boolean(sessionId && this.sessionId && sessionId === this.sessionId);
   }
+  private setPeerSession(id: string | null): void {
+    if (this.peerSessionId !== id || !id) clearBeamFileCheckpoint(this.rtcState);
+    this.peerSessionId = id;
+  }
   private async deliverDocument(message: BeamMessage, transport: BeamTransport): Promise<void> {
-    await deliverBeamDocumentToListeners(this.observers.listeners, (id) => this.isCurrentSession(id), (msg, via) => this.observers.notifyMessage(msg, via), message, transport);
+    await this.documentDeliveries.deliver(message, () => {
+      if (!this.isCurrentSession(message.sessionId)) throw new Error('The receiving session was cancelled.');
+      if (transport !== 'p2p') this.resetTransfer();
+      return deliverBeamDocumentToListeners(this.observers.listeners, (id) => this.isCurrentSession(id), (msg, via) => this.observers.notifyMessage(msg, via), message, transport);
+    });
   }
 
   private closeRtc(): void {
@@ -352,7 +365,7 @@ export class BeamService {
   private handleRtcIce(m: BeamMessage): Promise<void> { return handleBeamRtcIce(this.rtcState, m); }
   private handleDataChannelPayload(d: unknown): Promise<void> { return processDataChannelPayload(this.hosts.rtcHost(), d); }
   private finishIncomingFile(id: string): Promise<void> { return finishBeamIncomingFile(this.hosts.rtcHost(), id); }
-  private sendFileOverDataChannel(o: SendDocumentOptions): Promise<void> { return sendFileOverBeamChannel(this.hosts.rtcHost(), o); }
+  private sendFileOverDataChannel(o: BeamDocumentAttempt): Promise<void> { return sendFileOverBeamChannel(this.hosts.rtcHost(), o); }
   /** @internal White-box helper used by unit tests. */
   public handleFileCompletion(id: string, ok: boolean, message?: string): void { this.completions.handle(id, ok, message); }
   private waitForPeer(ms: number): Promise<boolean> { return waitUntilBeamPeerConnected(() => this.peerState.connected, () => this.connectedRoom, ms); }
@@ -372,7 +385,7 @@ export class BeamService {
       isPeerConnected: () => this.peerState.connected, initiateRtc: () => this.initiateRtc(), timeoutMs,
     });
   }
-  private async sendFileOverRelay(options: SendDocumentOptions): Promise<void> {
+  private async sendFileOverRelay(options: BeamDocumentAttempt): Promise<void> {
     await runBeamRelayUpload({
       sigState: this.sigState, options,
       putChunk: (topic, data, filename) => this.putAttachment(topic, data, filename),

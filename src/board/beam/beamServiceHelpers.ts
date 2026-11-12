@@ -11,8 +11,8 @@ import {
   BeamSendError,
   getDeviceLabel,
   type LocalDocState,
-  type SendDocumentOptions,
 } from './beamUtils';
+import type { BeamDocumentAttempt } from './beamDocumentCheckpoint';
 import { scheduleBeamReconnect, type BeamSignalingHost, type BeamSignalingState } from './beamSignalingTransport';
 import { uploadAndBroadcastViaRelay } from './beamRelayTransport';
 import {
@@ -143,20 +143,20 @@ export function buildBeamStateAnnounceMessage(ctx: {
 
 export async function runBeamRelayUpload(ctx: {
   sigState: BeamSignalingState;
-  options: SendDocumentOptions;
+  options: BeamDocumentAttempt;
   putChunk: (topic: string, data: ArrayBuffer, filename: string) => Promise<string>;
   updateTransfer: (patch: Partial<BeamTransferState>) => void;
   registerCompletion: (id: string, timeoutMs: number, timeoutMessage: string) => Promise<void>;
   broadcast: (msg: BeamMessage) => Promise<void>;
 }): Promise<void> {
-  const { sourceGeneration: generation, sessionId: session, connectedRoom: room } = ctx.sigState;
+  const { sessionId: session, connectedRoom: room } = ctx.sigState;
   if (!room) throw new BeamSendError('transfer-failed', 'Transfer cancelled because no Beam room is active.');
   await uploadAndBroadcastViaRelay({
     connectedRoom: room,
     sessionId: session,
     options: ctx.options,
     assertActive: () => {
-      if (ctx.sigState.sourceGeneration !== generation || ctx.sigState.sessionId !== session || ctx.sigState.connectedRoom !== room) {
+      if (ctx.sigState.role !== 'sender' || ctx.sigState.sessionId !== session || ctx.sigState.connectedRoom !== room) {
         throw new BeamSendError('transfer-failed', 'Transfer cancelled because the Beam session changed.');
       }
     },

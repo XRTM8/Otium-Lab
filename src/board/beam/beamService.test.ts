@@ -224,6 +224,7 @@ describe('Otium Smart Beam session routing', () => {
       const pending = receiver.finishIncomingFile('file');
       expect(send).not.toHaveBeenCalled();
       expect(receiver.getTransferState().phase).toBe('finalizing');
+      await Promise.resolve();
       opened();
       await pending;
       expect(JSON.parse(send.mock.calls[0][0])).toMatchObject({ kind: 'file-complete', ok: true });

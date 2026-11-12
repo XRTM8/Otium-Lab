@@ -28,6 +28,8 @@ export class BeamSendError extends Error {
   }
 }
 
+export class BeamTransferTimeout extends Error {}
+
 export interface LocalDocState {
   title: string | null;
   page: number;
@@ -36,6 +38,7 @@ export interface LocalDocState {
 
 export interface IncomingFileState {
   transferId: string;
+  sessionId?: string;
   title: string;
   name: string;
   size: number;

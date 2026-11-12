@@ -39,7 +39,7 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
   const syncMessage = activeSync.message;
 
   const { color, width: size, stylusOnly: stylus } = teaching.prefs;
-  const { delivery, send, acknowledge } = useAnnotationDelivery(reader);
+  const { delivery, queue } = useAnnotationDelivery(reader);
 
   const saveQueue = useRef(Promise.resolve());
   const documentRef = useRef(reader.docId);
@@ -136,6 +136,10 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
     if (!reader.docId || !reader.beamRoom || !reader.beamPeerConnected) return;
     const documentId = reader.docId;
     const roomCode = reader.beamRoom;
+    const sendSnapshot = () => queue.send({
+      type: 'BEAM_TEXT_ANNOTATIONS', roomCode, annotationSnapshot: true,
+      annotationSync: { documentId, upsert: annotationsRef.current }, timestamp: Date.now(),
+    });
     const unsubscribe = beamService.subscribe((msg) => {
       if (msg.type === 'BEAM_SELECTION' && msg.selection?.documentId === documentId) {
         if (msg.selection.page <= reader.numPages) receiveBeamSelection(msg.selection.page, msg.selection.rects);
@@ -143,19 +147,22 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
       }
       if (msg.annotationSync?.documentId !== documentId) return;
       if (msg.type === 'BEAM_TEXT_ANNOTATIONS_REQUEST') {
-        send({ type: 'BEAM_TEXT_ANNOTATIONS', roomCode, annotationSync: { documentId, upsert: annotationsRef.current }, timestamp: Date.now() });
+        sendSnapshot();
       } else if (msg.type === 'BEAM_TEXT_ANNOTATIONS') {
-        acknowledge(msg);
-        const merged = mergeTextAnnotations(annotationsRef.current, msg.annotationSync.upsert, msg.annotationSync.deleted);
-        sharedAnnotations.current = merged;
-        annotationsRef.current = merged;
-        mergeRemoteAnnotations(msg.annotationSync.upsert || [], msg.annotationSync.deleted || []);
+        queue.receive(msg.type, msg, msg.annotationSync, (upsert, deleted) => {
+          const incoming = msg.annotationSnapshot
+            ? upsert.filter(item => !annotationsRef.current.some(current => current.id === item.id)) : upsert;
+          const merged = mergeTextAnnotations(annotationsRef.current, incoming, deleted);
+          sharedAnnotations.current = merged;
+          annotationsRef.current = merged;
+          if (incoming.length || deleted.length) mergeRemoteAnnotations(incoming, deleted);
+        });
       }
     });
-    send({ type: 'BEAM_TEXT_ANNOTATIONS', roomCode, annotationSync: { documentId, upsert: annotationsRef.current }, timestamp: Date.now() });
+    sendSnapshot();
     void beamService.broadcast({ type: 'BEAM_TEXT_ANNOTATIONS_REQUEST', roomCode, annotationSync: { documentId }, timestamp: Date.now() });
     return unsubscribe;
-  }, [reader.docId, reader.beamRoom, reader.beamPeerConnected, reader.numPages, receiveBeamSelection, mergeRemoteAnnotations, send, acknowledge]);
+  }, [reader.docId, reader.beamRoom, reader.beamPeerConnected, reader.numPages, receiveBeamSelection, mergeRemoteAnnotations, queue]);
 
   useEffect(() => {
     const previous = new Map(sharedAnnotations.current.map((a) => [a.id, a]));
@@ -163,36 +170,43 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
     const upsert = reader.annotations.filter((a) => JSON.stringify(previous.get(a.id)) !== JSON.stringify(a));
     const deleted = [...previous.keys()].filter((id) => !current.has(id));
     sharedAnnotations.current = reader.annotations;
-    if (!reader.docId || !reader.beamRoom || !reader.beamPeerConnected || (!upsert.length && !deleted.length)) return;
-    send({
+    if (!reader.docId || !reader.beamRoom || (!upsert.length && !deleted.length)) return;
+    queue.send({
       type: 'BEAM_TEXT_ANNOTATIONS',
       roomCode: reader.beamRoom,
       annotationSync: { documentId: reader.docId, upsert, deleted },
       timestamp: Date.now(),
     });
-  }, [reader.annotations, reader.docId, reader.beamRoom, reader.beamPeerConnected, send]);
+  }, [reader.annotations, reader.docId, reader.beamRoom, queue]);
 
   useEffect(() => {
     if (!ready || !reader.docId || !reader.beamPeerConnected || !reader.beamRoom) return;
     const roomCode = reader.beamRoom;
     const documentId = reader.docId;
+    const sendSnapshot = () => queue.send({
+      type: 'BEAM_INK_UPDATE', roomCode, annotationSnapshot: true,
+      ink: { documentId, upsert: marksRef.current }, timestamp: Date.now(),
+    });
     const unsubscribe = beamService.subscribe((msg) => {
       if (!msg.ink || msg.ink.documentId !== documentId) return;
       if (msg.type === 'BEAM_INK_REQUEST') {
-        send({ type: 'BEAM_INK_UPDATE', roomCode, ink: { documentId, upsert: marksRef.current }, timestamp: Date.now() });
+        sendSnapshot();
       } else if (msg.type === 'BEAM_INK_UPDATE') {
-        acknowledge(msg);
-        const marks = mergeInk(marksRef.current, msg.ink.upsert, msg.ink.deleted);
-        if (JSON.stringify(marks) === JSON.stringify(marksRef.current)) return;
-        sharedMarks.current = marks;
-        marksRef.current = marks;
-        dispatch({ type: 'remote', upsert: msg.ink.upsert, deleted: msg.ink.deleted });
+        queue.receive(msg.type, msg, msg.ink, (upsert, deleted) => {
+          const incoming = msg.annotationSnapshot
+            ? upsert.filter(item => !marksRef.current.some(current => current.id === item.id)) : upsert;
+          const marks = mergeInk(marksRef.current, incoming, deleted);
+          if (JSON.stringify(marks) === JSON.stringify(marksRef.current)) return;
+          sharedMarks.current = marks;
+          marksRef.current = marks;
+          dispatch({ type: 'remote', upsert: incoming, deleted });
+        });
       }
     });
-    send({ type: 'BEAM_INK_UPDATE', roomCode, ink: { documentId, upsert: marksRef.current }, timestamp: Date.now() });
+    sendSnapshot();
     void beamService.broadcast({ type: 'BEAM_INK_REQUEST', roomCode, ink: { documentId }, timestamp: Date.now() });
     return unsubscribe;
-  }, [ready, reader.docId, reader.beamPeerConnected, reader.beamRoom, send, acknowledge]);
+  }, [ready, reader.docId, reader.beamPeerConnected, reader.beamRoom, queue]);
 
   useEffect(() => {
     if (!ready) return;
@@ -201,9 +215,9 @@ export function DocumentInkProvider({ reader, children }: { reader: ReaderContro
     const upsert = history.present.filter((mark) => JSON.stringify(previous.get(mark.id)) !== JSON.stringify(mark));
     const deleted = [...previous.keys()].filter((id) => !current.has(id));
     sharedMarks.current = history.present;
-    if ((!upsert.length && !deleted.length) || !reader.beamPeerConnected || !reader.beamRoom || !reader.docId) return;
-    send({ type: 'BEAM_INK_UPDATE', roomCode: reader.beamRoom, ink: { documentId: reader.docId, upsert, deleted }, timestamp: Date.now() });
-  }, [history.present, ready, reader.beamPeerConnected, reader.beamRoom, reader.docId, send]);
+    if ((!upsert.length && !deleted.length) || !reader.beamRoom || !reader.docId) return;
+    queue.send({ type: 'BEAM_INK_UPDATE', roomCode: reader.beamRoom, ink: { documentId: reader.docId, upsert, deleted }, timestamp: Date.now() });
+  }, [history.present, ready, reader.beamRoom, reader.docId, queue]);
 
   useEffect(() => {
     if (!ready || !history.revision) return;

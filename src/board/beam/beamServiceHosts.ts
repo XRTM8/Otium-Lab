@@ -4,6 +4,7 @@ import type { BeamSignalingHost, BeamSignalingState } from './beamSignalingTrans
 import type { BeamWebRtcHost, BeamWebRtcState } from './beamWebRtcTransport';
 import {
   BeamSendError,
+  BeamTransferTimeout,
   EMPTY_PEER,
   EMPTY_TRANSFER,
   type BeamConnectionStatus,
@@ -80,7 +81,7 @@ export class BeamCompletionTracker {
         if (this.completionId === transferId) {
           this.completionId = null;
           this.completion = null;
-          reject(new Error(timeoutMessage));
+          reject(new BeamTransferTimeout(timeoutMessage));
         }
       }, timeoutMs);
       this.completion = { resolve, reject, timer };

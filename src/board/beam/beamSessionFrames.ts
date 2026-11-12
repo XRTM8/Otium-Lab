@@ -80,7 +80,6 @@ export interface BeamMaintenanceHost {
   isPeerConnected: () => boolean;
   getLastPeerSeen: () => number;
   getLastPingAt: () => number;
-  clearPeerSessionId: () => void;
   closeRtc: () => void;
   resetPeer: () => void;
   sendHandshake: () => void;
@@ -96,7 +95,6 @@ export function startBeamMaintenanceLoop(host: BeamMaintenanceHost): number | nu
     if (host.isPeerConnected() && lastSeen > 0 && now - lastSeen > PEER_TIMEOUT_MS) {
       host.closeRtc();
       host.resetPeer();
-      if (host.sigState.role === 'receiver') host.clearPeerSessionId();
     }
     if (host.sigState.role === 'sender') {
       if (!host.isPeerConnected()) host.sendHandshake();
@@ -142,6 +140,7 @@ export function attachBeamLocalTransports(handlers: {
 /** Sends a Beam message over WebRTC DataChannel when open, plus BroadcastChannel, storage, and cloud relay. */
 export async function dispatchBeamMessage(params: {
   message: BeamMessage;
+  sessionId?: string;
   deviceId: string;
   dataChannel: RTCDataChannel | null;
   broadcastChannel: BroadcastChannel | null;
@@ -150,6 +149,7 @@ export async function dispatchBeamMessage(params: {
 }): Promise<void> {
   const outgoing: BeamMessage = {
     ...params.message,
+    sessionId: params.message.sessionId || params.sessionId,
     msgId: params.message.msgId || randomId('m'),
     origin: params.message.origin || params.deviceId,
     timestamp: params.message.timestamp || Date.now(),

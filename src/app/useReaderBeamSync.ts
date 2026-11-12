@@ -55,7 +55,6 @@ export function useReaderBeamSync({
   setDocumentError,
 }: UseReaderBeamSyncOptions): void {
   const lastBroadcastedPageRef = useRef<number | null>(null);
-  const handledPayloadIdsRef = useRef<Set<string>>(new Set());
   const beamLoadingRef = useRef(false);
   const pendingBeamPageRef = useRef<number | null>(null);
 
@@ -129,17 +128,6 @@ export function useReaderBeamSync({
         }
       } else if (msg.type === 'BEAM_PAYLOAD') {
         const payloadTitle = msg.payload?.title || 'Beamed Document';
-        const payloadKey =
-          msg.payload?.transferId ||
-          msg.msgId ||
-          `${payloadTitle}:${msg.timestamp}`;
-        if (handledPayloadIdsRef.current.has(payloadKey)) return;
-        handledPayloadIdsRef.current.add(payloadKey);
-        if (handledPayloadIdsRef.current.size > 40) {
-          const oldest = handledPayloadIdsRef.current.values().next().value;
-          if (typeof oldest === 'string') handledPayloadIdsRef.current.delete(oldest);
-        }
-
         try {
           beamLoadingRef.current = true;
           pendingBeamPageRef.current = null;
@@ -181,7 +169,6 @@ export function useReaderBeamSync({
             msg.payload?.totalPages || 1
           );
         } catch (err) {
-          handledPayloadIdsRef.current.delete(payloadKey);
           console.error('Failed to load beamed PDF in reader:', err);
           setIsLoading(false);
           setDocumentError(describeDocumentError(err, sync.lang));

@@ -11,6 +11,7 @@ export {
   BEAM_CHANNEL_NAME,
   BEAM_STORAGE_KEY,
   BeamSendError,
+  BeamTransferTimeout,
   CLOUD_FAILURES_BEFORE_ERROR,
   CLOUD_RELAY_BASE,
   EMPTY_PEER,

@@ -22,6 +22,10 @@ export interface BeamWebRtcState {
   rtcAttempt: number;
   lastOfferSdp: string | null;
   incomingFile: IncomingFileState | null;
+  incomingFileChannel?: RTCDataChannel | null;
+  openedFile?: Pick<IncomingFileState, 'transferId' | 'sessionId' | 'size' | 'sha256'>;
+  acceptOffset?: (transferId: string, offset: number, complete: boolean) => void;
+  interruptTransfer?: () => void;
 }
 
 export interface BeamWebRtcHost {
@@ -50,6 +54,7 @@ export interface BeamWebRtcHost {
   beginIncomingFile: (meta: {
     sessionId?: string;
     size?: number;
+    offset?: number;
     transferId?: string;
     title?: string;
     name?: string;
@@ -59,6 +64,12 @@ export interface BeamWebRtcHost {
     theme?: ThemeMode;
   }) => void;
   sendDataChannelControl: (message: Record<string, unknown>) => void;
+}
+
+export function clearBeamFileCheckpoint(state: BeamWebRtcState): void {
+  state.incomingFile = null;
+  state.openedFile = undefined;
+  state.incomingFileChannel = null;
 }
 
 export function createBeamPeerConnection(host: BeamWebRtcHost): RTCPeerConnection | null {
@@ -223,6 +234,7 @@ export async function handleBeamRtcIce(state: BeamWebRtcState, message: BeamMess
 }
 
 export function bindBeamDataChannel(host: BeamWebRtcHost, channel: RTCDataChannel): void {
+  if (host.state.rtcDataChannel !== channel) host.state.interruptTransfer?.();
   host.state.rtcDataChannel = channel;
   channel.binaryType = 'arraybuffer';
   channel.bufferedAmountLowThreshold = 256 * 1024;
@@ -236,7 +248,13 @@ export function bindBeamDataChannel(host: BeamWebRtcHost, channel: RTCDataChanne
   channel.onclose = () => {
     if (host.state.rtcDataChannel !== channel) return;
     host.state.rtcDataChannel = null;
+    host.state.interruptTransfer?.();
+    if (host.state.incomingFile && host.state.incomingFileChannel === channel) {
+      host.updateTransfer({ active: false });
+    }
+    host.closeRtc();
     host.setPeerTransport(host.isPeerConnected() ? 'relay' : null);
+    host.scheduleRtcRetry();
   };
 
   channel.onerror = () => {
@@ -250,6 +268,7 @@ export function bindBeamDataChannel(host: BeamWebRtcHost, channel: RTCDataChanne
 }
 
 export function closeBeamRtcPeer(state: BeamWebRtcState): void {
+  state.interruptTransfer?.();
   if (state.rtcDataChannel) {
     tryBestEffort('rtc-datachannel-close', () => {
       if (!state.rtcDataChannel) return;
@@ -275,5 +294,4 @@ export function closeBeamRtcPeer(state: BeamWebRtcState): void {
   state.remoteDescriptionSet = false;
   state.queuedIce = [];
   state.lastOfferSdp = null;
-  state.incomingFile = null;
 }

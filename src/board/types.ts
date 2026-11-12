@@ -103,6 +103,8 @@ export interface BeamMessage {
   receiptId?: string;
   annotationReceipt?: { documentId: string; id: string };
   ink?: { documentId: string; upsert?: InkMark[]; deleted?: string[] };
+  annotationRevision?: number;
+  annotationSnapshot?: boolean;
   annotationSync?: { documentId: string; upsert?: TextAnnotation[]; deleted?: string[] };
   selection?: { documentId: string; page: number; rects: AnnotationRect[] };
   payload?: BeamPayload;

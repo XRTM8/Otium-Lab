@@ -2,6 +2,7 @@ import type { BeamMessage, BeamTransferState, BeamTransport } from '../types';
 import type { BeamConnectionStatus, SendDocumentOptions } from './beamUtils';
 import {
   BeamSendError,
+  BeamTransferTimeout,
   CLOUD_FAILURES_BEFORE_ERROR,
   CLOUD_RELAY_BASE,
   MAX_FILE_BYTES,
@@ -16,8 +17,11 @@ import {
   topicForRoom,
 } from './beamUtils';
 import type { RelayAttachmentPayload } from './beamRelayTransport';
+import { prepareBeamDocument, type BeamDocumentAttempt } from './beamDocumentCheckpoint';
+import { BeamDirectInterrupted } from './beamWebRtcTransfer';
 
 export interface BeamSignalingState {
+  documentCheckpoint?: BeamDocumentAttempt['checkpoint'];
   activeEventSource: EventSource | null;
   activeRoomCode: string | null;
   connectedRoom: string | null;
@@ -197,13 +201,12 @@ export interface BeamSendDocumentHost {
   isSendingDocument: () => boolean;
   setSendingDocument: (val: boolean) => void;
   startSender: (room: string, force: boolean) => void;
-  isPeerConnected: () => boolean;
   isRtcSupported: () => boolean;
   updateTransfer: (patch: Partial<BeamTransferState>) => void;
   waitForPeer: (timeoutMs: number) => Promise<boolean>;
   waitForDataChannel: (timeoutMs: number) => Promise<RTCDataChannel | null>;
-  sendFileOverDataChannel: (options: SendDocumentOptions) => Promise<void>;
-  sendFileOverRelay: (options: SendDocumentOptions) => Promise<void>;
+  sendFileOverDataChannel: (options: BeamDocumentAttempt) => Promise<void>;
+  sendFileOverRelay: (options: BeamDocumentAttempt) => Promise<void>;
 }
 
 export async function executeBeamSendDocument(
@@ -230,10 +233,9 @@ export async function executeBeamSendDocument(
   }
 
   host.setSendingDocument(true);
-  const generation = s.sourceGeneration;
   const sendingSession = s.sessionId;
   const assertActive = () => {
-    if (s.sourceGeneration !== generation || s.sessionId !== sendingSession || s.connectedRoom !== room || s.role !== 'sender') {
+    if (s.sessionId !== sendingSession || s.connectedRoom !== room || s.role !== 'sender') {
       throw new BeamSendError('transfer-failed', 'Transfer cancelled because the Beam session changed.');
     }
   };
@@ -258,21 +260,28 @@ export async function executeBeamSendDocument(
         'The receiver did not answer. Open Otium on the other device, choose Receiver, and make sure the code matches.'
       );
     }
+    const checkpoint = await prepareBeamDocument(sendingSession, options, s.documentCheckpoint);
+    assertActive();
+    s.documentCheckpoint = checkpoint;
+    const attempt = { ...options, checkpoint };
 
     if (host.isRtcSupported()) {
       host.updateTransfer({ phase: 'preparing', mode: 'p2p', progress: 2 });
-      const channel = await host.waitForDataChannel(P2P_WAIT_MS);
-      assertActive();
-      if (channel) {
+      for (let retry = 0; retry < 2; retry++) {
+        const channel = await host.waitForDataChannel(P2P_WAIT_MS);
+        assertActive();
+        if (!channel) break;
         try {
-          await host.sendFileOverDataChannel(options);
+          await host.sendFileOverDataChannel(attempt);
           assertActive();
+          s.documentCheckpoint = undefined;
           return { mode: 'p2p' };
         } catch (error) {
           assertActive();
           if (error instanceof BeamSendError && error.code === 'invalid-document') throw error;
+          if (retry === 0 && (error instanceof BeamDirectInterrupted || error instanceof BeamTransferTimeout)) continue;
           console.warn('P2P transfer failed, trying cloud relay:', error);
-          host.updateTransfer({ phase: 'preparing', mode: 'relay', progress: 5 });
+          break;
         }
       }
     }
@@ -284,14 +293,24 @@ export async function executeBeamSendDocument(
       );
     }
 
-    await host.sendFileOverRelay(options);
+    try {
+      await host.sendFileOverRelay(attempt);
+    } catch (error) {
+      assertActive();
+      if (!(error instanceof BeamTransferTimeout)) throw error;
+      await host.sendFileOverRelay(attempt);
+    }
     assertActive();
+    s.documentCheckpoint = undefined;
     return { mode: 'relay' };
   } catch (error) {
     if (sendingSession !== s.sessionId) throw error;
     const message = error instanceof Error ? error.message : 'Document transfer failed.';
     host.updateTransfer({ active: false, phase: 'error', error: message });
-    if (error instanceof BeamSendError) throw error;
+    if (error instanceof BeamSendError) {
+      if (error.code === 'invalid-document') s.documentCheckpoint = undefined;
+      throw error;
+    }
     throw new BeamSendError('transfer-failed', message);
   } finally {
     host.setSendingDocument(false);

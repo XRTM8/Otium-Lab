@@ -115,7 +115,6 @@ export async function dispatchReceiverBeamMessage(
       host.setLastPeerSeen(Date.now());
       host.setPeerConnected(true);
       if (message.type === 'BEAM_PAYLOAD') {
-        host.resetTransfer();
         try {
           await host.deliverDocument(message, transport);
           if (!host.isCurrentSession(message.sessionId)) return;

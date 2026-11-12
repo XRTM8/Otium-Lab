@@ -1,50 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReaderController } from '../app/useReaderController';
-import type { BeamMessage } from '../board/types';
+import { BeamAnnotationQueue, type AnnotationDeliveryState } from '../board/beam/beamAnnotationQueue';
 import { beamService } from '../board/beam/beamService';
 
-type DeliveryState = 'local' | 'sending' | 'received' | 'waiting';
-
-/** Delivery is confirmed by the other reader, never inferred from a successful send. */
 export function useAnnotationDelivery(reader: ReaderController) {
-  const defaultDelivery: DeliveryState = reader.beamRoom ? 'waiting' : 'local';
-  const contextKey = `${reader.docId ?? ''}:${reader.beamRoom ?? ''}:${reader.beamPeerConnected ? 1 : 0}`;
-  const [deliveryState, setDeliveryState] = useState<{ key: string; value: DeliveryState }>(() => ({
-    key: contextKey,
-    value: defaultDelivery
-  }));
-  const delivery = deliveryState.key === contextKey ? deliveryState.value : defaultDelivery;
-  const setDelivery = useCallback((value: DeliveryState) => {
-    setDeliveryState({ key: contextKey, value });
-  }, [contextKey]);
-  const pending = useRef(new Set<string>());
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevContextRef = useRef(contextKey);
+  const { docId, beamRoom, beamPeerConnected } = reader;
+  const key = JSON.stringify([docId, beamRoom]);
+  const [status, setStatus] = useState<{ key: string; value: AnnotationDeliveryState }>();
+  const queue = useMemo(() => new BeamAnnotationQueue({
+    documentId: docId, room: beamRoom, broadcast: message => beamService.broadcast(message),
+    onDelivery: value => setStatus({ key, value }),
+  }), [docId, beamRoom, key]);
+
+  useEffect(() => beamService.subscribe(message => queue.receiveReceipt(message)), [queue]);
   useEffect(() => {
-    if (prevContextRef.current !== contextKey) {
-      prevContextRef.current = contextKey;
-      pending.current.clear();
-      if (timer.current) clearTimeout(timer.current);
-    }
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [contextKey]);
-  useEffect(() => beamService.subscribe(message => {
-    const receipt = message.annotationReceipt;
-    if (message.type !== 'BEAM_ANNOTATION_ACK' || receipt?.documentId !== reader.docId || !pending.current.delete(receipt.id)) return;
-    if (!pending.current.size) { if (timer.current) clearTimeout(timer.current); setDelivery('received'); }
-  }), [reader.docId, setDelivery]);
-  const send = useCallback((message: BeamMessage) => {
-    if (!reader.beamPeerConnected) { setDelivery('waiting'); return; }
-    const receiptId = crypto.randomUUID();
-    pending.current.add(receiptId); setDelivery('sending');
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { if (pending.current.size) setDelivery('waiting'); }, 8000);
-    void beamService.broadcast({ ...message, receiptId }).catch(() => setDelivery('waiting'));
-  }, [reader.beamPeerConnected, setDelivery]);
-  const acknowledge = useCallback((message: BeamMessage) => {
-    if (!message.receiptId || message.receiptId.length > 128 || !reader.docId || !reader.beamPeerConnected) return;
-    void beamService.broadcast({ type: 'BEAM_ANNOTATION_ACK', roomCode: message.roomCode,
-      annotationReceipt: { documentId: reader.docId, id: message.receiptId }, timestamp: Date.now() });
-  }, [reader.docId, reader.beamPeerConnected]);
-  return { delivery, send, acknowledge };
+    queue.connect(beamPeerConnected);
+    return () => queue.connect(false, false);
+  }, [beamPeerConnected, queue]);
+
+  return { delivery: status?.key === key ? status.value : beamRoom ? 'waiting' as const : 'local' as const, queue };
 }

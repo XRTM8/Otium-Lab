@@ -5,7 +5,6 @@ import {
   RELAY_MAX_BYTES,
   MAX_FILE_BYTES,
   computeSha256,
-  fetchWithTimeout,
   isPdfHeader,
   isRetryableStatus,
   mergeBuffers,
@@ -35,41 +34,42 @@ export interface RelayAttachmentPayload {
 }
 
 export async function fetchRelayWithRetry(url: string, attempts = 3): Promise<Response> {
+  return readRelayWithRetry(url, response => Promise.resolve(response), attempts);
+}
+
+async function readRelayWithRetry<T>(url: string, read: (response: Response) => Promise<T>, attempts = 3): Promise<T> {
   const safeUrl = trustedRelayUrl(url);
-  let lastError: unknown = null;
   for (let attempt = 0; attempt < attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 45000);
+    let delay = 0;
     try {
-      const response = await fetchWithTimeout(
-        safeUrl,
-        { redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer' },
-        45000
-      );
-      if (response.ok) return response;
-      if (isRetryableStatus(response.status) && attempt < attempts - 1) {
-        await sleep(retryDelayMs(response, attempt));
-        continue;
+      const response = await fetch(safeUrl, {
+        redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal,
+      });
+      if (response.ok) return await read(response);
+      if (!isRetryableStatus(response.status) || attempt === attempts - 1) {
+        throw new Error(`Relay returned HTTP ${response.status}.`);
       }
-      throw new Error(`Relay returned HTTP ${response.status}.`);
+      delay = retryDelayMs(response, attempt);
     } catch (error) {
-      lastError = error;
-      if (attempt < attempts - 1) {
-        await sleep(retryDelayMs(null, attempt));
-      }
+      const interrupted = error instanceof TypeError || (error instanceof Error && error.name === 'AbortError');
+      if (!interrupted || attempt === attempts - 1) throw error;
+      delay = retryDelayMs(null, attempt);
+    } finally {
+      clearTimeout(timer);
     }
+    await sleep(delay);
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Failed to download the relay attachment.');
+  throw new Error('Failed to download the relay attachment.');
 }
 
 export async function fetchRelayAttachmentText(url: string): Promise<string> {
-  const response = await fetchRelayWithRetry(url);
-  return new TextDecoder().decode(await boundedResponseBytes(response, 2 * 1024 * 1024));
+  return new TextDecoder().decode(await fetchRelayAttachmentBuffer(url, 2 * 1024 * 1024));
 }
 
 export async function fetchRelayAttachmentBuffer(url: string, maxBytes = MAX_FILE_BYTES): Promise<ArrayBuffer> {
-  const response = await fetchRelayWithRetry(url);
-  return boundedResponseBytes(response, maxBytes);
+  return readRelayWithRetry(url, response => boundedResponseBytes(response, maxBytes));
 }
 
 export async function extractMessagesFromRelayEvent(
@@ -179,12 +179,15 @@ export async function downloadChunksViaRelay({
     error: null,
   });
 
+  let failed = false;
   try {
     const parts: ArrayBuffer[] = new Array(chunks.length);
     let downloaded = 0;
 
     const downloadOne = async (url: string, index: number): Promise<void> => {
+      if (failed) return;
       const buffer = await fetchChunk(url, RELAY_CHUNK_SIZE + 1024);
+      if (failed) return;
       parts[index] = buffer;
       downloaded += buffer.byteLength;
       if (downloaded > RELAY_MAX_BYTES || (expectedSize && downloaded > expectedSize)) {
@@ -224,6 +227,7 @@ export async function downloadChunksViaRelay({
     });
     return merged;
   } catch (error) {
+    failed = true;
     const message = error instanceof Error ? error.message : 'Relay download failed.';
     onTransferPatch({ active: false, phase: 'error', error: message });
     throw error;
