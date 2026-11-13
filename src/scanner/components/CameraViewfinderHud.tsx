@@ -5,16 +5,16 @@ import {
   ZapOff,
   CreditCard,
   FileCheck2,
-  FileText,
   RefreshCw,
-  Settings,
   X,
-  Sparkles,
+  MoreHorizontal,
 } from 'lucide-react';
-import { OtiumLogo } from './OtiumLogo';
+import type { Language } from '../../core/i18n/translations';
+import type { Quad } from '../core/types';
 import { CameraShutterControls } from './CameraShutterControls';
 
 export interface CameraViewfinderHudProps {
+  lang: Language;
   flashAnimation: boolean;
   captureToast: string;
   idStatusToast: string;
@@ -24,6 +24,8 @@ export interface CameraViewfinderHudProps {
   autoCapture: boolean;
   onToggleAutoCapture: () => void;
   torchOn: boolean;
+  torchSupported: boolean;
+  autoCaptureAvailable: boolean;
   onToggleTorch: () => void;
   onFlipCamera: () => void;
   onOpenSettingsClick: () => void;
@@ -36,13 +38,13 @@ export interface CameraViewfinderHudProps {
   hasPermission: boolean | null;
   onRetryCamera: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-  scanMode: 'batch' | 'single' | 'idcard';
+  scanMode: 'document' | 'idcard';
   idCardStep: 'front' | 'back';
   renderedBounds: { x: number; y: number; width: number; height: number } | null;
-  effectiveLiveDocPresent: boolean;
+  visibleQuad: Quad | null;
   effectiveStabilityProgress: number;
   pagesCount: number;
-  onSelectScanMode: (mode: 'batch' | 'single' | 'idcard') => void;
+  onSelectScanMode: (mode: 'document' | 'idcard') => void;
   capturing: boolean;
   onCaptureClick: () => void;
   onFinishBatchClick: () => void;
@@ -51,6 +53,7 @@ export interface CameraViewfinderHudProps {
 }
 
 export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
+  lang,
   flashAnimation,
   captureToast,
   idStatusToast,
@@ -60,6 +63,8 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
   autoCapture,
   onToggleAutoCapture,
   torchOn,
+  torchSupported,
+  autoCaptureAvailable,
   onToggleTorch,
   onFlipCamera,
   onOpenSettingsClick,
@@ -75,7 +80,7 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
   scanMode,
   idCardStep,
   renderedBounds,
-  effectiveLiveDocPresent,
+  visibleQuad,
   effectiveStabilityProgress,
   pagesCount,
   onSelectScanMode,
@@ -84,7 +89,11 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
   onFinishBatchClick,
   lastThumbnail,
   onFileChange,
-}) => (
+}) => {
+  const [showMore, setShowMore] = React.useState(false);
+  const ar = lang === 'ar';
+  const control = 'inline-flex min-h-10 items-center justify-center rounded-xl border border-white/15 px-3 text-xs text-white disabled:opacity-50';
+  return (
   <div className="relative w-full h-full bg-[#07090e] flex flex-col justify-between overflow-hidden select-none font-sans">
     {/* Visual Shutter Flash */}
     {flashAnimation && <div className="absolute inset-0 z-50 bg-white pointer-events-none animate-out fade-out duration-150" />}
@@ -92,7 +101,7 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
     {/* Floating Status Toast */}
     {captureToast && (
       <div className="absolute top-20 inset-x-0 flex justify-center z-40 pointer-events-none animate-in fade-in slide-in-from-top-3 duration-200">
-        <span className="px-5 py-2.5 rounded-full bg-accent text-on-accent font-black text-xs shadow-2xl border border-white/20 flex items-center gap-2">
+        <span role="status" className="px-5 py-2.5 rounded-full bg-accent text-on-accent font-black text-xs shadow-2xl border border-white/20 flex items-center gap-2">
           <FileCheck2 className="w-4 h-4" />
           <span>{captureToast}</span>
         </span>
@@ -109,84 +118,51 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
       </div>
     )}
 
-    {/* Minimalist Safe-Area Header */}
     <div
-      style={{
-        paddingTop: 'max(env(safe-area-inset-top, 0px) + 10px, 48px)',
-        paddingLeft: 'max(env(safe-area-inset-left, 0px) + 16px, 16px)',
-        paddingRight: 'max(env(safe-area-inset-right, 0px) + 16px, 16px)',
-      }}
-      className="relative z-30 flex items-center justify-between pb-3 bg-gradient-to-b from-black/90 via-black/40 to-transparent select-none"
+      style={{ paddingTop: 'max(env(safe-area-inset-top, 0px) + 10px, 24px)' }}
+      className="relative z-30 flex items-center justify-between gap-2 px-4 pb-3"
     >
-      {/* Right side (RTL): Close & Vault */}
-      <div className="flex items-center gap-2">
-        {hasClose && (
-          <button
-            onClick={onCloseClick}
-            className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/90 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg cursor-pointer"
-            title="إغلاق الماسح الضوئي"
-          >
-            <X className="w-5 h-5" />
+      {hasClose && (
+        <button type="button" className={control} onClick={onCloseClick} disabled={capturing}
+          aria-label={ar ? 'إغلاق الماسح الضوئي' : 'Close scanner'}>
+          <X size={18} />
+        </button>
+      )}
+      <span className="grow text-center text-sm font-semibold" aria-live="polite">
+        {capturing ? (ar ? 'جارٍ تجهيز الصفحات…' : 'Processing pages…') : (ar ? `${pagesCount} صفحة` : `${pagesCount} pages`)}
+      </span>
+      {torchSupported && (
+        <button type="button" onClick={onToggleTorch} className={control} aria-pressed={torchOn}
+          aria-label={ar ? 'فلاش الكاميرا' : 'Flash'}>
+          {torchOn ? <Zap size={18} /> : <ZapOff size={18} />}
+        </button>
+      )}
+      <button type="button" className={control} aria-expanded={showMore} disabled={capturing}
+        aria-label={ar ? 'المزيد' : 'More'} onClick={() => setShowMore(!showMore)}>
+        <MoreHorizontal size={18} />
+      </button>
+      {showMore && !capturing && (
+        <div className="absolute end-4 top-full grid gap-1 rounded-xl border border-white/15 bg-[#131820] p-2 shadow-xl">
+          {autoCaptureAvailable && (
+            <button type="button" className={control} aria-pressed={autoCapture} onClick={onToggleAutoCapture}
+              title={ar ? 'تبديل الالتقاط التلقائي عند ثبات المستند' : 'Toggle automatic capture'}>
+              {autoCapture ? (ar ? 'تلقائي' : 'Auto') : (ar ? 'يدوي' : 'Manual')}
+            </button>
+          )}
+          <button type="button" className={control} onClick={() => { onSelectScanMode(scanMode === 'idcard' ? 'document' : 'idcard'); setShowMore(false); }}>
+            {scanMode === 'idcard' ? (ar ? 'مستند' : 'Document') : (ar ? 'تصوير هوية' : 'Scan an ID')}
           </button>
-        )}
-
-        {/* Vault Archive Shortcut */}
-        <button
-          onClick={onOpenLibraryClick}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/60 hover:bg-black/90 border border-white/15 text-xs font-bold text-gray-200 active:scale-95 transition-transform shadow-lg cursor-pointer"
-          title="خزنة المستندات المحفوظة"
-        >
-          <OtiumLogo size={16} className="text-white shrink-0" />
-          <span className="text-xs">الخزنة</span>
-        </button>
-      </div>
-
-      {/* Center: Auto / Manual Intelligence Toggle Pill */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleAutoCapture}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-lg transition-all cursor-pointer ${
-            autoCapture
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-emerald-500/20 ring-1 ring-emerald-500/40'
-              : 'bg-black/60 text-gray-300 border-white/10 hover:text-white'
-          }`}
-          title="تبديل الالتقاط التلقائي عند ثبات المستند"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span className="text-xs font-arabic font-bold">{autoCapture ? 'تلقائي' : 'يدوي'}</span>
-        </button>
-      </div>
-
-      {/* Left side: Quick Controls (Flash, Flip, Settings) */}
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={onToggleTorch}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-            torchOn
-              ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50 shadow-lg shadow-amber-500/20'
-              : 'bg-black/60 hover:bg-black/90 text-gray-300 border border-white/15'
-          } active:scale-90`}
-          title="فلاش الكاميرا"
-        >
-          {torchOn ? <Zap className="w-4 h-4 fill-accent text-accent" /> : <ZapOff className="w-4 h-4" />}
-        </button>
-
-        <button
-          onClick={onFlipCamera}
-          className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/90 border border-white/15 flex items-center justify-center text-gray-300 hover:text-white active:scale-90 transition-transform cursor-pointer"
-          title="تبديل الكاميرا (أمامية / خلفية)"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={onOpenSettingsClick}
-          className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/90 border border-white/15 flex items-center justify-center text-gray-300 hover:text-white active:scale-90 transition-transform cursor-pointer"
-          title="الإعدادات والتحديثات"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
-      </div>
+          <button type="button" className={control} onClick={() => { onFlipCamera(); setShowMore(false); }}>
+            <RefreshCw size={14} className="me-2" />{ar ? 'تبديل الكاميرا' : 'Switch camera'}
+          </button>
+          <button type="button" className={control} onClick={() => { onOpenLibraryClick(); setShowMore(false); }}>
+            {ar ? 'المستندات المحفوظة' : 'Saved documents'}
+          </button>
+          <button type="button" className={control} onClick={() => { onOpenSettingsClick(); setShowMore(false); }}>
+            {ar ? 'إعدادات المسح' : 'Scan settings'}
+          </button>
+        </div>
+      )}
     </div>
 
     {/* Main Viewfinder Screen */}
@@ -226,8 +202,7 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
             <Camera className="w-8 h-8 text-accent animate-pulse" />
           </div>
           <div className="space-y-1">
-            <p className="text-sm font-bold text-white font-arabic">جاري تشغيل الكاميرا...</p>
-            <p className="text-[11px] text-gray-400 font-arabic">تهيئة المستشعر وعدسة المسح</p>
+            <p className="text-sm font-bold text-white font-arabic">{ar ? 'جارٍ تشغيل الكاميرا…' : 'Starting camera…'}</p>
           </div>
         </div>
       )}
@@ -238,22 +213,24 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
           <div className="w-16 h-16 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
             <Camera className="w-8 h-8 text-accent" />
           </div>
-          <h3 className="text-base font-bold text-white font-arabic">إذن الكاميرا مطلوب</h3>
+          <h3 className="text-base font-bold text-white font-arabic">{ar ? 'الكاميرا غير متاحة' : 'Camera unavailable'}</h3>
           <p className="text-xs text-gray-400 max-w-xs leading-relaxed font-arabic">
-            يرجى منح صلاحية الكاميرا لمسح المستندات وتجميعها في ملف PDF، أو اختر صوراً من الاستوديو.
+            {ar ? 'تحقّق من إذن الكاميرا أو استورد صوراً.' : 'Check camera permissions or import images.'}
           </p>
           <div className="flex items-center gap-3 mt-2">
             <button
               onClick={onRetryCamera}
+              disabled={capturing}
               className="px-5 py-2.5 bg-accent text-on-accent font-bold text-xs rounded-xl active:scale-95 transition-transform cursor-pointer"
             >
-              تفعيل الكاميرا
+              {ar ? 'تفعيل الكاميرا' : 'Enable camera'}
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
+              disabled={capturing}
               className="px-4 py-2.5 glass-button text-gray-300 font-medium text-xs rounded-xl active:scale-95 transition-transform cursor-pointer"
             >
-              اختيار من المعرض
+              {ar ? 'اختيار من المعرض' : 'Choose from gallery'}
             </button>
           </div>
         </div>
@@ -265,7 +242,7 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
           <div className="relative w-[84%] max-w-[340px] aspect-[1.58/1] rounded-3xl border-2 border-dashed border-accent/70 bg-accent/[0.04] flex flex-col items-center justify-center gap-2 shadow-2xl backdrop-blur-[1px]">
             <CreditCard className="w-8 h-8 text-accent animate-pulse" />
             <span className="text-xs font-bold font-arabic text-accent bg-black/75 px-3 py-1 rounded-full border border-accent/30 shadow-md">
-              {idCardStep === 'front' ? 'الوجه الأمامي للبطاقة' : 'الوجه الخلفي للبطاقة'}
+              {idCardStep === 'front' ? (ar ? 'الوجه الأمامي للبطاقة' : 'Front of ID') : (ar ? 'الوجه الخلفي للبطاقة' : 'Back of ID')}
             </span>
             <div className="absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 border-accent rounded-tl-lg" />
             <div className="absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 border-accent rounded-tr-lg" />
@@ -275,86 +252,35 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
         </div>
       )}
 
-      {/* Exact Sensor Framing Boundary */}
-      {renderedBounds && scanMode !== 'idcard' && (
-        <div
-          style={{
-            left: `${renderedBounds.x}px`,
-            top: `${renderedBounds.y}px`,
-            width: `${renderedBounds.width}px`,
-            height: `${renderedBounds.height}px`,
-          }}
-          className={`pointer-events-none absolute border transition-all duration-200 ${
-            effectiveLiveDocPresent ? 'border-emerald-500/40' : 'border-accent/25'
-          }`}
+      {renderedBounds && visibleQuad && scanMode === 'document' && (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute"
+          style={{ left: renderedBounds.x, top: renderedBounds.y, width: renderedBounds.width, height: renderedBounds.height }}
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="none"
         >
-          <div
-            className={`absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 transition-colors ${
-              effectiveLiveDocPresent ? 'border-emerald-400' : 'border-accent'
-            }`}
+          <polygon
+            points={[visibleQuad.topLeft, visibleQuad.topRight, visibleQuad.bottomRight, visibleQuad.bottomLeft]
+              .map(({ x, y }) => `${x * 1000},${y * 1000}`).join(' ')}
+            fill="#34d39922" stroke="#34d399" strokeWidth="2" vectorEffect="non-scaling-stroke"
           />
-          <div
-            className={`absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 transition-colors ${
-              effectiveLiveDocPresent ? 'border-emerald-400' : 'border-accent'
-            }`}
-          />
-          <div
-            className={`absolute -bottom-1 -left-1 w-6 h-6 border-b-2 border-l-2 transition-colors ${
-              effectiveLiveDocPresent ? 'border-emerald-400' : 'border-accent'
-            }`}
-          />
-          <div
-            className={`absolute -bottom-1 -right-1 w-6 h-6 border-b-2 border-r-2 transition-colors ${
-              effectiveLiveDocPresent ? 'border-emerald-400' : 'border-accent'
-            }`}
-          />
-        </div>
+        </svg>
       )}
-
-      {/* Dynamic Status Pill */}
-      <div className="absolute bottom-4 inset-x-0 text-center pointer-events-none z-20">
-        <span className="text-xs bg-black/75 backdrop-blur-md px-4 py-2 rounded-full text-gray-200 border border-white/10 inline-flex items-center justify-center gap-2 font-arabic shadow-lg">
-          {scanMode === 'idcard' ? (
-            <span className="text-accent font-bold flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>{idCardStep === 'front' ? 'ضع الوجه الأمامي للهوية داخل الإطار' : 'ضع الوجه الخلفي للهوية'}</span>
-            </span>
-          ) : autoCapture && effectiveStabilityProgress > 0 ? (
-            <span className="text-emerald-400 font-bold flex items-center gap-1.5 animate-pulse">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>ثبّت الكاميرا... جاري الالتقاط التلقائي ({effectiveStabilityProgress}%)</span>
-            </span>
-          ) : effectiveLiveDocPresent ? (
-            <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
-              <FileCheck2 className="w-3.5 h-3.5" />
-              <span>تم التعرف على المستند بنجاح</span>
-            </span>
-          ) : pagesCount > 0 ? (
-            <span className="text-accent font-semibold flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-accent" />
-              <span>
-                {pagesCount === 1
-                  ? 'صفحة واحدة ممسوحة'
-                  : pagesCount === 2
-                  ? 'صفحتان ممسوحتان'
-                  : `${pagesCount} صفحات مجمعة`}{' '}
-                — التقط المزيد أو اضغط إنهاء
-              </span>
-            </span>
-          ) : (
-            <span className="text-gray-300">وجّه الكاميرا نحو المستند للتأطير والمسح</span>
-          )}
-        </span>
-      </div>
+      {hasPermission && effectiveStabilityProgress > 0 && (
+        <p role="status" className="pointer-events-none absolute bottom-4 rounded-full bg-black/75 px-3 py-1 text-sm">
+          {ar ? 'ثبّت الكاميرا' : 'Hold still'}
+        </p>
+      )}
     </div>
 
     <CameraShutterControls
       fileInputRef={fileInputRef}
-      scanMode={scanMode}
+      lang={lang}
+      cameraReady={hasPermission === true}
       autoCapture={autoCapture}
       effectiveStabilityProgress={effectiveStabilityProgress}
       pagesCount={pagesCount}
-      onSelectScanMode={onSelectScanMode}
       capturing={capturing}
       onCaptureClick={onCaptureClick}
       onFinishBatchClick={onFinishBatchClick}
@@ -363,3 +289,4 @@ export const CameraViewfinderHud: React.FC<CameraViewfinderHudProps> = ({
     />
   </div>
 );
+};

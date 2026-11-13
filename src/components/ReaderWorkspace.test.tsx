@@ -56,6 +56,7 @@ function makeReader(overrides: Partial<ReaderController> = {}): ReaderController
     goToNextPage: vi.fn(),
     goToPrevPage: vi.fn(),
     scrollContainerRef: { current: null },
+    touchZoomActiveRef: { current: false },
     handleTouchStart: vi.fn(),
     handleTouchMove: vi.fn(),
     handleTouchEnd: vi.fn(),

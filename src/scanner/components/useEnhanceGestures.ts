@@ -11,8 +11,7 @@ interface UseEnhanceGesturesOptions {
 }
 
 /**
- * 120Hz pinch-to-zoom, double-tap zoom, zoomed pan, and horizontal swipe-to-turn
- * gesture controller for the scanner review stage.
+ * Pinch, double tap, pan, and horizontal page turns in the scanner review.
  */
 export function useEnhanceGestures({
   pageScopeKey,
@@ -51,10 +50,12 @@ export function useEnhanceGestures({
   const liveSwipingRef = useRef<boolean>(false);
   const gestureRafRef = useRef<number | null>(null);
 
-  const lastTapTimeRef = useRef<number>(0);
+  const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const multiTouchRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const touchDistanceStartRef = useRef<number | null>(null);
   const initialZoomRef = useRef<number>(1);
+  const pinchPair = useRef<[number, number] | null>(null);
   const panStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const prevScopeRef = useRef<string>(pageScopeKey);
@@ -109,6 +110,14 @@ export function useEnhanceGestures({
   const handleStageTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (isRedacting) return;
 
+    if (e.touches.length > 1) {
+      multiTouchRef.current = true;
+      lastTapRef.current = null;
+      touchStartRef.current = null;
+      liveSwipeXRef.current = 0;
+      liveSwipingRef.current = false;
+      scheduleStageTransform();
+    }
     if (e.touches.length === 2) {
       const t0 = e.touches[0];
       const t1 = e.touches[1];
@@ -117,29 +126,17 @@ export function useEnhanceGestures({
         t0.clientX - t1.clientX,
         t0.clientY - t1.clientY
       );
-      touchDistanceStartRef.current = dist;
+      touchDistanceStartRef.current = dist >= 8 ? dist : null;
+      pinchPair.current = [t0.identifier, t1.identifier];
       initialZoomRef.current = liveZoomRef.current;
       return;
     }
 
-    if (e.touches.length === 1) {
+    if (e.touches.length === 1 && !multiTouchRef.current &&
+        !(e.target instanceof Element && e.target.closest('button'))) {
       const now = Date.now();
       const touch = e.touches[0];
       if (!touch) return;
-
-      if (now - lastTapTimeRef.current < 280) {
-        lastTapTimeRef.current = 0;
-        onHaptic(15);
-        if (liveZoomRef.current > 1.05) {
-          resetZoomAndPan();
-        } else {
-          liveZoomRef.current = 2.5;
-          setZoomScale(2.5);
-          applyStageTransform('transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)');
-        }
-        return;
-      }
-      lastTapTimeRef.current = now;
 
       touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: now };
       panStartRef.current = { ...livePanRef.current };
@@ -149,14 +146,20 @@ export function useEnhanceGestures({
   const handleStageTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     if (isRedacting) return;
 
-    if (e.touches.length === 2 && touchDistanceStartRef.current !== null) {
+    if (e.touches.length === 2 && multiTouchRef.current) {
       const t0 = e.touches[0];
       const t1 = e.touches[1];
       if (!t0 || !t1) return;
-      const dist = Math.hypot(
-        t0.clientX - t1.clientX,
-        t0.clientY - t1.clientY
-      );
+      const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+      const pair = pinchPair.current;
+      if (!touchDistanceStartRef.current || !pair || !pair.includes(t0.identifier) || !pair.includes(t1.identifier)) {
+        if (dist >= 8) {
+          touchDistanceStartRef.current = dist;
+          initialZoomRef.current = liveZoomRef.current;
+          pinchPair.current = [t0.identifier, t1.identifier];
+        }
+        return;
+      }
       const scaleFactor = dist / touchDistanceStartRef.current;
       const newScale = Math.min(4.0, Math.max(1.0, initialZoomRef.current * scaleFactor));
       liveZoomRef.current = newScale;
@@ -167,7 +170,7 @@ export function useEnhanceGestures({
       return;
     }
 
-    if (e.touches.length === 1 && touchStartRef.current) {
+    if (!multiTouchRef.current && e.touches.length === 1 && touchStartRef.current) {
       const touch = e.touches[0];
       if (!touch) return;
       const dx = touch.clientX - touchStartRef.current.x;
@@ -183,45 +186,72 @@ export function useEnhanceGestures({
           scheduleStageTransform();
         }
       } else if (pageCount > 1) {
-        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
+        if (Math.abs(dx) > Math.abs(dy) * 1.35 && Math.abs(dx) > 10) {
           liveSwipingRef.current = true;
           const isAtBoundary = (safeIndex === 0 && dx > 0) || (safeIndex === pageCount - 1 && dx < 0);
           liveSwipeXRef.current = isAtBoundary ? dx * 0.3 : dx;
-          scheduleStageTransform();
+        } else {
+          liveSwipingRef.current = false;
+          liveSwipeXRef.current = 0;
         }
+        scheduleStageTransform();
       }
     }
   };
 
-  const handleStageTouchEnd = () => {
-    if (isRedacting) return;
+  const finishTouch = () => {
     touchDistanceStartRef.current = null;
+    pinchPair.current = null;
     if (gestureRafRef.current !== null) {
       cancelAnimationFrame(gestureRafRef.current);
       gestureRafRef.current = null;
     }
-
-    const swipeDx = liveSwipeXRef.current;
-    if (liveSwipingRef.current && touchStartRef.current) {
-      const dt = Date.now() - touchStartRef.current.time;
-      const velocity = Math.abs(swipeDx) / Math.max(1, dt);
-
-      if (Math.abs(swipeDx) > 60 || velocity > 0.4) {
-        if (swipeDx < 0 && safeIndex < pageCount - 1) {
-          onHaptic(20);
-          onChangePage(safeIndex + 1);
-        } else if (swipeDx > 0 && safeIndex > 0) {
-          onHaptic(20);
-          onChangePage(safeIndex - 1);
-        }
-      }
-    }
     liveSwipeXRef.current = 0;
     liveSwipingRef.current = false;
     touchStartRef.current = null;
+    multiTouchRef.current = false;
     setZoomScale(liveZoomRef.current);
     setPanOffset({ ...livePanRef.current });
     applyStageTransform(liveZoomRef.current > 1.05 ? 'none' : 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)');
+  };
+
+  const handleStageTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (isRedacting || event.touches.length > 0) return;
+    const start = touchStartRef.current;
+    const end = event.changedTouches[0];
+    if (!multiTouchRef.current && start && end) {
+      const elapsed = Date.now() - start.time;
+      const swipeDx = liveSwipeXRef.current;
+      if (liveSwipingRef.current && Math.abs(swipeDx) > 24 &&
+        (Math.abs(swipeDx) > 60 || Math.abs(swipeDx) / Math.max(1, elapsed) > 0.4)) {
+        const nextPage = safeIndex + (swipeDx < 0 ? 1 : -1);
+        if (nextPage >= 0 && nextPage < pageCount) {
+          onHaptic(20);
+          onChangePage(nextPage);
+        }
+        lastTapRef.current = null;
+      } else if (elapsed < 260 && Math.hypot(end.clientX - start.x, end.clientY - start.y) < 8) {
+        const now = Date.now();
+        const lastTap = lastTapRef.current;
+        const doubleTap = lastTap && now - lastTap.time < 280 && Math.hypot(start.x - lastTap.x, start.y - lastTap.y) < 24;
+        lastTapRef.current = doubleTap ? null : { x: start.x, y: start.y, time: now };
+        if (doubleTap) {
+          liveZoomRef.current = liveZoomRef.current > 1.05 ? 1 : 2.5;
+          livePanRef.current = { x: 0, y: 0 };
+          onHaptic(15);
+        }
+      } else {
+        lastTapRef.current = null;
+      }
+    }
+    finishTouch();
+  };
+
+  const handleStageTouchCancel = (event: React.TouchEvent<HTMLDivElement>) => {
+    lastTapRef.current = null;
+    touchStartRef.current = null;
+    if (event.touches.length === 0) finishTouch();
+    else multiTouchRef.current = true;
   };
 
   return {
@@ -232,5 +262,6 @@ export function useEnhanceGestures({
     handleStageTouchStart,
     handleStageTouchMove,
     handleStageTouchEnd,
+    handleStageTouchCancel,
   };
 }

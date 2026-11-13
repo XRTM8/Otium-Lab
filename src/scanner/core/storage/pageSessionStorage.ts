@@ -19,15 +19,17 @@ export async function checkStorageQuota(): Promise<{ hasLowStorage: boolean; fre
   return { hasLowStorage: false };
 }
 
-export function saveActiveSessionPages(pages: ScannedPage[]): void {
+export function saveActiveSessionPages(pages: ScannedPage[]): boolean {
   try {
     if (pages.length === 0) {
       localStorage.removeItem(SESSION_PAGES_KEY);
     } else {
       localStorage.setItem(SESSION_PAGES_KEY, JSON.stringify(pages));
     }
+    return true;
   } catch (err) {
     console.warn('[PageStore] Failed to persist active session pages:', err);
+    return false;
   }
 }
 

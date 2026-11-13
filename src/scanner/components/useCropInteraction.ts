@@ -1,10 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import type React from 'react';
 import type { Point, Quad } from '../core/types';
-import { getDefaultQuad, getFullFrameQuad, warpPerspectiveAsync, isQuadConvex } from '../core/geometry';
-import { detectDocumentCorners } from '../core/edgeDetection';
+import { getFullFrameQuad, warpPerspectiveAsync, isQuadConvex } from '../core/geometry';
+import { detectDocumentCornersWithConfidence } from '../core/edgeDetection';
 import {
-  buildAspectRatioQuad,
   clampDraggedCorner,
   clampDraggedEdge,
   rotateImageAndQuad90,
@@ -19,7 +18,7 @@ export { triggerCropHaptic };
 interface UseCropInteractionOptions {
   imageSrc: string;
   initialQuad?: Quad;
-  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void | Promise<void>;
+  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad, source: string) => void | Promise<void>;
 }
 
 export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCropInteractionOptions) {
@@ -90,13 +89,6 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
     setQuad(next);
   };
 
-  const applyAspectRatio = (ratio: number) => {
-    if (!imageRef.current || imageSize.width === 0 || imageSize.height === 0 || !quad) return;
-    triggerCropHaptic(15);
-    pushHistory(quad);
-    setQuad(buildAspectRatioQuad(imageSize.width, imageSize.height, ratio));
-  };
-
   const handleImageLoad = () => {
     if (!imageRef.current) return;
     const { naturalWidth, naturalHeight } = imageRef.current;
@@ -107,7 +99,7 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
       setQuad(
         initialQuad && isQuadConvex(initialQuad)
           ? initialQuad
-          : getFullFrameQuad(naturalWidth, naturalHeight, 0.005)
+          : getFullFrameQuad(naturalWidth, naturalHeight, 0)
       );
     }
   };
@@ -115,8 +107,11 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
   const handleAutoDetect = () => {
     if (!imageRef.current || !quad) return;
     triggerCropHaptic(15);
+    const result = detectDocumentCornersWithConfidence(imageRef.current);
+    if (!result.isDocumentPresent) return false;
     pushHistory(quad);
-    setQuad(detectDocumentCorners(imageRef.current));
+    setQuad(result.quad);
+    return true;
   };
 
   const handleSelectFullImage = () => {
@@ -129,13 +124,6 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
       bottomRight: { x: imageSize.width, y: imageSize.height },
       bottomLeft: { x: 0, y: imageSize.height },
     });
-  };
-
-  const handleResetQuad = () => {
-    if (!quad) return;
-    triggerCropHaptic(15);
-    pushHistory(quad);
-    setQuad(getDefaultQuad(imageSize.width, imageSize.height));
   };
 
   const clientToImageCoords = useCallback(
@@ -251,7 +239,11 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
     triggerCropHaptic(20);
     try {
       const warped = await warpPerspectiveAsync(imageRef.current, quad);
-      await onConfirm(warped, quad);
+      try {
+        await onConfirm(warped, quad, currentSrc);
+      } finally {
+        warped.width = warped.height = 1;
+      }
     } catch (error) {
       console.warn('Could not apply and save the crop:', error);
       setApplyError(true);
@@ -262,8 +254,8 @@ export function useCropInteraction({ imageSrc, initialQuad, onConfirm }: UseCrop
 
   return {
     containerRef, imageRef, currentSrc, quad, activeCorner, activeEdge, pointerPos, imageSize,
-    isApplying, applyError, undoStack, redoStack, handleUndo, handleRedo, applyAspectRatio,
-    handleImageLoad, handleAutoDetect, handleSelectFullImage, handleResetQuad,
+    isApplying, applyError, undoStack, redoStack, handleUndo, handleRedo,
+    handleImageLoad, handleAutoDetect, handleSelectFullImage,
     imageToClientCoords, handleCornerPointerDown, handleEdgePointerDown, handlePointerMove, handlePointerUp,
     handleRotateCw: () => rotateImageAndQuad(true),
     handleRotateCcw: () => rotateImageAndQuad(false),

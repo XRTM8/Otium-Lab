@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import type { FilterType, ScannedPage } from '../core/types';
+import type { ScannedPage } from '../core/types';
 import type { PdfCompressionPreset, PdfPageFormat, PdfWatermarkStyle } from '../core/pdf';
 import { loadPageCanvasFromDisk } from '../core/storage/pageStore';
 import { dewarpBookCurvatureAsync } from '../core/geometry';
 import { terminateOcrWorker } from '../core/ocr/ocrEngine';
-import { detectBarcodesFromCanvas, type DetectedBarcode } from '../core/barcode';
+import type { Language } from '../../core/i18n/translations';
 import type { SignaturePlacement } from '../core/enhancePdfCompile';
 import { EnhanceStageAndGrid } from './EnhanceStageAndGrid';
 import { EnhanceBottomDock } from './EnhanceBottomDock';
@@ -14,6 +14,7 @@ import { useEnhanceGestures } from './useEnhanceGestures';
 import { useEnhanceExportAndActions } from './useEnhanceExportAndActions';
 
 interface EnhanceViewProps {
+  lang?: Language;
   pages: ScannedPage[];
   onBackToCamera: () => void;
   onAddMorePages: () => void;
@@ -23,12 +24,13 @@ interface EnhanceViewProps {
   onRotatePage: (index: number) => Promise<void>;
   onEditCrop?: (index: number) => void;
   onDuplicatePage?: (index: number) => void;
-  onUpdatePageThumbnail?: (pageId: string, thumbnailDataUrl: string) => void;
+  onUpdatePageThumbnail?: (pageId: string, thumbnailDataUrl: string, updates?: Partial<ScannedPage>) => void;
   onResetAll: () => void;
-  onOpenPdfInReader?: (file: File) => void;
+  onOpenPdfInReader?: (file: File) => void | Promise<void>;
 }
 
 export const EnhanceView: React.FC<EnhanceViewProps> = ({
+  lang = 'ar',
   pages,
   onBackToCamera,
   onAddMorePages,
@@ -46,7 +48,6 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
   const [showDeletePageModal, setShowDeletePageModal] = useState<boolean>(false);
   const [showMoreActions, setShowMoreActions] = useState<boolean>(false);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('magic');
   const [curvature, setCurvature] = useState<number>(0);
   const [spinePos, setSpinePos] = useState<number>(0.5);
   const [enableOcr, setEnableOcr] = useState<boolean>(false);
@@ -55,7 +56,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const [isSignatureOpen, setIsSignatureOpen] = useState(false);
   const [signatures, setSignatures] = useState<Record<string, SignaturePlacement>>({});
   const [isGridView, setIsGridView] = useState(false);
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [watermarkText, setWatermarkText] = useState<string>('');
   const [watermarkStyle, setWatermarkStyle] = useState<PdfWatermarkStyle>('diagonal');
   const [isWatermarkOpen, setIsWatermarkOpen] = useState(false);
@@ -93,7 +94,6 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   const [previewState, setPreviewState] = useState<{ key: string; url: string }>({ key: pageScopeKey, url: '' });
   const fullResPreviewUrl = previewState.key === pageScopeKey ? previewState.url : '';
   const setFullResPreviewUrl = (url: string) => setPreviewState({ key: pageScopeKey, url });
-  const [detectedBarcodes, setDetectedBarcodes] = useState<DetectedBarcode[]>([]);
   const [docTitle, setDocTitle] = useState<string>(() => {
     const d = new Date();
     return `Otium_Doc_${d.toISOString().slice(0, 10)}_${d.toTimeString().slice(0, 5).replace(':', '-')}`;
@@ -106,6 +106,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
 
   const safeIndex = Math.min(currentPageIndex, Math.max(0, pages.length - 1));
   const currentPage = pages[safeIndex];
+  const activeFilter = currentPage?.filter ?? 'original';
 
   const triggerHaptic = (duration = 15) => {
     if ('vibrate' in navigator) {
@@ -125,6 +126,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     handleStageTouchStart,
     handleStageTouchMove,
     handleStageTouchEnd,
+    handleStageTouchCancel,
   } = useEnhanceGestures({
     pageScopeKey,
     pageCount: pages.length,
@@ -164,14 +166,10 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
         const finalCanvas = curvature > 0 ? await dewarpBookCurvatureAsync(canvas, curvature, spinePos) : canvas;
         if (!active) return;
         setPreviewState({ key: pageScopeKey, url: finalCanvas.toDataURL('image/jpeg', 0.9) });
-        detectBarcodesFromCanvas(finalCanvas).then((codes) => {
-          if (active) setDetectedBarcodes(codes);
-        });
       })
       .catch(() => {
         if (active) {
           setPreviewState({ key: pageScopeKey, url: currentPage.thumbnailDataUrl });
-          setDetectedBarcodes([]);
         }
       });
     return () => { active = false; };
@@ -182,7 +180,6 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     currentPage,
     safeIndex,
     activeFilter,
-    setActiveFilter,
     curvature,
     spinePos,
     signatures,
@@ -215,6 +212,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
     onDeletePage,
     onUpdatePageThumbnail,
     onOpenPdfInReader,
+    lang,
     triggerHaptic,
   });
 
@@ -229,6 +227,7 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
   return (
     <div className="relative w-full h-full bg-[#07090e] flex flex-col justify-between overflow-hidden select-none">
       <EnhanceHeaderBar
+        lang={lang}
         onBackToCamera={onBackToCamera}
         setShowCancelModal={setShowCancelModal}
         isEditingTitle={isEditingTitle}
@@ -239,20 +238,23 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
         pageCount={pages.length}
         setShowDeletePageModal={setShowDeletePageModal}
         isRedacting={isRedacting}
-        setIsRedacting={setIsRedacting}
+        setIsRedacting={(enabled) => {
+          if (enabled) {
+            setCurvature(0);
+            resetZoomAndPan();
+          }
+          setIsRedacting(enabled);
+        }}
         redactionStrokes={redactionStrokes}
         setRedactionStrokes={setRedactionStrokes}
         handleBurnRedaction={actions.handleBurnRedaction}
         isGridView={isGridView}
         setIsGridView={setIsGridView}
-        watermarkText={watermarkText}
-        setIsWatermarkOpen={setIsWatermarkOpen}
-        hasSignature={signatures[currentPage?.id ?? '']}
-        setIsSignatureOpen={setIsSignatureOpen}
         triggerHaptic={triggerHaptic}
       />
 
       <EnhanceStageAndGrid
+        lang={lang}
         isGridView={isGridView}
         setIsGridView={setIsGridView}
         pages={pages}
@@ -265,11 +267,10 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
         handleStageTouchStart={handleStageTouchStart}
         handleStageTouchMove={handleStageTouchMove}
         handleStageTouchEnd={handleStageTouchEnd}
+        handleStageTouchCancel={handleStageTouchCancel}
         toastMsg={toastMsg}
-        setToastMsg={setToastMsg}
         zoomScale={zoomScale}
         resetZoomAndPan={resetZoomAndPan}
-        detectedBarcodes={detectedBarcodes}
         stageContainerRef={stageContainerRef}
         panOffset={panOffset}
         previewImageRef={previewImageRef}
@@ -293,12 +294,12 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
 
       {!isGridView && (
         <EnhanceBottomDock
+          lang={lang}
           safeIndex={safeIndex}
           pages={pages}
           activeFilter={activeFilter}
           isExtractingText={isExtractingText}
-          compressionPreset={compressionPreset}
-          pdfGenerating={pdfGenerating}
+          pdfGenerating={pdfGenerating || isRedacting}
           onEditCrop={onEditCrop}
           onRotateCurrentPage={actions.handleRotateCurrentPage}
           onExtractTextFromPage={actions.handleExtractTextFromPage}
@@ -308,16 +309,13 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
           onApplyFilterToAll={actions.handleApplyFilterToAll}
           onSelectPageIndex={setCurrentPageIndex}
           onAddMorePages={onAddMorePages}
-          onOpenAdvancedOptions={() => { triggerHaptic(12); setIsAdvancedOptionsOpen(true); }}
-          onOpenInOtium={actions.handleOpenInOtium}
-          onSharePdf={actions.handleSharePdf}
-          onDownloadJpg={actions.handleDownloadJpg}
+          onSavePdf={actions.handleDownloadPdf}
           onOpenMoreActions={() => { triggerHaptic(10); setShowMoreActions(true); }}
-          triggerHaptic={triggerHaptic}
         />
       )}
 
       <EnhanceModals
+        lang={lang}
         pages={pages}
         safeIndex={safeIndex}
         currentPage={currentPage}
@@ -357,8 +355,9 @@ export const EnhanceView: React.FC<EnhanceViewProps> = ({
         setSignatures={setSignatures}
         onDeletePage={onDeletePage}
         onResetAll={onResetAll}
-        onShareWhatsApp={actions.handleShareWhatsApp}
-        onDownloadPdf={actions.handleDownloadPdf}
+        onDownloadJpg={actions.handleDownloadJpg}
+        onSharePdf={actions.handleSharePdf}
+        onOpenInReader={actions.handleOpenInOtium}
         onPrintPdf={actions.handlePrintPdf}
         triggerHaptic={triggerHaptic}
       />

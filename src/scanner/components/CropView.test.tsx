@@ -47,7 +47,7 @@ describe('CropView', () => {
     vi.unstubAllGlobals();
   });
 
-  it('initializes quad on image load, supports presets/undo/redo, and confirms warped canvas', async () => {
+  it('initializes quad on image load, supports full-frame selection and undo/redo, and confirms warped canvas', async () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
 
@@ -77,7 +77,7 @@ describe('CropView', () => {
     expect(undoBtn.disabled).toBe(true);
     expect(redoBtn.disabled).toBe(true);
 
-    await act(async () => findButton('A4 قياسي').click());
+    await act(async () => findButton('كامل الصورة').click());
     expect(undoBtn.disabled).toBe(false);
 
     await act(async () => undoBtn.click());

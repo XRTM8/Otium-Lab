@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyFilterAsync } from './filters';
+import { applyAdaptiveBwFilter } from './filterPresets';
 
 const filterMocks = vi.hoisted(() => ({
   runWasmFilter: vi.fn<() => Promise<Uint8ClampedArray | null>>().mockResolvedValue(null),
@@ -120,4 +121,28 @@ describe('document filters engine', () => {
     expect(context?.createImageData).toHaveBeenCalledWith(8, 8);
     expect(context?.putImageData).toHaveBeenCalledTimes(2);
   });
+  it('preserves faint strokes and a small dark dot against light and shadowed paper', () => {
+    const width = 96;
+    const height = 64;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const paper = x < 48 ? 235 : 145;
+        const ink = (x >= 15 && x <= 32 && y === 22) || (x === 75 && y === 37);
+        const thickInk = x >= 62 && x <= 76 && y >= 8 && y <= 19;
+        const i = (y * width + x) * 4;
+        pixels.fill(thickInk ? 36 : paper - (ink ? 23 : 0), i, i + 3);
+        pixels[i + 3] = 255;
+      }
+    }
+    applyAdaptiveBwFilter(pixels, width, height);
+    const value = (x: number, y: number) => pixels[(y * width + x) * 4];
+    expect(value(25, 22)).toBe(0);
+    expect(value(75, 37)).toBe(0);
+    expect(value(69, 13)).toBe(0);
+    expect(value(25, 20)).toBe(255);
+    expect(value(75, 35)).toBe(255);
+    expect(value(48, 35)).toBe(255);
+  });
+
 });

@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ViewMode } from '../core/types';
-import type { InkTool } from './TeacherDock';
 import { markScrollActivity } from '../core/reader/renderScheduler';
 import { computeOptimalPageScale } from '../core/reader/device';
 import { triggerHaptic } from '../core/utils/haptics';
@@ -17,9 +16,9 @@ interface UseReaderWorkspaceSyncOptions {
   viewMode: ViewMode;
   basePageSize: { width: number; height: number } | null;
   isImmersive: boolean;
-  interactionMode: InkTool;
   handlePageVisible: (page: number) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  touchZoomActiveRef: React.RefObject<boolean>;
   scrollToPage: (page: number) => void;
 }
 
@@ -33,9 +32,9 @@ export function useReaderWorkspaceSync({
   viewMode,
   basePageSize,
   isImmersive,
-  interactionMode,
   handlePageVisible,
   scrollContainerRef,
+  touchZoomActiveRef,
   scrollToPage,
 }: UseReaderWorkspaceSyncOptions) {
   const [compactLandscape, setCompactLandscape] = useState(false);
@@ -118,7 +117,7 @@ export function useReaderWorkspaceSync({
 
     const measure = () => {
       scrollFrameRef.current = null;
-      if (numPages === 0) return;
+      if (numPages === 0 || touchZoomActiveRef.current) return;
 
       const approxSlotHeight = Math.max(100, (basePageSize?.height || 842) * zoom + 32);
       const estimatedPage = Math.max(
@@ -169,6 +168,7 @@ export function useReaderWorkspaceSync({
 
     const onScroll = () => {
       markScrollActivity();
+      if (touchZoomActiveRef.current) return;
       setShowScrubberPill((prev) => (prev ? prev : true));
       if (scrubberTimeoutRef.current !== null) {
         window.clearTimeout(scrubberTimeoutRef.current);
@@ -189,7 +189,7 @@ export function useReaderWorkspaceSync({
         scrollFrameRef.current = null;
       }
     };
-  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef]);
+  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef, touchZoomActiveRef]);
 
   useEffect(() => {
     if (isImmersive || settledPage === currentPage) return;
@@ -206,19 +206,6 @@ export function useReaderWorkspaceSync({
       }
     };
   }, []);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !doc) return;
-    container.style.touchAction = 'pan-x pan-y';
-    const pinch = (event: TouchEvent) => {
-      if (interactionMode === 'hand' && event.touches.length > 1) {
-        event.preventDefault();
-      }
-    };
-    container.addEventListener('touchmove', pinch, { passive: false });
-    return () => container.removeEventListener('touchmove', pinch);
-  }, [interactionMode, doc, scrollContainerRef]);
 
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;

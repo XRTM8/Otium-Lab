@@ -44,6 +44,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     goToNextPage,
     goToPrevPage,
     scrollContainerRef,
+    touchZoomActiveRef,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
@@ -76,9 +77,9 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     viewMode,
     basePageSize,
     isImmersive,
-    interactionMode,
     handlePageVisible,
     scrollContainerRef,
+    touchZoomActiveRef,
     scrollToPage,
   });
 
@@ -239,7 +240,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
                 paddingRight: 'max(0.5rem, env(safe-area-inset-right, 0px))'
               }
             : {}),
-          touchAction: 'pan-x pan-y'
+          touchAction: interactionMode === 'hand' ? 'none' : 'pan-x pan-y'
         }}
         className="reader-viewport flex-1 w-full h-full overflow-y-auto overflow-x-auto overscroll-contain pb-20 sm:pb-24 px-2 sm:px-4 relative"
       >

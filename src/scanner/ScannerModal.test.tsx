@@ -7,7 +7,7 @@ import { ScannerModal } from './ScannerModal';
 
 const storeMocks = vi.hoisted(() => ({
   draftPages: null as ScannedPage[] | null,
-  clearScanSession: vi.fn(),
+  clearScanSession: vi.fn().mockResolvedValue(undefined),
   clearActiveSessionPages: vi.fn(),
   saveActiveSessionPages: vi.fn(),
 }));
@@ -18,7 +18,7 @@ vi.mock('./core/storage/pageStore', () => ({
   rotateStoredPage: vi.fn().mockResolvedValue(undefined),
   deleteStoredPage: vi.fn().mockResolvedValue(undefined),
   duplicateStoredPage: vi.fn().mockResolvedValue(undefined),
-  loadOriginalDataUrlFromDisk: vi.fn().mockResolvedValue(null),
+  loadOriginalBlobFromDisk: vi.fn().mockResolvedValue(null),
   loadPageCanvasFromDisk: vi.fn().mockResolvedValue(null),
   saveActiveSessionPages: storeMocks.saveActiveSessionPages,
   getActiveSessionPages: () => storeMocks.draftPages,
@@ -30,10 +30,6 @@ vi.mock('./core/wasmEngine', () => ({
   runWasmMotionAndSharpness: vi.fn().mockResolvedValue(null),
   runWasmFilter: vi.fn().mockResolvedValue(null),
   runWasmPerspectiveWarp: vi.fn().mockResolvedValue(null),
-}));
-
-vi.mock('./core/barcode', () => ({
-  detectBarcodesFromCanvas: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('./core/ocr/ocrEngine', () => ({
@@ -50,9 +46,9 @@ describe('ScannerModal', () => {
     document.body.appendChild(host);
     root = createRoot(host);
     storeMocks.draftPages = null;
-    storeMocks.clearScanSession.mockClear();
+    storeMocks.clearScanSession.mockReset().mockResolvedValue(undefined);
     storeMocks.clearActiveSessionPages.mockClear();
-    storeMocks.saveActiveSessionPages.mockClear();
+    storeMocks.saveActiveSessionPages.mockReset().mockReturnValue(true);
   });
 
   afterEach(async () => {
@@ -82,7 +78,7 @@ describe('ScannerModal', () => {
     const dialog = host.querySelector('[role="dialog"]');
     expect(dialog?.getAttribute('aria-label')).toBe('ماسح المستندات الضوئي');
 
-    const closeBtn = host.querySelector<HTMLButtonElement>('button[title="إغلاق الماسح الضوئي"]');
+    const closeBtn = host.querySelector<HTMLButtonElement>('button[aria-label="إغلاق الماسح الضوئي"]');
     if (!closeBtn) throw new Error('Missing close button');
     await act(async () => closeBtn.click());
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -118,7 +114,7 @@ describe('ScannerModal', () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     });
-    expect(host.textContent).toContain('إغلاق جلسة المسح الضوئي؟');
+    expect(host.textContent).toContain('إغلاق جلسة المسح؟');
     expect(onClose).not.toHaveBeenCalled();
 
     const saveDraftBtn = [...host.querySelectorAll('button')].find((b) =>

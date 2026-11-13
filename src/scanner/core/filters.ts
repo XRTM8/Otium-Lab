@@ -35,7 +35,7 @@ export async function applyFilterAsync(
   if (filter === 'original') return sourceCanvas;
 
   try {
-    const maxDim = 2400;
+    const maxDim = 3600;
     const currentMax = Math.max(sourceCanvas.width, sourceCanvas.height);
     const scale = currentMax > maxDim ? maxDim / currentMax : 1;
     const width = Math.max(1, Math.round(sourceCanvas.width * scale));
@@ -103,7 +103,7 @@ const SYNC_FILTER_RUNNERS: Record<Exclude<FilterType, 'original'>, (data: Uint8C
 };
 
 function applyFilter(sourceCanvas: HTMLCanvasElement, filter: FilterType): HTMLCanvasElement {
-  const maxDim = 2400;
+  const maxDim = 3600;
   const currentMax = Math.max(sourceCanvas.width, sourceCanvas.height);
   const scale = currentMax > maxDim ? maxDim / currentMax : 1;
   const width = Math.round(sourceCanvas.width * scale);

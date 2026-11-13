@@ -1,17 +1,21 @@
+import type { Language } from '../../core/i18n/translations';
 import React from 'react';
 import type { Point, Quad } from '../core/types';
 import { isQuadConvex } from '../core/geometry';
-import { Check, RotateCcw, X, Wand2, RotateCw, Maximize2, Undo2, Redo2, FileText, CreditCard, Receipt } from 'lucide-react';
+import { Check, RotateCcw, X, Wand2, RotateCw, Maximize2, Undo2, Redo2 } from 'lucide-react';
 import { useCropInteraction, type CornerKey, type EdgeKey } from './useCropInteraction';
 
 interface CropViewProps {
+  lang?: Language;
   imageSrc: string;
   initialQuad?: Quad;
-  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad) => void | Promise<void>;
+  onConfirm: (warpedCanvas: HTMLCanvasElement, quad: Quad, source: string) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onConfirm, onCancel }) => {
+export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onConfirm, onCancel, lang = 'ar' }) => {
+  const ar = lang === 'ar';
+  const [detectFailed, setDetectFailed] = React.useState(false);
   const {
     containerRef,
     imageRef,
@@ -27,11 +31,9 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
     redoStack,
     handleUndo,
     handleRedo,
-    applyAspectRatio,
     handleImageLoad,
     handleAutoDetect,
     handleSelectFullImage,
-    handleResetQuad,
     imageToClientCoords,
     handleCornerPointerDown,
     handleEdgePointerDown,
@@ -109,15 +111,16 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
       >
         <button
           onClick={onCancel}
+          disabled={isApplying}
           className="fluid-press flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-button text-gray-300 active:text-white cursor-pointer"
           title="إلغاء / Cancel"
         >
           <X className="w-4 h-4" />
-          <span className="text-xs">إلغاء</span>
+          <span className="text-xs">{ar ? 'إلغاء' : 'Cancel'}</span>
         </button>
 
         <span className="text-xs font-bold text-white font-arabic">
-          تحديد أبعاد المستند
+          {ar ? 'تحديد أبعاد المستند' : 'Crop page'}
         </span>
 
         <div className="flex items-center gap-1.5">
@@ -138,21 +141,6 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
             <Redo2 className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={handleSelectFullImage}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full glass-button text-accent active:scale-95 text-[11px] font-bold"
-            title="تحديد كامل الصورة / Full Image"
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-            <span>الكل</span>
-          </button>
-          <button
-            onClick={handleAutoDetect}
-            className="p-2 rounded-full glass-button text-accent active:scale-90"
-            title="كشف ذكي / Auto Detect"
-          >
-            <Wand2 className="w-4 h-4" />
-          </button>
-          <button
             onClick={handleRotateCcw}
             className="p-2 rounded-full glass-button text-gray-300 active:scale-90"
             title="تدوير يساراً 90° / Rotate Left"
@@ -165,13 +153,6 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
             title="تدوير يميناً 90° / Rotate Right"
           >
             <RotateCw className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleResetQuad}
-            className="p-2 rounded-full glass-button text-gray-300 active:text-accent"
-            title="إعادة ضبط كامل الإطار / Reset"
-          >
-            <Maximize2 className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -290,47 +271,12 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
         )}
       </div>
 
-      {/* Aspect Ratio Snapping Bar */}
-      <div className="relative z-30 flex items-center justify-center gap-1.5 px-4 py-2 bg-black/75 backdrop-blur-md border-t border-white/[0.08]">
-        <span className="text-[10px] text-gray-400 font-bold ml-1 font-arabic">المقاس:</span>
-        <button
-          onClick={() => applyAspectRatio(Math.SQRT1_2)}
-          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-accent/20 text-gray-300 hover:text-accent text-[11px] font-bold border border-white/10 flex items-center gap-1 active:scale-95 transition-all"
-          title="A4 Standard Document (1:√2)"
-        >
-          <FileText className="w-3 h-3 text-accent" />
-          <span>A4 قياسي</span>
-        </button>
-        <button
-          onClick={() => applyAspectRatio(0.55)}
-          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-accent/20 text-gray-300 hover:text-accent text-[11px] font-bold border border-white/10 flex items-center gap-1 active:scale-95 transition-all"
-          title="Receipt / Invoice"
-        >
-          <Receipt className="w-3 h-3 text-accent" />
-          <span>فاتورة</span>
-        </button>
-        <button
-          onClick={() => applyAspectRatio(1.586)}
-          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-accent/20 text-gray-300 hover:text-accent text-[11px] font-bold border border-white/10 flex items-center gap-1 active:scale-95 transition-all"
-          title="ID Card / Business Card"
-        >
-          <CreditCard className="w-3 h-3 text-accent" />
-          <span>هوية / كرت</span>
-        </button>
-        <button
-          onClick={handleResetQuad}
-          className="px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 hover:text-white text-[11px] font-semibold border border-white/5 active:scale-95 transition-all"
-          title="Free custom quad"
-        >
-          <span>حر</span>
-        </button>
-      </div>
-
       {/* Bottom Confirm Bar */}
       <div className="relative z-30 flex items-center justify-between px-5 pt-3 pb-8 glass-panel border-t-0">
+        {detectFailed && <p role="status" className="text-xs text-amber-300">{ar ? 'الحدود غير واضحة. عدّل الزوايا يدوياً.' : 'Edges are unclear. Adjust the corners manually.'}</p>}
         {applyError && (
           <p role="alert" className="absolute inset-x-0 bottom-full bg-[#201317] px-4 py-2 text-center text-xs text-rose-200">
-            تعذّر تجهيز الصفحة أو حفظها. الصورة ما زالت متاحة، أعد المحاولة.
+            {ar ? 'تعذّر تجهيز الصفحة أو حفظها. أعد المحاولة.' : 'Could not prepare or save the page. Try again.'}
           </p>
         )}
         <div className="flex items-center gap-2">
@@ -339,14 +285,14 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
             className="px-3 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-gray-200 text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Maximize2 className="w-3.5 h-3.5 text-accent" />
-            <span>كامل الصورة</span>
+            <span>{ar ? 'كامل الصورة' : 'Full image'}</span>
           </button>
           <button
-            onClick={handleAutoDetect}
+            onClick={() => setDetectFailed(handleAutoDetect() === false)}
             className="px-3 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-gray-200 text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Wand2 className="w-3.5 h-3.5 text-accent" />
-            <span>كشف ذكي</span>
+            <span>{ar ? 'كشف الحواف' : 'Detect edges'}</span>
           </button>
         </div>
 
@@ -360,7 +306,7 @@ export const CropView: React.FC<CropViewProps> = ({ imageSrc, initialQuad, onCon
           }`}
         >
           <Check className="w-5 h-5 stroke-[3]" />
-          <span>{isApplying ? 'جارٍ حفظ الصفحة…' : isValidQuad ? 'تطبيق القص' : 'زوايا متقاطعة'}</span>
+          <span>{isApplying ? (ar ? 'جارٍ الحفظ…' : 'Saving…') : (ar ? 'تطبيق القص' : 'Apply crop')}</span>
         </button>
       </div>
     </div>

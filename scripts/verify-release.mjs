@@ -12,9 +12,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { labVersion } from './lab-version.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FEED_URL = 'https://github.com/XRTM8/Otium-Lab/releases/latest/download/latest.json';
+const FEED_URL = process.argv.includes('--pages')
+  ? 'https://xrtm8.github.io/Otium-Lab/latest.json'
+  : 'https://github.com/XRTM8/Otium-Lab/releases/latest/download/latest.json';
 const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const expectedVersion = packageJson.version;
 
@@ -51,6 +54,23 @@ async function main() {
   console.log('feed:', FEED_URL);
   const feed = JSON.parse((await fetchBuffer(FEED_URL)).toString('utf8'));
   console.log('published version:', feed.version, '| notes chars:', (feed.notes || '').length);
+
+  if (process.argv.includes('--android')) {
+    const lab = labVersion();
+    const tag = `lab-${lab.label}`;
+    const expectedUrl = `https://github.com/XRTM8/Otium-Lab/releases/download/${tag}/Otium-Lab-${lab.label}-arm64-v8a.apk`;
+    const asset = feed.assets?.androidApk;
+    if (feed.version !== lab.android || feed.tag_name !== tag || asset?.url !== expectedUrl) {
+      throw new Error(`Expected Android feed for ${lab.android} (${tag})`);
+    }
+    const buffer = await fetchBuffer(asset.url);
+    const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+    if (asset.size !== buffer.length || asset.sha256 !== sha256) {
+      throw new Error('Published APK size or SHA-256 differs from the update feed');
+    }
+    console.log(`RESULT: ${tag} APK verified (${buffer.length} bytes, SHA-256 ${sha256})`);
+    return;
+  }
 
   if (feed.version !== expectedVersion) {
     fail(`feed version is ${feed.version}, expected ${expectedVersion}`);

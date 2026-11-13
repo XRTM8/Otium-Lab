@@ -2,6 +2,8 @@ package com.otium.reader
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -138,12 +140,46 @@ class AndroidUpdateBridge(
         throw IOException("Downloaded APK failed its integrity check.")
       }
 
+      verifyUpgrade(target)
       launchInstaller(target)
     } catch (error: Exception) {
       target.delete()
       emitError(error.message ?: "Could not download the update.")
     } finally {
       connection?.disconnect()
+    }
+  }
+
+  @Suppress("DEPRECATION")
+  private fun verifyUpgrade(apk: File) {
+    val packages = activity.packageManager
+    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      PackageManager.GET_SIGNING_CERTIFICATES
+    } else {
+      PackageManager.GET_SIGNATURES
+    }
+    val candidate = packages.getPackageArchiveInfo(apk.path, flags)
+      ?: throw IOException("The downloaded file is not an Android application.")
+    val installed = packages.getPackageInfo(activity.packageName, flags)
+    if (candidate.packageName != installed.packageName) {
+      throw IOException("The downloaded APK belongs to a different application.")
+    }
+    fun version(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      info.longVersionCode
+    } else {
+      info.versionCode.toLong()
+    }
+    if (version(candidate) <= version(installed)) {
+      throw IOException("The downloaded APK is not newer than the installed app.")
+    }
+    fun signers(info: PackageInfo) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      info.signingInfo?.apkContentsSigners?.toSet().orEmpty()
+    } else {
+      info.signatures?.toSet().orEmpty()
+    }
+    val expectedSigners = signers(installed)
+    if (expectedSigners.isEmpty() || signers(candidate) != expectedSigners) {
+      throw IOException("The downloaded APK has a different signing certificate.")
     }
   }
 

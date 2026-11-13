@@ -1,14 +1,14 @@
 {
-  "version": "1.9.16-lab.11",
-  "tag_name": "lab-11",
-  "notes": "Otium Lab lab-11 - Rock-solid zoom stability, zero page flipping, clean memory architecture, and seamless auto-updates.",
-  "pub_date": "2026-11-07T15:22:18.749Z",
+  "version": "1.9.17-lab.14",
+  "tag_name": "lab-14",
+  "notes": "- تحسين تحديد حواف الورقة على الخلفيات ضعيفة التباين. تُحفظ الصورة كاملة للمراجعة عندما تكون الثقة بالقص منخفضة.\n- فلتر أبيض وأسود يحافظ على الحبر الخافت. تبقى صفحات الدفعة التي اكتمل حفظها متاحة بعد انقطاع الاستيراد.\n- إصلاح التكبير والتصغير بإصبعين في قارئ PDF ومراجعة السكانر لمنع تقليب الصفحات أثناء الإيماءة.\n- يتحقق محدّث Android من بصمة الملف وهوية الحزمة وشهادة التوقيع ورقم البناء قبل فتح مُثبّت النظام.\n- الحزمة `com.otium.reader.lab` لأجهزة Android بمعمارية ARM64.",
+  "pub_date": "2026-11-13T15:10:03.374Z",
   "platforms": {},
   "assets": {
     "androidApk": {
-      "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-11/Otium-Lab-11-arm64-v8a.apk",
-      "sha256": "4225295316663ee0ed3605d28b74e68eb9b067109186c28002ee409015d5dfc2",
-      "size": 18972607
+      "url": "https://github.com/XRTM8/Otium-Lab/releases/download/lab-14/Otium-Lab-14-arm64-v8a.apk",
+      "sha256": "690ad9ba92a9a7a0237c54efb654ad8c207538e44838189544384a6f7423d6c8",
+      "size": 19383606
     }
   }
 }

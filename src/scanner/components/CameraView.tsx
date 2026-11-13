@@ -2,10 +2,14 @@ import { localStorage } from '../../lab/storage';
 import React, { useRef, useState } from 'react';
 import { CameraViewfinderHud } from './CameraViewfinderHud';
 import { useCameraCapture } from './useCameraCapture';
-import type { Quad, CropMode } from '../core/types';
+import type { Language } from '../../core/i18n/translations';
+import type { CropMode } from '../core/types';
 
 interface CameraViewProps {
-  onCapture: (imageDataUrl: string, isBatchMode: boolean, detectedQuad?: Quad) => void;
+  onCapture: (images: Blob[], autoCrop: boolean) => Promise<number>;
+  lang?: Language;
+  busy?: boolean;
+  inactive?: boolean;
   pagesCount: number;
   lastThumbnail?: string;
   onFinishBatch: () => void;
@@ -16,6 +20,9 @@ interface CameraViewProps {
 
 export const CameraView: React.FC<CameraViewProps> = ({
   onCapture,
+  lang = 'ar',
+  busy = false,
+  inactive = false,
   pagesCount,
   lastThumbnail,
   onFinishBatch,
@@ -24,9 +31,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
   onClose,
 }) => {
   const [torchOn, setTorchOn] = useState(false);
-  const [scanMode, setScanMode] = useState<'batch' | 'single' | 'idcard'>('batch');
+  const [scanMode, setScanMode] = useState<'document' | 'idcard'>('document');
   const [idCardStep, setIdCardStep] = useState<'front' | 'back'>('front');
-  const [idFrontDataUrl, setIdFrontDataUrl] = useState<string | null>(null);
+  const [idFront, setIdFront] = useState<HTMLCanvasElement | null>(null);
   const [idStatusToast, setIdStatusToast] = useState<string>('');
   const [captureToast, setCaptureToast] = useState<string>('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -39,13 +46,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       return false;
     }
   });
-  const [cropMode] = useState<CropMode>(() => {
-    try {
-      return (localStorage.getItem('otium_scan_crop_mode') as CropMode) || 'full';
-    } catch {
-      return 'full';
-    }
-  });
+  const cropMode: CropMode = localStorage.getItem('otium_scan_crop_mode') === 'full' ? 'full' : 'auto';
   const [viewfinderFit] = useState<'contain' | 'cover'>(() => {
     try {
       return (localStorage.getItem('otium_scan_viewfinder_fit') as 'contain' | 'cover') || 'contain';
@@ -72,7 +73,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     capturing,
     flashAnimation,
     renderedBounds,
-    effectiveLiveDocPresent,
+    visibleQuad,
     effectiveStabilityProgress,
     focusPoint,
     initCamera,
@@ -87,51 +88,34 @@ export const CameraView: React.FC<CameraViewProps> = ({
     scanMode,
     idCardStep,
     setIdCardStep,
-    idFrontDataUrl,
-    setIdFrontDataUrl,
+    idFront,
+    setIdFront,
     setIdStatusToast,
     setCaptureToast,
     setTorchOn,
-    pagesCount,
+    lang,
+    paused: busy || inactive,
+    inactive,
     triggerHaptic,
     fileInputRef,
     onCapture,
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const validImageFiles = Array.from(files).filter((file) => {
-      const isImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml';
-      const isUnderLimit = file.size <= 50 * 1024 * 1024;
-      return isImage && isUnderLimit;
-    });
-
-    if (validImageFiles.length === 0) {
-      setCaptureToast('⚠️ الملفات المحددة غير صالحة (يُشترط صور JPEG/PNG/WebP بحجم أقل من 50 ميجابايت)');
-      setTimeout(() => setCaptureToast(''), 3000);
-      e.target.value = '';
-      return;
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!files.length || busy || capturing) return;
+    const images = files.filter((file) => (
+      (file.type.startsWith('image/') && file.type !== 'image/svg+xml' || !file.type && /\.(jpe?g|png|webp|heic|heif|avif)$/i.test(file.name))
+      && file.size <= 50 * 1024 * 1024
+    ));
+    const saved = images.length ? await onCapture(images, cropMode === 'auto') : 0;
+    if (saved !== files.length) {
+      setCaptureToast(lang === 'ar' ? `حُفظت ${saved} من ${files.length} صور` : `Saved ${saved} of ${files.length} images`);
     }
-
-    const isMulti = validImageFiles.length > 1 || scanMode === 'batch';
-    validImageFiles.forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          onCapture(reader.result, isMulti);
-          if (index === validImageFiles.length - 1) {
-            setCaptureToast(`✓ تم استيراد ${validImageFiles.length} صورة من المعرض`);
-            setTimeout(() => setCaptureToast(''), 2200);
-          }
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-
-    e.target.value = '';
   };
+
+  const torchSupported = Boolean((stream?.getVideoTracks()[0]?.getCapabilities?.() as { torch?: boolean } | undefined)?.torch);
 
   const toggleTorch = async () => {
     if (!stream) return;
@@ -146,18 +130,19 @@ export const CameraView: React.FC<CameraViewProps> = ({
         setTorchOn(!torchOn);
         triggerHaptic(15);
       } else {
-        setCaptureToast('الفلاش غير مدعوم في هذه الكاميرا');
+        setCaptureToast(lang === 'ar' ? 'الفلاش غير مدعوم' : 'Flash unavailable');
         setTimeout(() => setCaptureToast(''), 2200);
       }
     } catch (e) {
       console.warn('Torch unsupported:', e);
-      setCaptureToast('تعذر تشغيل الفلاش');
+      setCaptureToast(lang === 'ar' ? 'تعذّر تشغيل الفلاش' : 'Could not turn on the flash');
       setTimeout(() => setCaptureToast(''), 2200);
     }
   };
 
   return (
     <CameraViewfinderHud
+      lang={lang}
       flashAnimation={flashAnimation}
       captureToast={captureToast}
       idStatusToast={idStatusToast}
@@ -179,11 +164,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
         } catch (err) {
           console.warn('[CameraView] Failed to persist auto-capture setting:', err);
         }
-        setCaptureToast(next ? '✓ تم تفعيل الالتقاط التلقائي الذكي' : 'الالتقاط اليدوي');
-        setTimeout(() => setCaptureToast(''), 2200);
         triggerHaptic(15);
       }}
       torchOn={torchOn}
+      torchSupported={torchSupported}
+      autoCaptureAvailable={cropMode === 'auto' && scanMode === 'document'}
       onToggleTorch={toggleTorch}
       onFlipCamera={() => {
         triggerHaptic(15);
@@ -213,18 +198,17 @@ export const CameraView: React.FC<CameraViewProps> = ({
       scanMode={scanMode}
       idCardStep={idCardStep}
       renderedBounds={renderedBounds}
-      effectiveLiveDocPresent={effectiveLiveDocPresent}
+      visibleQuad={visibleQuad}
       effectiveStabilityProgress={effectiveStabilityProgress}
       pagesCount={pagesCount}
       onSelectScanMode={(mode) => {
         triggerHaptic(10);
         setScanMode(mode);
-        if (mode === 'idcard') {
-          setIdCardStep('front');
-          setIdFrontDataUrl(null);
-        }
+        setIdCardStep('front');
+        setIdFront(null);
+        setIdStatusToast('');
       }}
-      capturing={capturing}
+      capturing={capturing || busy}
       onCaptureClick={handleCapture}
       onFinishBatchClick={() => {
         triggerHaptic(20);

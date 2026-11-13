@@ -1,8 +1,9 @@
 import React from 'react';
-import { ArrowLeft, Trash2, Edit3, PenTool, LayoutGrid, Stamp, EyeOff, Undo2 } from 'lucide-react';
-import type { SignaturePlacement } from '../core/enhancePdfCompile';
+import { ArrowLeft, Trash2, Edit3, LayoutGrid, EyeOff, Undo2 } from 'lucide-react';
+import type { Language } from '../../core/i18n/translations';
 
 export interface EnhanceHeaderBarProps {
+  lang: Language;
   onBackToCamera: () => void;
   setShowCancelModal: (open: boolean) => void;
   isEditingTitle: boolean;
@@ -19,14 +20,11 @@ export interface EnhanceHeaderBarProps {
   handleBurnRedaction: () => void;
   isGridView: boolean;
   setIsGridView: (next: boolean) => void;
-  watermarkText: string;
-  setIsWatermarkOpen: (open: boolean) => void;
-  hasSignature: SignaturePlacement | undefined;
-  setIsSignatureOpen: (open: boolean) => void;
   triggerHaptic: (duration?: number) => void;
 }
 
 export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
+  lang,
   onBackToCamera,
   setShowCancelModal,
   isEditingTitle,
@@ -43,12 +41,9 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
   handleBurnRedaction,
   isGridView,
   setIsGridView,
-  watermarkText,
-  setIsWatermarkOpen,
-  hasSignature,
-  setIsSignatureOpen,
   triggerHaptic,
 }) => {
+  const ar = lang === 'ar';
   return (
     <>
       <div
@@ -59,17 +54,17 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
           <button
             onClick={onBackToCamera}
             className="p-2 rounded-full glass-button text-gray-300 active:text-white"
-            title="رجوع للكاميرا"
+            title={ar ? 'رجوع للكاميرا' : 'Back to camera'}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowCancelModal(true)}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 active:scale-95 transition-all text-[11px] font-bold"
-            title="إلغاء كافة الصور والعودة للرئيسية"
+            title={ar ? 'إلغاء كافة الصور والعودة للرئيسية' : 'Discard all pages'}
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span className="font-arabic">إلغاء الكل</span>
+            <span className="font-arabic">{ar ? 'إلغاء الكل' : 'Discard all'}</span>
           </button>
         </div>
 
@@ -90,7 +85,7 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
             <button
               onClick={() => setIsEditingTitle(true)}
               className="flex items-center gap-1 text-xs sm:text-sm font-bold text-white truncate max-w-full hover:text-accent font-arabic"
-              title="تعديل اسم المستند"
+              title={ar ? 'تعديل اسم المستند' : 'Rename document'}
             >
               <span className="truncate">
                 <bdi>{docTitle}</bdi>
@@ -99,7 +94,7 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
             </button>
           )}
           <span className="text-[10px] text-accent font-bold font-arabic mt-0.5">
-            صفحة {safeIndex + 1} من {pageCount}
+            {ar ? `صفحة ${safeIndex + 1} من ${pageCount}` : `Page ${safeIndex + 1} of ${pageCount}`}
           </span>
         </div>
 
@@ -107,7 +102,7 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
           <button
             onClick={() => setShowDeletePageModal(true)}
             className="p-1.5 rounded-full glass-button text-gray-300 hover:text-rose-400 active:scale-95 transition-colors"
-            title="حذف هذه الصفحة"
+            title={ar ? 'حذف هذه الصفحة' : 'Delete page'}
           >
             <Trash2 className="w-4 h-4 text-rose-400" />
           </button>
@@ -117,7 +112,7 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
               setIsRedacting(!isRedacting);
             }}
             className={`p-1.5 rounded-full glass-button transition-colors ${isRedacting ? 'text-accent border-accent/50 bg-accent/20' : 'text-gray-300 active:text-accent'}`}
-            title="حجب نصوص حساسة"
+            title={ar ? 'حجب نصوص حساسة' : 'Redact sensitive text'}
           >
             <EyeOff className="w-4 h-4" />
           </button>
@@ -127,29 +122,9 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
               setIsGridView(!isGridView);
             }}
             className={`p-1.5 rounded-full glass-button transition-colors ${isGridView ? 'text-accent border-accent/50 bg-accent/10' : 'text-gray-300 active:text-accent'}`}
-            title="عرض شبكي"
+            title={ar ? 'عرض شبكي' : 'Page grid'}
           >
             <LayoutGrid className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              triggerHaptic(15);
-              setIsWatermarkOpen(true);
-            }}
-            className={`p-1.5 rounded-full glass-button transition-colors ${watermarkText ? 'text-accent border-accent/50 bg-accent/10' : 'text-gray-300 active:text-accent'}`}
-            title="علامة مائية"
-          >
-            <Stamp className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              triggerHaptic(15);
-              setIsSignatureOpen(true);
-            }}
-            className={`p-1.5 rounded-full glass-button transition-colors ${hasSignature ? 'text-accent border-accent/50' : 'text-gray-300 active:text-accent'}`}
-            title="إضافة توقيع"
-          >
-            <PenTool className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -158,7 +133,7 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
         <div className="relative z-30 px-6 py-2.5 bg-black/95 border-b border-accent/30 flex items-center justify-between text-xs animate-in slide-in-from-top-2">
           <div className="flex items-center gap-2 text-accent font-semibold">
             <EyeOff className="w-4 h-4 shrink-0" />
-            <span className="truncate">Drag finger over text to censor</span>
+            <span className="truncate">{ar ? 'مرّر إصبعك فوق النص المطلوب حجبه' : 'Draw over the text to redact'}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -168,7 +143,7 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
               }}
               disabled={redactionStrokes.length === 0}
               className="p-1.5 rounded-lg glass-button text-gray-300 disabled:opacity-30 hover:text-white"
-              title="Undo last stroke"
+              title={ar ? 'التراجع عن آخر خط' : 'Undo last stroke'}
             >
               <Undo2 className="w-4 h-4" />
             </button>
@@ -180,13 +155,13 @@ export const EnhanceHeaderBar: React.FC<EnhanceHeaderBarProps> = ({
               }}
               className="px-3 py-1 rounded-lg text-gray-400 hover:text-white text-xs"
             >
-              Cancel
+              {ar ? 'إلغاء' : 'Cancel'}
             </button>
             <button
               onClick={handleBurnRedaction}
               className="px-3.5 py-1 rounded-lg bg-accent text-on-accent font-bold text-xs shadow-lg shadow-accent/25 active:scale-95"
             >
-              Apply
+              {ar ? 'تطبيق' : 'Apply'}
             </button>
           </div>
         </div>

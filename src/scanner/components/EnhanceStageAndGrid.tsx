@@ -3,35 +3,30 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Copy,
-  ExternalLink,
-  QrCode,
 } from 'lucide-react';
+import type { Language } from '../../core/i18n/translations';
 import type { ScannedPage } from '../core/types';
-import type { DetectedBarcode } from '../core/barcode';
-import { isSafeUrl } from '../core/nativeBridge';
-import { copyTextToClipboard } from '../../core/utils/clipboard';
 import type { SignaturePlacement } from '../core/enhancePdfCompile';
 import { EnhanceGridView } from './EnhanceGridView';
 
 export interface EnhanceStageAndGridProps {
+  lang: Language;
   isGridView: boolean;
   setIsGridView: (open: boolean) => void;
   pages: ScannedPage[];
   safeIndex: number;
   setCurrentPageIndex: (idx: number) => void;
-  selectedPages: Set<number>;
+  selectedPages: Set<string>;
   handleBulkDelete: () => void;
-  handleTogglePageSelect: (idx: number) => void;
+  handleTogglePageSelect: (pageId: string) => void;
   onMovePage: (fromIndex: number, toIndex: number) => void;
   handleStageTouchStart: (e: React.TouchEvent<HTMLDivElement>) => void;
   handleStageTouchMove: (e: React.TouchEvent<HTMLDivElement>) => void;
-  handleStageTouchEnd: () => void;
+  handleStageTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void;
+  handleStageTouchCancel: (event: React.TouchEvent<HTMLDivElement>) => void;
   toastMsg: string;
-  setToastMsg: (msg: string) => void;
   zoomScale: number;
   resetZoomAndPan: () => void;
-  detectedBarcodes: DetectedBarcode[];
   stageContainerRef: React.RefObject<HTMLDivElement | null>;
   panOffset: { x: number; y: number };
   previewImageRef: React.RefObject<HTMLImageElement | null>;
@@ -54,6 +49,7 @@ export interface EnhanceStageAndGridProps {
 }
 
 export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
+  lang,
   isGridView,
   setIsGridView,
   pages,
@@ -66,11 +62,10 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
   handleStageTouchStart,
   handleStageTouchMove,
   handleStageTouchEnd,
+  handleStageTouchCancel,
   toastMsg,
-  setToastMsg,
   zoomScale,
   resetZoomAndPan,
-  detectedBarcodes,
   stageContainerRef,
   panOffset,
   previewImageRef,
@@ -91,9 +86,24 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
   ocrStatus,
   triggerHaptic,
 }) => {
+  const [previewBounds, setPreviewBounds] = React.useState({ x: 0, y: 0, width: 0, height: 0 });
+  React.useEffect(() => {
+    const preview = previewImageRef.current;
+    if (isGridView || !preview) return;
+    const update = () => setPreviewBounds({
+      x: preview.offsetLeft, y: preview.offsetTop, width: preview.clientWidth, height: preview.clientHeight,
+    });
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(preview);
+    if (preview.offsetParent) observer.observe(preview.offsetParent);
+    return () => observer.disconnect();
+  }, [isGridView, previewImageRef]);
+
   if (isGridView) {
     return (
       <EnhanceGridView
+        lang={lang}
         pages={pages}
         safeIndex={safeIndex}
         selectedPages={selectedPages}
@@ -106,12 +116,14 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
     );
   }
 
+  const projectStroke = ({ x, y }: { x: number; y: number }) =>
+    `${previewBounds.x + x * previewBounds.width},${previewBounds.y + y * previewBounds.height}`;
   return (
     <div
       onTouchStart={handleStageTouchStart}
       onTouchMove={handleStageTouchMove}
       onTouchEnd={handleStageTouchEnd}
-      onTouchCancel={handleStageTouchEnd}
+      onTouchCancel={handleStageTouchCancel}
       className="relative flex-1 w-full h-full flex items-center justify-center p-4 overflow-hidden touch-none"
     >
       {zoomScale > 1.05 && (
@@ -124,55 +136,10 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
             className="px-3.5 py-1 rounded-full bg-black/85 backdrop-blur-md border border-accent/50 text-accent text-xs font-bold shadow-2xl flex items-center gap-1.5 active:scale-95 transition-transform"
           >
             <span>{Math.round(zoomScale * 100)}%</span>
-            <span className="text-[10px] text-gray-300 font-arabic font-normal">• انقر للعودة إلى 1x</span>
+            <span className="text-[10px] text-gray-300 font-arabic font-normal">{lang === 'ar' ? 'إعادة التكبير' : 'Reset zoom'}</span>
           </button>
         </div>
       )}
-
-      {(() => {
-        const firstBarcode = detectedBarcodes[0];
-        if (!firstBarcode || zoomScale > 1.05) return null;
-        return (
-          <div className="absolute top-2 inset-x-6 z-30 flex items-center justify-between px-3.5 py-2 rounded-2xl bg-black/85 backdrop-blur-xl border border-accent/40 shadow-2xl animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <QrCode className="w-4 h-4 text-accent shrink-0" />
-              <div className="flex flex-col overflow-hidden text-left">
-                <span className="text-[10px] text-accent font-bold uppercase tracking-wider">
-                  {firstBarcode.format.replace('_', ' ')} Detected
-                </span>
-                <span className="text-xs text-white truncate max-w-[180px] font-mono">
-                  {firstBarcode.rawValue}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={async () => {
-                  triggerHaptic(15);
-                  await copyTextToClipboard(firstBarcode.rawValue);
-                  setToastMsg('Code copied to clipboard');
-                  setTimeout(() => setToastMsg(''), 2000);
-                }}
-                className="p-1.5 rounded-lg glass-button text-gray-300 hover:text-white"
-                title="Copy code"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-              {isSafeUrl(firstBarcode.rawValue) && (
-                <a
-                  href={firstBarcode.rawValue}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg glass-button text-accent hover:text-white"
-                  title="Open link"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
       {toastMsg && (
         <div className="absolute top-4 inset-x-0 flex justify-center z-40 pointer-events-none animate-in fade-in duration-200">
@@ -195,7 +162,7 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
           ref={previewImageRef}
           src={previewSource}
           alt={`Page ${safeIndex + 1}`}
-          className="max-w-full max-h-full object-contain rounded-xl shadow-2xl border border-white/10 pointer-events-none"
+          className="max-w-full max-h-full object-contain rounded-xl shadow-2xl pointer-events-none"
         />
 
         {isRedacting && (
@@ -203,31 +170,34 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
             onPointerDown={(e) => {
               e.preventDefault();
               try {
-                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                e.currentTarget.setPointerCapture(e.pointerId);
               } catch (err) {
                 console.debug('[EnhanceStage] setPointerCapture skipped:', err);
               }
-              const rect = e.currentTarget.getBoundingClientRect();
+              const rect = previewImageRef.current?.getBoundingClientRect();
+              if (!rect || rect.width <= 0 || rect.height <= 0 || e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
               redactionSvgRectRef.current = rect;
-              const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-              const initStr = `${pt.x},${pt.y} ${pt.x},${pt.y}`;
+              const pt = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+              const overlay = e.currentTarget.getBoundingClientRect();
+              const local = `${(e.clientX - overlay.left) / zoomScale},${(e.clientY - overlay.top) / zoomScale}`;
+              const initStr = `${local} ${local}`;
               redactionPointsRef.current = [pt];
               redactionLiveStrRef.current = initStr;
               setRedactionDraftInit(initStr);
             }}
             onPointerMove={(e) => {
               if (redactionPointsRef.current.length === 0) return;
-              const cached = redactionSvgRectRef.current;
-              const rect =
-                cached && cached.width > 0 && cached.height > 0 ? cached : e.currentTarget.getBoundingClientRect();
-              const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+              const rect = redactionSvgRectRef.current;
+              if (!rect) return;
+              const pt = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
               redactionPointsRef.current.push(pt);
-              redactionLiveStrRef.current += ` ${pt.x},${pt.y}`;
+              const overlay = e.currentTarget.getBoundingClientRect();
+              redactionLiveStrRef.current += ` ${(e.clientX - overlay.left) / zoomScale},${(e.clientY - overlay.top) / zoomScale}`;
               redactionPolylineRef.current?.setAttribute('points', redactionLiveStrRef.current);
             }}
             onPointerUp={(e) => {
               try {
-                (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                e.currentTarget.releasePointerCapture(e.pointerId);
               } catch (err) {
                 console.debug('[EnhanceStage] releasePointerCapture skipped:', err);
               }
@@ -255,7 +225,7 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
               return (
                 <polyline
                   key={strokeKey}
-                  points={stroke.map((p) => `${p.x},${p.y}`).join(' ')}
+                  points={stroke.map(projectStroke).join(' ')}
                   fill="none"
                   stroke="#000000"
                   strokeWidth="18"
@@ -287,7 +257,7 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
               return (
                 <polyline
                   key={strokeKey}
-                  points={stroke.map((p) => `${p.x},${p.y}`).join(' ')}
+                  points={stroke.map(projectStroke).join(' ')}
                   fill="none"
                   stroke="#000000"
                   strokeWidth="18"
@@ -337,7 +307,7 @@ export const EnhanceStageAndGrid: React.FC<EnhanceStageAndGridProps> = ({
         {pdfGenerating && (
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-30">
             <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mb-3" />
-            <p className="text-sm font-semibold text-white">{ocrStatus || 'Compiling Optimized PDF...'}</p>
+            <p className="text-sm font-semibold text-white">{ocrStatus || (lang === 'ar' ? 'جارٍ تجهيز PDF…' : 'Preparing PDF…')}</p>
           </div>
         )}
       </div>

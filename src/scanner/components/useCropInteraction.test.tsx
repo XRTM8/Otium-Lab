@@ -65,28 +65,22 @@ describe('useCropInteraction', () => {
     return ref;
   }
 
-  it('initializes quad from loaded image dimensions and supports aspect ratio + undo/redo', async () => {
+  it('initializes quad from loaded image dimensions and supports full-frame selection and undo/redo', async () => {
     const ref = await mountCrop();
     expect(ref.current!.imageSize).toEqual({ width: 1000, height: 800 });
     expect(ref.current!.quad).not.toBeNull();
     const initialQuad = ref.current!.quad;
 
-    await act(async () => {
-      ref.current!.applyAspectRatio(1);
-    });
-    expect(ref.current!.quad).not.toEqual(initialQuad);
-    expect(ref.current!.undoStack.length).toBeGreaterThan(0);
+    await act(async () => { ref.current!.handleSelectFullImage(); });
+    expect(ref.current!.undoStack).toEqual([initialQuad]);
 
-    await act(async () => {
-      ref.current!.handleUndo();
-    });
+    await act(async () => { ref.current!.handleUndo(); });
     expect(ref.current!.quad).toEqual(initialQuad);
-    expect(ref.current!.redoStack.length).toBeGreaterThan(0);
+    expect(ref.current!.redoStack).toHaveLength(1);
 
-    await act(async () => {
-      ref.current!.handleRedo();
-    });
-    expect(ref.current!.quad).not.toEqual(initialQuad);
+    await act(async () => { ref.current!.handleRedo(); });
+    expect(ref.current!.quad).toEqual(initialQuad);
+    expect(ref.current!.redoStack).toHaveLength(0);
   });
 
   it('keeps the source and crop geometry when saving fails, then retries the same image', async () => {
@@ -106,7 +100,7 @@ describe('useCropInteraction', () => {
     });
     expect(ref.current).toMatchObject({ currentSrc, quad, isApplying: false, applyError: true });
     await act(async () => { await ref.current!.handleApply(); });
-    expect(confirm.mock.calls).toEqual([[canvas, quad], [canvas, quad]]);
+    expect(confirm.mock.calls).toEqual([[canvas, quad, currentSrc], [canvas, quad, currentSrc]]);
     expect(ref.current).toMatchObject({ currentSrc, quad, isApplying: false, applyError: false });
   });
 });

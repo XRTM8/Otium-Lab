@@ -1,19 +1,22 @@
 import React from 'react';
 import { CheckSquare, Square, Trash2 } from 'lucide-react';
+import type { Language } from '../../core/i18n/translations';
 import type { ScannedPage } from '../core/types';
 
 export interface EnhanceGridViewProps {
+  lang: Language;
   pages: ScannedPage[];
   safeIndex: number;
-  selectedPages: Set<number>;
+  selectedPages: Set<string>;
   setIsGridView: (open: boolean) => void;
   setCurrentPageIndex: (idx: number) => void;
   handleBulkDelete: () => void;
-  handleTogglePageSelect: (idx: number) => void;
+  handleTogglePageSelect: (pageId: string) => void;
   onMovePage: (fromIndex: number, toIndex: number) => void;
 }
 
 export const EnhanceGridView: React.FC<EnhanceGridViewProps> = ({
+  lang,
   pages,
   safeIndex,
   selectedPages,
@@ -23,11 +26,12 @@ export const EnhanceGridView: React.FC<EnhanceGridViewProps> = ({
   handleTogglePageSelect,
   onMovePage,
 }) => {
+  const ar = lang === 'ar';
   return (
     <div className="relative flex-1 w-full h-full flex flex-col p-4 overflow-y-auto">
       <div className="flex items-center justify-between mb-3 px-1">
         <span className="text-xs text-gray-400 font-semibold">
-          {pages.length} Pages • {selectedPages.size} Selected
+          {ar ? `${pages.length} صفحة · ${selectedPages.size} محدّدة` : `${pages.length} pages · ${selectedPages.size} selected`}
         </span>
 
         <div className="flex items-center gap-2">
@@ -37,7 +41,7 @@ export const EnhanceGridView: React.FC<EnhanceGridViewProps> = ({
               className="px-3 py-1.5 rounded-xl bg-red-500/20 text-red-400 font-semibold text-xs border border-red-500/30 flex items-center gap-1 active:scale-95"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete ({selectedPages.size})</span>
+              <span>{ar ? 'حذف' : 'Delete'} ({selectedPages.size})</span>
             </button>
           )}
 
@@ -45,14 +49,14 @@ export const EnhanceGridView: React.FC<EnhanceGridViewProps> = ({
             onClick={() => setIsGridView(false)}
             className="px-3.5 py-1.5 rounded-xl bg-accent text-on-accent font-bold text-xs shadow-lg shadow-accent/25 active:scale-95"
           >
-            Done
+            {ar ? 'تم' : 'Done'}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3 pb-8">
         {pages.map((p, idx) => {
-          const isSelected = selectedPages.has(idx);
+          const isSelected = selectedPages.has(p.id);
           const isCurrent = idx === safeIndex;
           return (
             <div
@@ -74,7 +78,7 @@ export const EnhanceGridView: React.FC<EnhanceGridViewProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleTogglePageSelect(idx);
+                    handleTogglePageSelect(p.id);
                   }}
                   className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/70 text-white shadow"
                 >
@@ -94,14 +98,16 @@ export const EnhanceGridView: React.FC<EnhanceGridViewProps> = ({
                 className="flex items-center justify-between p-1 bg-white/5 border-t border-white/5"
               >
                 <button
+                  aria-label={ar ? 'نقل للأمام' : 'Move earlier'}
                   disabled={idx === 0}
                   onClick={() => onMovePage(idx, idx - 1)}
                   className="px-2 py-0.5 text-[10px] text-gray-300 disabled:opacity-20 hover:text-white"
                 >
                   ◀
                 </button>
-                <span className="text-[9px] text-gray-500 font-semibold">Move</span>
+                <span className="text-[9px] text-gray-500 font-semibold">{ar ? 'ترتيب' : 'Move'}</span>
                 <button
+                  aria-label={ar ? 'نقل للخلف' : 'Move later'}
                   disabled={idx === pages.length - 1}
                   onClick={() => onMovePage(idx, idx + 1)}
                   className="px-2 py-0.5 text-[10px] text-gray-300 disabled:opacity-20 hover:text-white"

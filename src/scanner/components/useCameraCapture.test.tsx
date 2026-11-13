@@ -3,6 +3,13 @@ import { act, useEffect, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCameraCapture } from './useCameraCapture';
+import { analyzeLiveVideoFrame, tryTakeCameraPhoto } from './cameraCaptureHelpers';
+
+vi.mock(import('./cameraCaptureHelpers'), async (load) => ({
+  ...await load(),
+  analyzeLiveVideoFrame: vi.fn(),
+  tryTakeCameraPhoto: vi.fn(),
+}));
 
 describe('useCameraCapture', () => {
   let host: HTMLDivElement;
@@ -10,6 +17,8 @@ describe('useCameraCapture', () => {
 
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.spyOn(HTMLMediaElement.prototype, 'srcObject', 'set').mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -22,7 +31,7 @@ describe('useCameraCapture', () => {
     vi.unstubAllGlobals();
   });
 
-  async function mountCamera() {
+  async function mountCamera(autoCapture = false, onCapture = vi.fn()) {
     const ref: { current: ReturnType<typeof useCameraCapture> | null } = { current: null };
     const setTorchOn = vi.fn();
     function Harness() {
@@ -30,25 +39,25 @@ describe('useCameraCapture', () => {
       const hook = useCameraCapture({
         cropMode: 'auto',
         viewfinderFit: 'cover',
-        autoCapture: false,
+        autoCapture,
         facingMode: 'environment',
-        scanMode: 'batch',
+        scanMode: 'document',
         idCardStep: 'front',
         setIdCardStep: vi.fn(),
-        idFrontDataUrl: null,
-        setIdFrontDataUrl: vi.fn(),
+        idFront: null,
+        setIdFront: vi.fn(),
         setIdStatusToast: vi.fn(),
         setCaptureToast: vi.fn(),
         setTorchOn,
-        pagesCount: 0,
         triggerHaptic: vi.fn(),
         fileInputRef,
-        onCapture: vi.fn(),
+        onCapture,
       });
       useEffect(() => {
         ref.current = hook;
       });
-      return <video />;
+      const { videoRef } = hook;
+      return <video ref={videoRef} />;
     }
 
     await act(async () => {
@@ -101,4 +110,71 @@ describe('useCameraCapture', () => {
     expect(stopOld).toHaveBeenCalledOnce();
     expect(ref.current?.stream).toBe(newStream);
   });
+  it('waits for stable corners and a new page before auto-capturing again', async () => {
+    vi.useFakeTimers();
+    try {
+      const stop = vi.fn();
+      const stream = { getTracks: () => [{ stop }] };
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+        configurable: true,
+      });
+      const image = new Blob(['image'], { type: 'image/jpeg' });
+      vi.mocked(tryTakeCameraPhoto).mockResolvedValue(image);
+      const frame = {
+        quad: { topLeft: { x: 10, y: 10 }, topRight: { x: 100, y: 10 }, bottomLeft: { x: 10, y: 150 }, bottomRight: { x: 100, y: 150 } },
+        motionScore: 0,
+        reliableCrop: true,
+        sharpness: 40,
+        nextLum: null,
+        pageSignature: new Int8Array(196),
+      };
+      const analyze = vi.mocked(analyzeLiveVideoFrame);
+      analyze.mockResolvedValue({ ...frame, quad: null, pageSignature: null });
+      const onCapture = vi.fn().mockResolvedValue(1);
+      const ref = await mountCamera(true, onCapture);
+      const video = ref.current!.videoRef.current!;
+      Object.defineProperties(video, {
+        readyState: { value: 4 },
+        videoWidth: { value: 200 },
+        videoHeight: { value: 300 },
+      });
+      const ticks = async (count: number) => {
+        for (let i = 0; i < count; i++) {
+          await act(async () => { await vi.advanceTimersByTimeAsync(220); });
+        }
+      };
+      await ticks(5);
+      expect(onCapture).not.toHaveBeenCalled();
+      analyze.mockResolvedValue({ ...frame, reliableCrop: false });
+      await ticks(5);
+      expect(onCapture).not.toHaveBeenCalled();
+      analyze.mockResolvedValue({ ...frame, quad: null, pageSignature: null });
+      await ticks(1);
+      analyze.mockResolvedValue(frame);
+      await ticks(3);
+      expect(onCapture).not.toHaveBeenCalled();
+      await ticks(1);
+      expect(onCapture).toHaveBeenCalledExactlyOnceWith([image], true);
+      await ticks(6);
+      expect(onCapture).toHaveBeenCalledTimes(1);
+      const changed = { ...frame, pageSignature: new Int8Array(196).fill(1) };
+      analyze.mockResolvedValue(changed);
+      await ticks(1);
+      analyze.mockResolvedValue(frame);
+      await ticks(4);
+      expect(onCapture).toHaveBeenCalledTimes(1);
+      analyze.mockResolvedValue(changed);
+      await ticks(4);
+      expect(onCapture).toHaveBeenCalledTimes(2);
+      analyze.mockResolvedValue({ ...frame, quad: null, pageSignature: null });
+      await ticks(2);
+      analyze.mockResolvedValue(frame);
+      await ticks(4);
+      expect(onCapture).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });

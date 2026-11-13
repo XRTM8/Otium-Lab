@@ -15,8 +15,9 @@
  *   node scripts/verify-apk.mjs --expect-cert 685e08... --expect-version 1.6.0 release/*.apk
  *
  * Options:
- *   --expect-cert <sha256>   required certificate fingerprint
+ *   --expect-cert <sha256>   defaults to the certificate used by published Lab APKs
  *   --expect-version <ver>   defaults to the Android Lab build version
+ *   --after-code <n>         require a versionCode higher than the previous APK
  *   --min-sdk <n>            default 24
  *   --target-sdk <n>         default: read from APK, warn if below 35
  *   --skip-16kb              skip the page-size alignment check
@@ -32,8 +33,9 @@ import { labVersion } from './lab-version.mjs';
 
 const argv = process.argv.slice(2);
 const options = {
-  expectCert: null,
+  expectCert: '685e083d1cf5b48970c847a01cbe2b957668b435897763d8027f206430fa2302',
   expectVersion: null,
+  afterCode: null,
   minSdk: 24,
   targetSdk: null,
   check16kb: true,
@@ -44,6 +46,7 @@ for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === '--expect-cert') options.expectCert = argv[++i];
   else if (arg === '--expect-version') options.expectVersion = argv[++i];
+  else if (arg === '--after-code') options.afterCode = Number(argv[++i]);
   else if (arg === '--min-sdk') options.minSdk = Number(argv[++i]);
   else if (arg === '--target-sdk') options.targetSdk = Number(argv[++i]);
   else if (arg === '--skip-16kb') options.check16kb = false;
@@ -53,7 +56,9 @@ for (let i = 0; i < argv.length; i += 1) {
   } else options.apks.push(arg);
 }
 
-if (options.apks.length === 0) {
+if (options.apks.length === 0 || options.apks.some(file => !file.toLowerCase().endsWith('.apk')) ||
+    !/^[0-9a-f]{64}$/i.test((options.expectCert ?? '').replace(/:/g, '')) ||
+    (options.afterCode !== null && (!Number.isSafeInteger(options.afterCode) || options.afterCode <= 0))) {
   console.error('usage: node scripts/verify-apk.mjs [options] <apk...>');
   process.exit(2);
 }
@@ -185,6 +190,15 @@ function verifyOne(file) {
   if (options.expectVersion && facts.versionName !== options.expectVersion) {
     problems.push(`versionName is ${facts.versionName}, expected ${options.expectVersion}`);
   }
+  const versionCode = Number(facts.versionCode);
+  if (!Number.isSafeInteger(versionCode) || versionCode <= (options.afterCode ?? 0)) {
+    problems.push(`versionCode ${facts.versionCode} must be greater than ${options.afterCode ?? 0}`);
+  }
+  const manifest = runTool(aapt2, ['dump', 'xmltree', file, '--file', 'AndroidManifest.xml']);
+  if (!manifest.ok || !/android:authorities[^\r\n]*"com\.otium\.reader\.lab\.fileprovider"/.test(manifest.out)) {
+    problems.push('APK does not declare the Lab FileProvider authority');
+  }
+  if (manifest.out.includes('ScannerCameraTrialActivity')) problems.push('APK includes the debug CameraX trial');
   if (Number.isFinite(facts.minSdk) && facts.minSdk < options.minSdk) {
     problems.push(`minSdk ${facts.minSdk} is below the supported floor ${options.minSdk}`);
   }
@@ -195,6 +209,7 @@ function verifyOne(file) {
     problems.push('APK is marked debuggable');
   }
 
+  if (options.check16kb && !zipalign) problems.push('zipalign is required for the 16 KB packaging check');
   if (options.check16kb && zipalign) {
     const aligned = runTool(zipalign, ['-c', '-P', '16', '-v', '4', file]);
     facts.aligned16kb = aligned.ok;
@@ -204,7 +219,7 @@ function verifyOne(file) {
   return { name, problems, facts };
 }
 
-const results = options.apks.filter((file) => file.toLowerCase().endsWith('.apk')).map(verifyOne);
+const results = options.apks.map(verifyOne);
 let failed = false;
 
 for (const result of results) {

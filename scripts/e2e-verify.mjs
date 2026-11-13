@@ -7,9 +7,10 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 
-const DIST_DIR = path.resolve(process.cwd(), 'dist');
+const DIST_DIR = path.resolve(process.env.OTIUM_E2E_DIST || 'dist');
 const liveOfflineAudit = process.argv.includes('--live-offline');
 const beamOnly = process.argv.includes('--beam-only');
+const scannerFullResolution = process.argv.includes('--scanner-full-resolution');
 if (!liveOfflineAudit && !beamOnly && !fs.existsSync(DIST_DIR)) {
   console.error('[e2e-verify] dist/ does not exist. Build the web app first.');
   process.exit(1);
@@ -129,13 +130,17 @@ function buildTextPng(lines) {
   ]);
 }
 
-function buildMinimalPdf() {
+function buildMinimalPdf(pageCount = 1) {
+  const extraPages = Array.from({ length: pageCount - 1 }, (_, index) => index + 6);
+  const pageIds = [3, ...extraPages];
+  const pageObject = id => `${id} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n`;
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
-    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `2 0 obj\n<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageCount} >>\nendobj\n`,
+    pageObject(3),
     '4 0 obj\n<< /Length 44 >>\nstream\nBT /F1 18 Tf 72 700 Td (Otium Lab PDF) Tj ET\nendstream\nendobj\n',
     '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    ...extraPages.map(pageObject),
   ];
   let body = '%PDF-1.4\n';
   const offsets = [0];
@@ -310,11 +315,13 @@ if (!liveOfflineAudit) {
 }
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'otium-e2e-'));
 const testPdfPath = path.join(tempDir, 'test-sample.pdf');
+const touchPdfPath = path.join(tempDir, 'touch-sample.pdf');
 const testPptxPath = path.join(tempDir, 'test-deck.pptx');
 const testOcrPngPath = path.join(tempDir, 'test-ocr-otium.png');
 const userDataDir = path.join(tempDir, 'browser-profile');
 
 fs.writeFileSync(testPdfPath, buildMinimalPdf());
+fs.writeFileSync(touchPdfPath, buildMinimalPdf(3));
 fs.writeFileSync(testPptxPath, buildMinimalPptx());
 fs.writeFileSync(testOcrPngPath, buildTextPng(['HELLO', 'TIME']));
 fs.mkdirSync(userDataDir, { recursive: true });
@@ -409,7 +416,7 @@ if (!cdpPort) {
 
 let allPassed = true;
 
-async function runAudit(name, mobileMode, scenarioFn, url = appUrl) {
+async function runAudit(name, mobileMode, scenarioFn, url = appUrl, expectsWasm = false) {
   const created = await (await fetch(`http://127.0.0.1:${cdpPort}/json/new?about:blank`, { method: 'PUT' })).json();
   const cdp = new CdpClient(created.webSocketDebuggerUrl);
   await cdp.connect();
@@ -457,7 +464,7 @@ async function runAudit(name, mobileMode, scenarioFn, url = appUrl) {
     console.log(`HTTP >= 400 (${http4xx5xx.length}):`, http4xx5xx);
     console.log(`Rust WASM Asset Requests (${wasmRequests.length}):`, wasmRequests);
     if (exceptions.length || consoleErrors.length || http4xx5xx.length) allPassed = false;
-    if (mobileMode && !wasmRequests.some((r) => r.startsWith('200 '))) {
+    if (expectsWasm && !wasmRequests.some((r) => r.startsWith('200 '))) {
       console.error('MISSING 200 OK FOR otium_wasm.wasm!');
       allPassed = false;
     }
@@ -471,6 +478,13 @@ async function runAudit(name, mobileMode, scenarioFn, url = appUrl) {
   } finally {
     cdp.close();
   }
+}
+
+function dispatchTouch(cdp, type, ...points) {
+  return cdp.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints: points.map(([x, y, id = 0]) => ({ x, y, id })),
+  });
 }
 
 async function waitForBrowser(cdp, expression, description) {
@@ -725,6 +739,49 @@ async function auditLocalBuild() {
     return res;
   });
 
+  await runAudit('MOBILE READER PINCH AND ONE-FINGER SCROLL', true, async (cdp) => {
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    const doc = await cdp.send('DOM.getDocument', { depth: -1 });
+    const input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' });
+    await cdp.send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [touchPdfPath] });
+    const firstPage = 'document.querySelector(\'[data-pdf-page="1"]\')';
+    const reader = 'document.querySelector(\'.reader-viewport\')';
+    const progress = 'document.querySelector(\'[role="progressbar"][aria-valuemax="3"]\')';
+    await waitForBrowser(cdp, `!!${firstPage}?.querySelector('canvas[data-viewport-width]') && !!${progress}`, 'three-page reader');
+    await wait(420);
+    const state = () => cdp.evalJs(`({
+      width: ${firstPage}.getBoundingClientRect().width,
+      page: Number(${progress}.getAttribute('aria-valuenow')),
+      top: ${reader}.scrollTop
+    })`);
+    const before = await state();
+    await dispatchTouch(cdp, 'touchStart', [145, 300]);
+    await dispatchTouch(cdp, 'touchMove', [145, 280]);
+    await dispatchTouch(cdp, 'touchStart', [245, 280, 1]);
+    await dispatchTouch(cdp, 'touchMove', [65, 265], [325, 295, 1]);
+    await wait(150);
+    const spreading = await state();
+    await dispatchTouch(cdp, 'touchMove', [162, 270], [228, 290, 1]);
+    await wait(150);
+    const closing = await state();
+    await dispatchTouch(cdp, 'touchEnd', [228, 290, 1]);
+    await dispatchTouch(cdp, 'touchMove', [162, 125]);
+    await dispatchTouch(cdp, 'touchEnd');
+    await wait(150);
+    const after = await state();
+    await dispatchTouch(cdp, 'touchStart', [195, 550]);
+    await dispatchTouch(cdp, 'touchMove', [195, 195]);
+    await wait(100);
+    await dispatchTouch(cdp, 'touchEnd');
+    await wait(170);
+    const afterScroll = await state();
+    const passed = spreading.width > before.width * 1.4 && closing.width < before.width * 0.9 &&
+      [spreading, closing, after].every(snapshot => snapshot.page === before.page) &&
+      Math.abs(closing.top - after.top) < 3 && afterScroll.top > after.top + 50 && afterScroll.page > after.page;
+    if (!passed) allPassed = false;
+    return { before, spreading, closing, after, afterScroll, passed };
+  });
+
   await runAudit('MOBILE + SCANNER + WASM + REAL TESSERACT OCR', true, async (cdp) => {
     const res = {};
     res.hasOverflow = await cdp.evalJs(`document.documentElement.scrollWidth > window.innerWidth + 2`);
@@ -751,7 +808,7 @@ async function auditLocalBuild() {
 
     res.wasmFilterClicked = await cdp.evalJs(`(() => {
       const btns = Array.from(document.querySelectorAll('[role="dialog"] button'));
-      const cleanBtn = btns.find(b => /تنقية نصوص|ورق ناصع|Clean/i.test(b.textContent || ''));
+      const cleanBtn = btns.find(b => /مستند ملوّن|Color document/i.test(b.textContent || ''));
       cleanBtn?.click();
       return cleanBtn?.textContent?.trim() || null;
     })()`);
@@ -789,7 +846,260 @@ async function auditLocalBuild() {
     res.ocrMatchedTime = combinedUpper.includes('TIME');
     if (!res.ocrMatchedHello || !res.ocrMatchedTime) allPassed = false;
     return res;
-  });
+  }, appUrl, true);
+
+  await runAudit('SCANNER 30-PAGE IMPORT AND EXPORT', true, async (cdp) => {
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    const hasScannerButton = `[...document.querySelectorAll('button')].some(button => button.textContent.includes('الماسح بالكاميرا'))`;
+    await waitForBrowser(cdp, hasScannerButton, 'scanner launch button');
+    await cdp.evalJs(`(() => {
+      localStorage.removeItem('otium-lab:otium_scan_active_session_pages');
+      [...document.querySelectorAll('button')].find(button => button.textContent.includes('الماسح بالكاميرا'))?.click();
+    })()`);
+    await waitForBrowser(cdp, `!!document.querySelector('[aria-label="ماسح المستندات الضوئي"] input[type=file]')`, 'scanner gallery input');
+    const result = await cdp.evalJs(`(async () => {
+      const scanner = document.querySelector('[aria-label="ماسح المستندات الضوئي"]');
+      const input = scanner.querySelector('input[type=file]');
+      const gallery = new DataTransfer();
+      const canvas = document.createElement('canvas');
+      canvas.width = ${scannerFullResolution ? 2480 : 320};
+      canvas.height = ${scannerFullResolution ? 3508 : 440};
+      const ctx = canvas.getContext('2d');
+      ctx.scale(canvas.width / 320, canvas.height / 440);
+      const sourceSizes = [];
+      let firstSource;
+      for (let index = 0; index < 30; index++) {
+        ctx.fillStyle = index ? '#505050' : '#dddddd';
+        ctx.fillRect(0, 0, 320, 440);
+        if (index) {
+          ctx.fillStyle = '#fbfbfb';
+          ctx.fillRect(30, 35, 260, 370);
+          ctx.fillStyle = '#252525';
+          ctx.font = '28px sans-serif';
+          if (${scannerFullResolution} && index === 29) {
+            ctx.direction = 'rtl';
+            ctx.font = 'bold 26px Arial, sans-serif';
+            ctx.fillText('هذا مستند للاختبار', 260, 95);
+            ctx.fillText('رقم الفاتورة ١٢٣', 260, 145);
+          } else {
+            ctx.fillText('PAGE ' + (index + 1), 52, 95);
+          }
+        }
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        sourceSizes.push(blob.size);
+        if (!index) firstSource = new Uint8Array(await blob.arrayBuffer());
+        gallery.items.add(new File([blob], 'page-' + (index + 1) + '.png', { type: 'image/png' }));
+      }
+      const startedAt = performance.now();
+      input.files = gallery.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      const until = async (test) => {
+        for (let tries = 0; tries < 720; tries++) {
+          const value = test();
+          if (value) return value;
+          await new Promise(resolve => setTimeout(resolve, 125));
+        }
+        throw new Error('Scanner step timed out');
+      };
+      const review = await until(() => scanner.querySelector('button[title="مراجعة الصفحات"]:not(:disabled)'));
+      const elapsedImportMs = Math.round(performance.now() - startedAt);
+      const draft = JSON.parse(localStorage.getItem('otium-lab:otium_scan_active_session_pages'));
+      const ordered = draft.length === 30 && draft[0].needsCropReview === true && draft.slice(1).every(page => !page.needsCropReview);
+      const originals = await new Promise((resolve, reject) => {
+        const open = indexedDB.open('otium-lab:otium_scan_storage');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const tx = open.result.transaction('scanned_pages');
+          const store = tx.objectStore('scanned_pages');
+          const requests = draft.map(page => store.get(page.id));
+          tx.oncomplete = () => {
+            resolve(requests.map(request => request.result.originalBlob));
+            open.result.close();
+          };
+          tx.onerror = () => { reject(tx.error); open.result.close(); };
+        };
+      });
+      const sourceOrderPreserved = originals.every((blob, index) => blob.size === sourceSizes[index]);
+      const original = new Uint8Array(await originals[0].arrayBuffer());
+      const originalPreserved = original.length === firstSource.length && original.every((byte, index) => byte === firstSource[index]);
+      review.click();
+      const cropReviewVisible = !!await until(() => [...scanner.querySelectorAll('button')].find(button => button.textContent.trim() === 'راجع القص'));
+      let exported = '';
+      window.OtiumNative = { saveFileToDownloads: (data) => { exported = data; return true; } };
+      const save = await until(() => [...scanner.querySelectorAll('button')].find(button => button.textContent.trim() === 'حفظ PDF'));
+      const exportStartedAt = performance.now();
+      save.click();
+      await until(() => exported);
+      const elapsedExportMs = Math.round(performance.now() - exportStartedAt);
+      const bytes = atob(exported.split(',')[1]);
+      return { sourceSize: [canvas.width, canvas.height], ordered: ordered && sourceOrderPreserved, originalPreserved, cropReviewVisible, elapsedImportMs, elapsedExportMs, pdfPages: Number(new RegExp('/Count ([0-9]+)').exec(bytes)?.[1]) };
+    })()`);
+    const preview = 'document.querySelector(\'[aria-label="ماسح المستندات الضوئي"] .touch-none img[alt^="Page "]\')';
+    await waitForBrowser(cdp, `!!${preview}`, 'scanner preview');
+    const previewState = () => cdp.evalJs(`({
+      page: ${preview}.alt,
+      scale: new DOMMatrix(getComputedStyle(${preview}.parentElement).transform).a,
+    })`);
+    const y = Math.round(await cdp.evalJs(`(() => {
+      const box = ${preview}.closest('.touch-none').getBoundingClientRect();
+      return box.top + box.height / 2;
+    })()`));
+    await dispatchTouch(cdp, 'touchStart', [277, y]);
+    await dispatchTouch(cdp, 'touchMove', [180, y]);
+    await dispatchTouch(cdp, 'touchStart', [274, y, 1]);
+    await dispatchTouch(cdp, 'touchMove', [95, y], [320, y, 1]);
+    await wait(150);
+    const scannerSpreading = await previewState();
+    await dispatchTouch(cdp, 'touchMove', [171, y], [260, y, 1]);
+    await dispatchTouch(cdp, 'touchEnd', [260, y, 1]);
+    await dispatchTouch(cdp, 'touchMove', [65, y]);
+    await dispatchTouch(cdp, 'touchEnd');
+    await wait(275);
+    const afterPinch = await previewState();
+    await dispatchTouch(cdp, 'touchStart', [277, y]);
+    await dispatchTouch(cdp, 'touchMove', [133, y]);
+    await dispatchTouch(cdp, 'touchCancel');
+    await wait(275);
+    const afterCancel = await previewState();
+    await dispatchTouch(cdp, 'touchStart', [277, y]);
+    await dispatchTouch(cdp, 'touchMove', [120, y]);
+    await dispatchTouch(cdp, 'touchEnd');
+    await wait(275);
+    const afterSwipe = await previewState();
+    result.touch = { scannerSpreading, afterPinch, afterCancel, afterSwipe };
+    if (scannerSpreading.page !== 'Page 1' || scannerSpreading.scale < 1.6 ||
+        afterPinch.page !== 'Page 1' || afterPinch.scale !== 1 ||
+        afterCancel.page !== 'Page 1' || afterSwipe.page !== 'Page 2') allPassed = false;
+
+    await cdp.evalJs(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'أبيض وأسود')?.click()`);
+    await waitForBrowser(cdp, `JSON.parse(localStorage.getItem('otium-lab:otium_scan_active_session_pages'))?.[1]?.filter === 'bw'`, 'black and white filter saved');
+    result.bwPage = 2;
+
+    if (scannerFullResolution) {
+      await cdp.send('Page.reload');
+      await waitForBrowser(cdp, hasScannerButton, 'scanner launcher after reload');
+      await cdp.evalJs(`[...document.querySelectorAll('button')].find(button => button.textContent.includes('الماسح بالكاميرا'))?.click()`);
+      await waitForBrowser(cdp, `[...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'حفظ PDF')`, 'restored scan review');
+      result.restoredPages = await cdp.evalJs(`JSON.parse(localStorage.getItem('otium-lab:otium_scan_active_session_pages')).length`);
+      await cdp.evalJs(`(() => {
+        const scanner = document.querySelector('[aria-label="ماسح المستندات الضوئي"]');
+        scanner.querySelector('button[aria-label="المزيد"]').click();
+      })()`);
+      await waitForBrowser(cdp, `[...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'إعدادات PDF')`, 'PDF options');
+      await cdp.evalJs(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'إعدادات PDF')?.click()`);
+      await waitForBrowser(cdp, `[...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'معطّل')`, 'OCR switch');
+      await cdp.evalJs(`(() => {
+        [...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'معطّل')?.click();
+      })()`);
+      const ocr = await cdp.evalJs(`(async () => {
+        const scanner = document.querySelector('[aria-label="ماسح المستندات الضوئي"]');
+        const toggle = [...scanner.querySelectorAll('button')].find(button => button.textContent.trim() === 'مفعّل');
+        if (!toggle) throw new Error('OCR did not turn on');
+        const settings = toggle.closest('.max-w-sm');
+        settings?.querySelector('button')?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        let resolveExport;
+        const exportResult = new Promise(resolve => { resolveExport = resolve; });
+        window.OtiumNative = { saveFileToDownloads: data => { resolveExport(data); return true; } };
+        const startedAt = performance.now();
+        [...scanner.querySelectorAll('button')].find(button => button.textContent.trim() === 'حفظ PDF').click();
+        let timer;
+        try {
+          const data = await Promise.race([exportResult, new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('OCR export timed out')), 90000);
+          })]);
+          const pdf = atob(data.split(',')[1]);
+          return {
+            ocrPages: Number(new RegExp('/Count ([0-9]+)').exec(pdf)?.[1]),
+            ocrTextStreams: pdf.split('3 Tr').length - 1,
+            elapsedOcrExportMs: Math.round(performance.now() - startedAt),
+            pdfBase64: data.split(',')[1],
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      })()`);
+      const { pdfBase64, ...metrics } = ocr;
+      Object.assign(result, metrics);
+      const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const pdfTask = getDocument({ data: Uint8Array.from(Buffer.from(pdfBase64, 'base64')), useSystemFonts: false });
+      try {
+        const pdf = await pdfTask.promise;
+        const page = await pdf.getPage(30);
+        const text = (await page.getTextContent()).items.map(item => item.str ?? '').join(' ');
+        result.arabicOcrTokens = ['مستند', 'الفاتورة'].filter(word => text.includes(word));
+        const bwPage = await pdf.getPage(result.bwPage);
+        const bwText = (await bwPage.getTextContent()).items.map(item => item.str ?? '').join(' ');
+        result.bwOcrText = bwText.trim();
+        if (result.arabicOcrTokens.length !== 2 || !/PAGE\s*2/i.test(bwText)) allPassed = false;
+      } finally {
+        await pdfTask.destroy();
+      }
+      if (result.restoredPages !== 30 || result.ocrPages !== 30 || result.ocrTextStreams < 28) allPassed = false;
+
+      // Start a new import and reload as soon as its third original is committed.
+      const draftKey = 'otium-lab:otium_scan_active_session_pages';
+      await cdp.evalJs(`localStorage.removeItem('${draftKey}')`);
+      await cdp.send('Page.reload');
+      await waitForBrowser(cdp, hasScannerButton, 'launcher for interrupted import');
+      await cdp.evalJs(`[...document.querySelectorAll('button')].find(button => button.textContent.includes('الماسح بالكاميرا'))?.click()`);
+      const galleryInput = 'document.querySelector(\'[aria-label="ماسح المستندات الضوئي"] input[type=file]\')';
+      await waitForBrowser(cdp, `!!${galleryInput}`, 'gallery for interrupted import');
+      const expectedSizes = await cdp.evalJs(`(async () => {
+        const gallery = new DataTransfer();
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        const sizes = [];
+        for (let index = 0; index < 8; index++) {
+          canvas.height = 800 + index * 100;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#eee';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          sizes.push(blob.size);
+          gallery.items.add(new File([blob], 'interrupted-' + index + '.png', { type: 'image/png' }));
+        }
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function(key, value) {
+          setItem.call(this, key, value);
+          if (this === localStorage && key === '${draftKey}' && JSON.parse(value).length === 3) {
+            Storage.prototype.setItem = setItem;
+            sessionStorage.setItem('otium-import-interrupted', 'yes');
+            location.reload();
+          }
+        };
+        window.otiumImportTestStarted = true;
+        const input = ${galleryInput};
+        input.files = gallery.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return sizes;
+      })()`);
+      await waitForBrowser(cdp, `sessionStorage.getItem('otium-import-interrupted') === 'yes' && !window.otiumImportTestStarted && (${hasScannerButton})`, 'reload while the gallery import is running');
+      await cdp.evalJs(`[...document.querySelectorAll('button')].find(button => button.textContent.includes('الماسح بالكاميرا'))?.click()`);
+      await waitForBrowser(cdp, `[...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'حفظ PDF')`, 'review after interrupted import');
+      const recoveredSizes = await cdp.evalJs(`new Promise((resolve, reject) => {
+        const draft = JSON.parse(localStorage.getItem('${draftKey}'));
+        const open = indexedDB.open('otium-lab:otium_scan_storage');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const tx = open.result.transaction('scanned_pages');
+          const store = tx.objectStore('scanned_pages');
+          const requests = draft.map(page => store.get(page.id));
+          tx.oncomplete = () => {
+            resolve(requests.map(request => request.result?.originalBlob?.size ?? null));
+            open.result.close();
+          };
+          tx.onerror = () => { reject(tx.error); open.result.close(); };
+        };
+      })`);
+      result.interruptedImportRestored = recoveredSizes.length;
+      result.interruptedImportInOrder = recoveredSizes.length >= 3 && recoveredSizes.length < expectedSizes.length &&
+        recoveredSizes.every((size, index) => size === expectedSizes[index]);
+      if (!result.interruptedImportInOrder) allPassed = false;
+    }
+    if (!result.ordered || !result.originalPreserved || !result.cropReviewVisible || result.pdfPages !== 30) allPassed = false;
+    return result;
+  }, appUrl, true);
 }
 
 try {

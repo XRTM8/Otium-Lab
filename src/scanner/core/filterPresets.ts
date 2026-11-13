@@ -93,47 +93,38 @@ export function applyAdaptiveCleanFilter(data: Uint8ClampedArray, width: number,
   }
 }
 
-function despeckleBinary(data: Uint8ClampedArray, width: number, height: number): void {
-  if (width < 3 || height < 3) return;
-  for (let y = 1; y < height - 1; y++) {
-    const row = y * width * 4;
-    const prevRow = (y - 1) * width * 4;
-    const nextRow = (y + 1) * width * 4;
-    for (let x = 1; x < width - 1; x++) {
-      const idx = row + x * 4;
-      if (data[idx] === 0) {
-        const neighborsWhite =
-          data[prevRow + x * 4] === 255 &&
-          data[nextRow + x * 4] === 255 &&
-          data[row + (x - 1) * 4] === 255 &&
-          data[row + (x + 1) * 4] === 255;
-        if (neighborsWhite) {
-          data[idx] = 255;
-          data[idx + 1] = 255;
-          data[idx + 2] = 255;
-        }
-      }
-    }
-  }
-}
-
 export function applyAdaptiveBwFilter(data: Uint8ClampedArray, width: number, height: number): void {
   const step = Math.max(16, Math.min(48, Math.floor(Math.min(width, height) / 32)));
   const { grid, gridW, gridH } = computeIlluminationGrid(data, width, height, step);
-
+  const luminance = new Uint8Array(width * height);
+  for (let i = 0; i < luminance.length; i++) {
+    luminance[i] = Math.round(0.299 * data[i * 4]! + 0.587 * data[i * 4 + 1]! + 0.114 * data[i * 4 + 2]!);
+  }
+  const radius = Math.max(2, Math.min(10, Math.round(Math.min(width, height) / 240)));
   for (let y = 0; y < height; y++) {
+    const above = Math.max(0, y - radius) * width;
+    const below = Math.min(height - 1, y + radius) * width;
+    const row = y * width;
     for (let x = 0; x < width; x++) {
-      const bgLum = sampleIllumination(grid, gridW, gridH, x, y, step);
-      const idx = (y * width + x) * 4;
-      const lum = 0.299 * (data[idx] ?? 0) + 0.587 * (data[idx + 1] ?? 0) + 0.114 * (data[idx + 2] ?? 0);
-      const val = lum < bgLum * 0.82 ? 0 : 255;
-      data[idx] = val;
-      data[idx + 1] = val;
-      data[idx + 2] = val;
+      const background = sampleIllumination(grid, gridW, gridH, x, y, step);
+      const left = Math.max(0, x - radius);
+      const right = Math.min(width - 1, x + radius);
+      // An ink stroke has lighter paper on both sides along at least one axis.
+      const paper = Math.max(
+        Math.min(luminance[above + x]!, luminance[below + x]!),
+        Math.min(luminance[row + left]!, luminance[row + right]!),
+        Math.min(luminance[above + left]!, luminance[below + right]!),
+        Math.min(luminance[above + right]!, luminance[below + left]!),
+      );
+      const lum = luminance[row + x]!;
+      const deficit = paper - lum;
+      const darkInk = lum < background * 0.55;
+      const localInk = deficit >= Math.max(12, paper * 0.068) || (lum < background * 0.77 && deficit > 5);
+      const val = darkInk || localInk ? 0 : 255;
+      const idx = (row + x) * 4;
+      data[idx] = data[idx + 1] = data[idx + 2] = val;
     }
   }
-
-  despeckleBinary(data, width, height);
 }
 
 export function applyAdaptiveGrayscaleFilter(data: Uint8ClampedArray, width: number, height: number): void {

@@ -10,11 +10,9 @@ import {
 } from '../core/storage/documentLibrary';
 import type { DocumentCategory } from '../core/types';
 import { nativeSharePdf, nativeSavePdf, nativeOpenInOtium } from '../core/nativeBridge';
-import { APP_CURRENT_VERSION } from '../core/updater';
-import { OtiumLogo } from './OtiumLogo';
-import { LibraryAboutModal } from './LibraryAboutModal';
 import { LibraryDocumentCard } from './LibraryDocumentCard';
 import { LibraryHeaderBar } from './LibraryHeaderBar';
+import { OtiumLogo } from './OtiumLogo';
 import {
   Search,
   CheckCircle2,
@@ -44,7 +42,6 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
   const [toastMsg, setToastMsg] = useState<string>('');
   const backupInputRef = useRef<HTMLInputElement>(null);
-  const [showAboutModal, setShowAboutModal] = useState<boolean>(false);
 
   const triggerHaptic = (duration = 15) => {
     if ('vibrate' in navigator) {
@@ -93,8 +90,10 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
   const handleSaveToDownloads = async (doc: LibraryDocument) => {
     triggerHaptic(15);
-    await nativeSavePdf(doc.pdfBlob, `${doc.title}.pdf`);
-    setToastMsg('✓ تم حفظ المستند في مجلد التنزيلات');
+    const saved = await nativeSavePdf(doc.pdfBlob, `${doc.title}.pdf`);
+    setToastMsg(saved
+      ? (lang === 'ar' ? 'حُفظ المستند في التنزيلات' : 'Document saved to Downloads')
+      : (lang === 'ar' ? 'تعذّر حفظ المستند' : 'Could not save the document'));
     setTimeout(() => setToastMsg(''), 2200);
   };
 
@@ -173,14 +172,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         documentCount={documents.length}
         onExportBackup={handleExportBackup}
         onTriggerRestore={() => backupInputRef.current?.click()}
-        onOpenSettingsOrAbout={() => {
-          triggerHaptic(15);
-          if (onOpenSettings) {
-            onOpenSettings();
-          } else {
-            setShowAboutModal(true);
-          }
-        }}
+        onOpenSettings={onOpenSettings}
         onClose={onClose}
       />
 
@@ -299,31 +291,6 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         )}
       </div>
 
-      {/* Luxury Footer Card */}
-      <div className="px-5 py-3.5 otium-chrome border-t border-white/[0.08] flex items-center justify-between text-xs text-gray-400">
-        <button
-          onClick={() => {
-            triggerHaptic(15);
-            setShowAboutModal(true);
-          }}
-          className="fluid-press flex items-center gap-2 hover:text-white text-right cursor-pointer"
-        >
-          <OtiumLogo size={14} theme={theme} />
-          <span className="text-[11px] text-gray-300 font-medium">{lang === 'ar' ? 'رفيق قارئ أو تيوم • Otium Ecosystem' : 'Otium Companion • Ecosystem'}</span>
-        </button>
-        <button
-          onClick={() => {
-            triggerHaptic(15);
-            setShowAboutModal(true);
-          }}
-          className="fluid-press text-[11px] text-accent font-bold px-2.5 py-0.5 rounded-full bg-accent/10 border border-accent/20 hover:bg-accent/20 flex items-center gap-1.5 cursor-pointer"
-          title={lang === 'ar' ? 'معلومات التطبيق والتحقق من التحديثات' : 'App info & updates'}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
-          <span>{lang === 'ar' ? `أحدث إصدار: v${APP_CURRENT_VERSION}` : `Latest: v${APP_CURRENT_VERSION}`}</span>
-        </button>
-      </div>
-
       <input
         ref={backupInputRef}
         type="file"
@@ -332,13 +299,6 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         className="hidden"
       />
 
-      <LibraryAboutModal
-        isOpen={showAboutModal}
-        onClose={() => setShowAboutModal(false)}
-        theme={theme}
-        lang={lang}
-        triggerHaptic={triggerHaptic}
-      />
     </div>
   );
 };

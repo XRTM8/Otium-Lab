@@ -52,9 +52,11 @@ export function useReaderViewportAndZoom({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pinchFrameRef = useRef<number | null>(null);
   const pendingPinchZoom = useRef<number | null>(null);
-  const pinchStartDistRef = useRef<number | null>(null);
-  const pinchStartZoomRef = useRef(1);
-  const isPinchingRef = useRef(false);
+  const pinchRef = useRef<{ first: number; second: number; distance: number; zoom: number } | null>(null);
+  const touchPanRef = useRef<{ x: number; y: number; time: number; vx: number; vy: number; moved: boolean } | null>(null);
+  const panFrameRef = useRef<number | null>(null);
+  const pinchReleaseFrameRef = useRef<number | null>(null);
+  const touchZoomActiveRef = useRef(false);
   const zoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const zoomFocusRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -68,6 +70,8 @@ export function useReaderViewportAndZoom({
   useEffect(() => {
     return () => {
       if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current);
+      if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
+      if (pinchReleaseFrameRef.current !== null) cancelAnimationFrame(pinchReleaseFrameRef.current);
     };
   }, []);
 
@@ -135,8 +139,13 @@ export function useReaderViewportAndZoom({
     const deltaX = targetX - focus.x;
     const deltaY = targetY - focus.y;
 
-    if (Math.abs(deltaX) > 0.5) container.scrollLeft += deltaX;
-    if (Math.abs(deltaY) > 0.5) container.scrollTop += deltaY;
+    if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
+      container.scrollTo({
+        left: container.scrollLeft + deltaX,
+        top: container.scrollTop + deltaY,
+        behavior: 'instant',
+      });
+    }
   }, [zoom]);
 
   useEffect(() => {
@@ -235,98 +244,126 @@ export function useReaderViewportAndZoom({
     actionsRef,
   });
 
-  const handleTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (isInteractiveTarget(event.target)) return;
-
-    if (event.touches.length === 2) {
-      const t0 = event.touches[0];
-      const t1 = event.touches[1];
-      if (!t0 || !t1) return;
-      const distance = Math.hypot(
-        t0.clientX - t1.clientX,
-        t0.clientY - t1.clientY
-      );
-      if (distance > 10) {
-        pinchStartDistRef.current = distance;
-        pinchStartZoomRef.current = zoom;
-        isPinchingRef.current = true;
-        captureZoomAnchor(
-          (t0.clientX + t1.clientX) / 2,
-          (t0.clientY + t1.clientY) / 2
-        );
-      }
+  const movePinch = (first: React.Touch, second: React.Touch) => {
+    touchZoomActiveRef.current = true;
+    touchPanRef.current = null;
+    const distance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+    const x = (first.clientX + second.clientX) / 2;
+    const y = (first.clientY + second.clientY) / 2;
+    const pinch = pinchRef.current;
+    const samePair = pinch && (
+      (pinch.first === first.identifier && pinch.second === second.identifier) ||
+      (pinch.first === second.identifier && pinch.second === first.identifier)
+    );
+    if (!samePair) {
+      pinchRef.current = null;
+      if (distance < 10) return;
+      pinchRef.current = { first: first.identifier, second: second.identifier, distance, zoom: pendingPinchZoom.current ?? zoom };
+      captureZoomAnchor(x, y);
       return;
     }
+    if (distance === 0) return;
+    zoomFocusRef.current = { x, y };
+    pendingPinchZoom.current = pinchScale(pinch.zoom, pinch.distance, distance, getMinZoom(), getMaxZoom());
+    if (pinchFrameRef.current === null) {
+      pinchFrameRef.current = requestAnimationFrame(() => {
+        pinchFrameRef.current = null;
+        if (pendingPinchZoom.current !== null) setZoom(pendingPinchZoom.current);
+      });
+    }
+  };
 
-    if (event.touches.length === 1 && !isPinchingRef.current) {
-      const container = scrollContainerRef.current;
-      if (container) {
-        const maxScrollX = Math.max(0, container.scrollWidth - container.clientWidth);
-        const maxScrollY = Math.max(0, container.scrollHeight - container.clientHeight);
-        cachedScrollMetricsRef.current = {
-          maxScrollX,
-          maxScrollY,
-          isOverflowingX: maxScrollX > 2,
-          isOverflowingY: maxScrollY > 2,
-        };
-      }
+  const handleTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (panFrameRef.current !== null) {
+      cancelAnimationFrame(panFrameRef.current);
+      panFrameRef.current = null;
+    }
+    if (pinchReleaseFrameRef.current !== null) {
+      cancelAnimationFrame(pinchReleaseFrameRef.current);
+      pinchReleaseFrameRef.current = null;
+      touchZoomActiveRef.current = false;
+      clearZoomAnchor();
+    }
+    const first = event.touches[0];
+    const second = event.touches[1];
+    if (first && second) {
+      movePinch(first, second);
+    } else if (first && !touchZoomActiveRef.current && !isInteractiveTarget(event.target)) {
+      touchPanRef.current = { x: first.clientX, y: first.clientY, time: event.timeStamp, vx: 0, vy: 0, moved: false };
     }
   };
 
   const handleTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (
-      event.touches.length === 2 &&
-      pinchStartDistRef.current !== null &&
-      pinchStartDistRef.current > 0
-    ) {
-      const t0 = event.touches[0];
-      const t1 = event.touches[1];
-      if (!t0 || !t1) return;
-      const distance = Math.hypot(
-        t0.clientX - t1.clientX,
-        t0.clientY - t1.clientY
-      );
-      zoomFocusRef.current = {
-        x: (t0.clientX + t1.clientX) / 2,
-        y: (t0.clientY + t1.clientY) / 2,
-      };
-      const minZ = getMinZoom();
-      const maxZ = getMaxZoom();
-      const targetZoom = pinchScale(pinchStartZoomRef.current, pinchStartDistRef.current, distance, minZ, maxZ);
-      if (Number.isFinite(targetZoom) && targetZoom > 0 && Math.abs(targetZoom - zoom) >= 0.01) {
-        pendingPinchZoom.current = targetZoom;
-        if (pinchFrameRef.current === null) {
-          pinchFrameRef.current = requestAnimationFrame(() => {
-            pinchFrameRef.current = null;
-            if (pendingPinchZoom.current !== null) setZoom(pendingPinchZoom.current);
-          });
-        }
-      }
+    const first = event.touches[0];
+    const second = event.touches[1];
+    if (first && second) {
+      movePinch(first, second);
+      return;
     }
+    const pan = touchPanRef.current;
+    if (!first || !pan) return;
+    const dx = pan.x - first.clientX;
+    const dy = pan.y - first.clientY;
+    if (!pan.moved && Math.hypot(dx, dy) < 8) return;
+    const elapsed = Math.max(8, event.timeStamp - pan.time);
+    touchPanRef.current = {
+      x: first.clientX, y: first.clientY, time: event.timeStamp,
+      vx: Math.min(3, Math.max(-3, dx / elapsed)),
+      vy: Math.min(3, Math.max(-3, dy / elapsed)),
+      moved: true,
+    };
+    event.currentTarget.scrollBy({ left: dx, top: dy, behavior: 'instant' });
+  };
+
+  const finishPinch = (commit: boolean) => {
+    if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current);
+    pinchFrameRef.current = null;
+    if (commit && pendingPinchZoom.current !== null) setZoom(pendingPinchZoom.current);
+    pendingPinchZoom.current = null;
+    pinchRef.current = null;
+    // Let the final zoom layout and its scroll event finish before tracking pages again.
+    pinchReleaseFrameRef.current = requestAnimationFrame(() => {
+      pinchReleaseFrameRef.current = requestAnimationFrame(() => {
+        pinchReleaseFrameRef.current = null;
+        touchZoomActiveRef.current = false;
+        clearZoomAnchor();
+      });
+    });
   };
 
   const handleTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
     if (event.touches.length > 0) return;
-    if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current);
-    pinchFrameRef.current = null;
-    if (isPinchingRef.current && pendingPinchZoom.current !== null) setZoom(pendingPinchZoom.current);
-    pendingPinchZoom.current = null;
-    isPinchingRef.current = false;
-    pinchStartDistRef.current = null;
-
-    const anchor = zoomAnchorRef.current;
-    requestAnimationFrame(() => {
-      if (zoomAnchorRef.current === anchor) clearZoomAnchor();
-    });
+    if (touchZoomActiveRef.current) {
+      finishPinch(true);
+      return;
+    }
+    const pan = touchPanRef.current;
+    touchPanRef.current = null;
+    if (!pan?.moved || event.timeStamp - pan.time > 80) return;
+    const container = event.currentTarget;
+    let previousTime = performance.now();
+    let { vx, vy } = pan;
+    const coast = (time: number) => {
+      if (!container.isConnected || container.dataset.readerMode !== 'hand') {
+        panFrameRef.current = null;
+        return;
+      }
+      const elapsed = Math.min(32, Math.max(0, time - previousTime));
+      previousTime = time;
+      const left = container.scrollLeft;
+      const top = container.scrollTop;
+      container.scrollBy({ left: vx * elapsed, top: vy * elapsed, behavior: 'instant' });
+      const decay = Math.exp(-elapsed / 95);
+      vx = container.scrollLeft === left ? 0 : vx * decay;
+      vy = container.scrollTop === top ? 0 : vy * decay;
+      panFrameRef.current = Math.hypot(vx, vy) > 0.07 ? requestAnimationFrame(coast) : null;
+    };
+    panFrameRef.current = requestAnimationFrame(coast);
   };
 
-  const handleTouchCancel = () => {
-    if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current);
-    pinchFrameRef.current = null;
-    pendingPinchZoom.current = null;
-    isPinchingRef.current = false;
-    pinchStartDistRef.current = null;
-    clearZoomAnchor();
+  const handleTouchCancel = (event: ReactTouchEvent<HTMLDivElement>) => {
+    touchPanRef.current = null;
+    if (touchZoomActiveRef.current && event.touches.length === 0) finishPinch(false);
   };
 
   const renderFitScale =
@@ -356,6 +393,7 @@ export function useReaderViewportAndZoom({
     maxZoom: Math.max(3.5, Number((renderFitScale * 4.0).toFixed(2))),
     captureZoomAnchor,
     clearZoomAnchor,
+    touchZoomActiveRef,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,

@@ -11,10 +11,6 @@ vi.mock('../core/storage/pageStore', () => ({
   loadPageCanvasFromDisk: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('../core/barcode', () => ({
-  detectBarcodesFromCanvas: vi.fn().mockResolvedValue([]),
-}));
-
 vi.mock('../core/ocr/ocrEngine', () => ({
   extractPageTextAndMetadata: vi.fn(),
   terminateOcrWorker: vi.fn().mockResolvedValue(undefined),

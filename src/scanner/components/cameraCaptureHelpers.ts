@@ -1,15 +1,17 @@
 import {
+  automaticCropConfidence,
   calculateLaplacianSharpness,
   detectDocumentCornersWithConfidence,
+  detectDocumentPixels,
 } from '../core/edgeDetection';
 import { mergeIdCardSidesToA4 } from '../core/idCard';
+import { createImageFromBlob } from '../core/storage/pageImageOps';
+import { getQuadAspectRatio, warpPerspectiveAsync } from '../core/geometry';
+import type { Quad } from '../core/types';
 import { runWasmMotionAndSharpness } from '../core/wasmEngine';
 
-export interface CaptureFrameResult {
-  dataUrl: string;
-  width: number;
-  height: number;
-  canvas?: HTMLCanvasElement;
+function encodeJpeg(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.96));
 }
 
 export function checkCanvasNonBlack(ctx: CanvasRenderingContext2D, w: number, h: number): boolean {
@@ -42,94 +44,58 @@ export function checkCanvasNonBlack(ctx: CanvasRenderingContext2D, w: number, h:
   }
 }
 
-export async function tryGrabCameraFrame(stream: MediaStream | null): Promise<CaptureFrameResult | null> {
+export async function tryTakeCameraPhoto(stream: MediaStream | null): Promise<Blob | null> {
   const track = stream?.getVideoTracks()[0];
-  if (!track || track.readyState !== 'live') return null;
-  const ImageCaptureCtor = window.ImageCapture;
-  if (typeof ImageCaptureCtor !== 'function') return null;
+  if (!track || track.readyState !== 'live' || typeof window.ImageCapture !== 'function') return null;
+  let timer: number | undefined;
   try {
-    const capturer = new ImageCaptureCtor(track);
-    const bitmap = await capturer.grabFrame?.();
-    if (bitmap && bitmap.width > 0 && bitmap.height > 0) {
-      const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (ctx) {
-        ctx.drawImage(bitmap, 0, 0);
-        if (checkCanvasNonBlack(ctx, canvas.width, canvas.height)) {
-          return { dataUrl: canvas.toDataURL('image/jpeg', 0.95), width: canvas.width, height: canvas.height, canvas };
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('ImageCapture.grabFrame fallback:', e);
+    const capture = new window.ImageCapture(track);
+    const photo = capture.takePhoto?.();
+    if (!photo) return null;
+    const timeout = new Promise<null>((resolve) => { timer = window.setTimeout(() => resolve(null), 2000); });
+    const blob = await Promise.race([photo, timeout]);
+    if (!blob?.size) return null;
+    await createImageFromBlob(blob);
+    return blob;
+  } catch (error) {
+    console.warn('Still capture failed:', error);
+    return null;
+  } finally {
+    window.clearTimeout(timer);
   }
-  return null;
 }
 
-export async function tryTakeCameraPhoto(stream: MediaStream | null): Promise<CaptureFrameResult | null> {
-  const track = stream?.getVideoTracks()[0];
-  if (!track || track.readyState !== 'live') return null;
-  const ImageCaptureCtor = window.ImageCapture;
-  if (typeof ImageCaptureCtor !== 'function') return null;
-  try {
-    const capturer = new ImageCaptureCtor(track);
-    const blob = await capturer.takePhoto?.();
-    if (blob && blob.size > 2000) {
-      const dataUrl = await new Promise<string>((res, rej) => {
-        const reader = new FileReader();
-        reader.onload = () => res(reader.result as string);
-        reader.onerror = rej;
-        reader.readAsDataURL(blob);
-      });
-      const img = await new Promise<HTMLImageElement>((res, rej) => {
-        const i = new Image();
-        i.onload = () => res(i);
-        i.onerror = rej;
-        i.src = dataUrl;
-      });
-      return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
-    }
-  } catch (e) {
-    console.warn('ImageCapture.takePhoto fallback:', e);
-  }
-  return null;
-}
-
-export async function tryCaptureVideoCanvas(video: HTMLVideoElement | null): Promise<CaptureFrameResult | null> {
-  if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return null;
+export async function tryCaptureVideoCanvas(video: HTMLVideoElement | null): Promise<Blob | null> {
+  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  if (!checkCanvasNonBlack(ctx, canvas.width, canvas.height)) {
-    await new Promise((r) => requestAnimationFrame(r));
+  try {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (!checkCanvasNonBlack(ctx, canvas.width, canvas.height)) return null;
+    return await encodeJpeg(canvas);
+  } finally {
+    canvas.width = canvas.height = 1;
   }
-  return { dataUrl: canvas.toDataURL('image/jpeg', 0.95), width: canvas.width, height: canvas.height, canvas };
 }
 
-export async function mergeIdCardDataUrls(frontUrl: string, backUrl: string): Promise<string> {
-  const loadImg = (src: string) =>
-    new Promise<HTMLImageElement>((res, rej) => {
-      const img = new Image();
-      img.onload = () => res(img);
-      img.onerror = rej;
-      img.src = src;
-    });
-  const [frontImg, backImg] = await Promise.all([loadImg(frontUrl), loadImg(backUrl)]);
-  const toCanvas = (img: HTMLImageElement) => {
-    const c = document.createElement('canvas');
-    c.width = img.naturalWidth;
-    c.height = img.naturalHeight;
-    c.getContext('2d')?.drawImage(img, 0, 0);
-    return c;
-  };
-  const mergedCanvas = await mergeIdCardSidesToA4(toCanvas(frontImg), toCanvas(backImg));
-  return mergedCanvas.toDataURL('image/jpeg', 0.92);
+export async function cropIdCardSide(blob: Blob): Promise<HTMLCanvasElement | null> {
+  const image = await createImageFromBlob(blob);
+  const result = detectDocumentCornersWithConfidence(image);
+  const ratio = getQuadAspectRatio(result.quad);
+  if (result.confidence < automaticCropConfidence || ratio < 1.22 || ratio > 2.15) return null;
+  return warpPerspectiveAsync(image, result.quad);
+}
+
+export async function mergeIdCardSides(front: HTMLCanvasElement, back: HTMLCanvasElement): Promise<Blob | null> {
+  const page = await mergeIdCardSidesToA4(front, back);
+  try {
+    return await encodeJpeg(page);
+  } finally {
+    page.width = page.height = 1;
+  }
 }
 
 export async function analyzeLiveVideoFrame(
@@ -138,35 +104,42 @@ export async function analyzeLiveVideoFrame(
   prevFrameLum: Uint8Array | null,
   resetWasmPrev: boolean
 ): Promise<{
-  isDocumentPresent: boolean;
+  quad: Quad | null;
+  reliableCrop: boolean;
   motionScore: number;
   sharpness: number;
   nextLum: Uint8Array | null;
+  pageSignature: Int8Array | null;
 } | null> {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  const wasmPromise = runWasmMotionAndSharpness(data, canvas.width, canvas.height, resetWasmPrev);
-  const analysis = detectDocumentCornersWithConfidence(canvas);
-  const wasmMetrics = await wasmPromise;
+  const analysis = detectDocumentPixels(data, canvas.width, canvas.height);
+  const quad = analysis.isDocumentPresent ? analysis.quad : null;
+  const reliableCrop = analysis.confidence >= automaticCropConfidence;
+  const pageSignature = quad ? samplePageContent(data, canvas.width, canvas.height, quad) : null;
+  const wasmMetrics = await runWasmMotionAndSharpness(data, canvas.width, canvas.height, resetWasmPrev);
 
   if (wasmMetrics) {
     return {
-      isDocumentPresent: analysis.isDocumentPresent,
+      quad,
+      reliableCrop,
+      pageSignature,
       motionScore: wasmMetrics.motion,
       sharpness: wasmMetrics.sharpness,
       nextLum: prevFrameLum,
     };
   }
 
+  const pixels = data.byteLength ? data : ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   let motionScore = 0;
   let nextLum = prevFrameLum;
-  if (data.byteLength > 0) {
+  if (pixels.byteLength > 0) {
     const totalPixels = canvas.width * canvas.height;
     const currLum = new Uint8Array(totalPixels);
-    for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-      currLum[j] = Math.round(0.299 * (data[i] ?? 0) + 0.587 * (data[i + 1] ?? 0) + 0.114 * (data[i + 2] ?? 0));
+    for (let i = 0, j = 0; i < pixels.length; i += 4, j++) {
+      currLum[j] = Math.round(0.299 * (pixels[i] ?? 0) + 0.587 * (pixels[i + 1] ?? 0) + 0.114 * (pixels[i + 2] ?? 0));
     }
     if (prevFrameLum && prevFrameLum.length === totalPixels) {
       let diffSum = 0;
@@ -181,9 +154,58 @@ export async function analyzeLiveVideoFrame(
   }
 
   return {
-    isDocumentPresent: analysis.isDocumentPresent,
+    quad,
+    reliableCrop,
+    pageSignature,
     motionScore,
     sharpness: calculateLaplacianSharpness(canvas),
     nextLum,
   };
+}
+
+// Compare local ink contrast inside the page. A shift in exposure across the
+// entire frame contributes little to the signature.
+export function samplePageContent(data: Uint8ClampedArray, width: number, height: number, quad: Quad): Int8Array {
+  const size = 16;
+  const values = new Uint8Array(size * size);
+  for (let row = 0; row < size; row++) {
+    const v = 0.09 + row * 0.82 / (size - 1);
+    for (let col = 0; col < size; col++) {
+      const u = 0.09 + col * 0.82 / (size - 1);
+      const tx = quad.topLeft.x + (quad.topRight.x - quad.topLeft.x) * u;
+      const ty = quad.topLeft.y + (quad.topRight.y - quad.topLeft.y) * u;
+      const bx = quad.bottomLeft.x + (quad.bottomRight.x - quad.bottomLeft.x) * u;
+      const by = quad.bottomLeft.y + (quad.bottomRight.y - quad.bottomLeft.y) * u;
+      const x = Math.round(tx + (bx - tx) * v);
+      const y = Math.round(ty + (by - ty) * v);
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const pixel = (Math.max(0, Math.min(height - 1, y + dy)) * width + Math.max(0, Math.min(width - 1, x + dx))) * 4;
+          sum += 0.299 * data[pixel]! + 0.587 * data[pixel + 1]! + 0.114 * data[pixel + 2]!;
+        }
+      }
+      values[row * size + col] = Math.round(sum / 9);
+    }
+  }
+  const signature = new Int8Array((size - 2) ** 2);
+  for (let row = 1; row < size - 1; row++) {
+    for (let col = 1; col < size - 1; col++) {
+      const i = row * size + col;
+      const difference = values[i]! * 4 - values[i - 1]! - values[i + 1]! - values[i - size]! - values[i + size]!;
+      signature[(row - 1) * (size - 2) + col - 1] = difference < -48 ? -1 : difference > 48 ? 1 : 0;
+    }
+  }
+  return signature;
+}
+
+export function pageContentChanged(before: Int8Array, after: Int8Array): boolean {
+  if (!before.length || before.length !== after.length) return false;
+  let changed = 0;
+  let marked = 0;
+  for (let i = 0; i < before.length; i++) {
+    if (before[i] || after[i]) marked++;
+    if (before[i] !== after[i]) changed++;
+  }
+  return changed >= 20 && changed >= marked * 0.40;
 }

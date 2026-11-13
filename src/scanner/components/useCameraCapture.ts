@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { playShutterSound } from '../core/audio';
-import { detectDocumentCorners, getFullFrameQuad } from '../core/edgeDetection';
+import type { Language } from '../../core/i18n/translations';
 import type { CropMode, Quad } from '../core/types';
 import {
   analyzeLiveVideoFrame,
-  mergeIdCardDataUrls,
+  pageContentChanged,
+  cropIdCardSide,
+  mergeIdCardSides,
   tryCaptureVideoCanvas,
-  tryGrabCameraFrame,
   tryTakeCameraPhoto,
 } from './cameraCaptureHelpers';
 
@@ -16,6 +17,7 @@ interface MediaTrackFocusCapabilities extends MediaTrackCapabilities {
 
 interface MediaTrackFocusConstraintSet extends MediaTrackConstraintSet {
   focusMode?: string;
+  pointsOfInterest?: { x: number; y: number }[];
 }
 
 export interface UseCameraCaptureOptions {
@@ -23,25 +25,27 @@ export interface UseCameraCaptureOptions {
   viewfinderFit: 'contain' | 'cover';
   autoCapture: boolean;
   facingMode: 'environment' | 'user';
-  scanMode: 'batch' | 'single' | 'idcard';
+  scanMode: 'document' | 'idcard';
+  lang?: Language;
+  paused?: boolean;
+  inactive?: boolean;
   idCardStep: 'front' | 'back';
   setIdCardStep: (step: 'front' | 'back') => void;
-  idFrontDataUrl: string | null;
-  setIdFrontDataUrl: (url: string | null) => void;
+  idFront: HTMLCanvasElement | null;
+  setIdFront: (canvas: HTMLCanvasElement | null) => void;
   setIdStatusToast: (msg: string) => void;
   setCaptureToast: (msg: string) => void;
   setTorchOn: (on: boolean) => void;
-  pagesCount: number;
   triggerHaptic: (duration?: number) => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
-  onCapture: (imageDataUrl: string, isBatchMode: boolean, detectedQuad?: Quad) => void;
+  onCapture: (images: Blob[], autoCrop: boolean) => Promise<number>;
 }
 
 export function useCameraCapture(options: UseCameraCaptureOptions) {
   const {
-    cropMode, viewfinderFit, autoCapture, facingMode, scanMode, idCardStep,
-    setIdCardStep, idFrontDataUrl, setIdFrontDataUrl, setIdStatusToast,
-    setCaptureToast, setTorchOn, pagesCount, triggerHaptic, fileInputRef, onCapture,
+    cropMode, viewfinderFit, autoCapture, facingMode, scanMode, idCardStep, lang = 'ar', paused = false, inactive = false,
+    setIdCardStep, idFront, setIdFront, setIdStatusToast,
+    setCaptureToast, setTorchOn, triggerHaptic, fileInputRef, onCapture,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -51,20 +55,27 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
   const prevFrameLumRef = useRef<Uint8Array | null>(null);
   const stabilityStepRef = useRef<number>(0);
   const cameraRequestRef = useRef(0);
+  const captureLock = useRef(false);
+  const previousQuad = useRef<Quad | null>(null);
+  const waitingForNextPage = useRef(false);
+  const missingFrames = useRef(0);
+  const currentSignature = useRef<Int8Array | null>(null);
+  const capturedSignature = useRef<Int8Array | null>(null);
+  const previousSignature = useRef<Int8Array | null>(null);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [flashAnimation, setFlashAnimation] = useState(false);
   const [stabilityProgress, setStabilityProgress] = useState<number>(0);
-  const [liveDocPresent, setLiveDocPresent] = useState<boolean>(false);
+  const [liveQuad, setLiveQuad] = useState<Quad | null>(null);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [renderedBounds, setRenderedBounds] = useState<{
     x: number; y: number; width: number; height: number;
   } | null>(null);
 
-  const effectiveLiveDocPresent = Boolean(hasPermission && stream && !capturing && liveDocPresent);
-  const effectiveStabilityProgress = hasPermission && stream && !capturing ? stabilityProgress : 0;
+  const visibleQuad = hasPermission && stream && !capturing && !paused ? liveQuad : null;
+  const effectiveStabilityProgress = hasPermission && stream && !capturing && !paused ? stabilityProgress : 0;
 
   const stopCamera = useCallback(() => {
     cameraRequestRef.current++;
@@ -77,10 +88,16 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
     const request = cameraRequestRef.current;
     setStream(null);
     setHasPermission(null);
-    setLiveDocPresent(false);
+    setLiveQuad(null);
     setStabilityProgress(0);
     stabilityStepRef.current = 0;
     prevFrameLumRef.current = null;
+    previousQuad.current = null;
+    waitingForNextPage.current = false;
+    currentSignature.current = null;
+    capturedSignature.current = null;
+    previousSignature.current = null;
+    missingFrames.current = 0;
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       console.warn('Camera API (navigator.mediaDevices.getUserMedia) is not available');
       setHasPermission(false);
@@ -123,6 +140,7 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
   }, [facingMode, stopCamera]);
 
   useEffect(() => {
+    if (inactive) return;
     let mounted = true;
     void Promise.resolve().then(() => { if (mounted) void initCamera(); });
     const handleVisibilityChange = () => {
@@ -140,7 +158,7 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopCamera();
     };
-  }, [initCamera, setTorchOn, stopCamera]);
+  }, [inactive, initCamera, setTorchOn, stopCamera]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -180,101 +198,86 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
   const handleViewfinderTap = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = viewfinderRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setFocusPoint({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    triggerHaptic(12);
+    const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const bounds = renderedBounds;
     const track = stream?.getVideoTracks()[0];
-    if (track) {
-      try {
-        const capabilities = track.getCapabilities?.() as MediaTrackFocusCapabilities | undefined;
-        if (capabilities?.focusMode?.includes('continuous')) {
-          const focusConstraint: MediaTrackFocusConstraintSet = { focusMode: 'continuous' };
-          track.applyConstraints({ advanced: [focusConstraint] }).then(undefined, (err: unknown) => {
-            console.debug('[useCameraCapture] Focus constraint unsupported:', err);
-          });
-        }
-      } catch (err) {
-        console.debug('[useCameraCapture] Track capabilities lookup skipped:', err);
-      }
+    if (!bounds || !track) return;
+    const x = (point.x - bounds.x) / bounds.width;
+    const y = (point.y - bounds.y) / bounds.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    try {
+      const capabilities = track.getCapabilities?.() as MediaTrackFocusCapabilities | undefined;
+      if (!capabilities?.focusMode?.includes('single-shot')) return;
+      const focusConstraint: MediaTrackFocusConstraintSet = { focusMode: 'single-shot', pointsOfInterest: [{ x, y }] };
+      void track.applyConstraints({ advanced: [focusConstraint] }).then(() => {
+        setFocusPoint(point);
+        triggerHaptic(12);
+        window.setTimeout(() => setFocusPoint(null), 900);
+      }).catch(console.debug);
+    } catch (error) {
+      console.debug('Point focus unavailable:', error);
     }
-    setTimeout(() => setFocusPoint(null), 900);
   };
 
   const handleCapture = useCallback(async () => {
-    if (capturing) return;
+    if (captureLock.current || paused) return;
+    if (!stream) {
+      fileInputRef.current?.click();
+      return;
+    }
+    captureLock.current = true;
+    const cameraRequest = cameraRequestRef.current;
+    const signatureAtShutter = currentSignature.current;
+    setCapturing(true);
+    setCaptureToast('');
     triggerHaptic(35);
     playShutterSound();
-    setCapturing(true);
     setFlashAnimation(true);
-    setTimeout(() => setFlashAnimation(false), 120);
-
-    const processCapturedImage = async (dataUrl: string, frameW?: number, frameH?: number, sourceCanvas?: HTMLCanvasElement) => {
-      let detectedQuad: Quad | undefined;
-      if (cropMode === 'full' && frameW && frameH && frameW > 0 && frameH > 0) {
-        detectedQuad = getFullFrameQuad(frameW, frameH, 0.005);
-      } else if (sourceCanvas) {
-        try {
-          detectedQuad = detectDocumentCorners(sourceCanvas);
-        } catch {
-          if (frameW && frameH) detectedQuad = getFullFrameQuad(frameW, frameH, 0.005);
-        }
-      } else if (frameW && frameH && frameW > 0 && frameH > 0) {
-        detectedQuad = getFullFrameQuad(frameW, frameH, 0.005);
+    window.setTimeout(() => setFlashAnimation(false), 120);
+    try {
+      const started = performance.now();
+      const still = await tryTakeCameraPhoto(stream);
+      const blob = still ?? await tryCaptureVideoCanvas(videoRef.current);
+      if (import.meta.env.DEV) {
+        console.debug('Scan shutter', { source: still ? 'still' : blob ? 'video' : 'none', ms: Math.round(performance.now() - started), bytes: blob?.size });
       }
-
+      if (cameraRequest !== cameraRequestRef.current) return;
+      if (!blob) throw new Error('No camera image available');
       if (scanMode === 'idcard') {
-        if (idCardStep === 'front') {
-          setIdFrontDataUrl(dataUrl);
-          setIdCardStep('back');
-          setIdStatusToast('✓ تم تصوير الوجه الأمامي — الآن اقلب الهوية وصور الوجه الخلفي');
-          setTimeout(() => setIdStatusToast(''), 3500);
-          setCapturing(false);
+        const side = await cropIdCardSide(blob);
+        if (cameraRequest !== cameraRequestRef.current) return;
+        if (!side) {
+          setIdStatusToast(lang === 'ar' ? 'أظهر الحواف الأربع للبطاقة وأعد التصوير' : 'Show all four card edges and try again');
           return;
         }
-        if (idFrontDataUrl) {
-          setIdStatusToast('⏳ جاري دمج وجهي الهوية على ورقة A4...');
-          try {
-            const mergedUrl = await mergeIdCardDataUrls(idFrontDataUrl, dataUrl);
-            setIdFrontDataUrl(null);
-            setIdCardStep('front');
-            setIdStatusToast('');
-            setCapturing(false);
-            setCaptureToast('✓ تم دمج الهوية بنجاح!');
-            setTimeout(() => setCaptureToast(''), 2000);
-            onCapture(mergedUrl, false);
-            return;
-          } catch (e) {
-            console.warn('ID Card merge failed:', e);
-          }
+        if (idCardStep === 'front' || !idFront) {
+          setIdFront(side);
+          setIdCardStep('back');
+          setIdStatusToast('');
+          return;
         }
-      }
-
-      setCapturing(false);
-      const isBatch = scanMode === 'batch';
-      setCaptureToast(isBatch ? `✓ تمت إضافة صفحة ${pagesCount + 1}` : '✓ تم حفظ الصورة');
-      setTimeout(() => setCaptureToast(''), 1800);
-      onCapture(dataUrl, isBatch, detectedQuad);
-    };
-
-    try {
-      const result =
-        (await tryCaptureVideoCanvas(videoRef.current)) ||
-        (await tryGrabCameraFrame(stream)) ||
-        (await tryTakeCameraPhoto(stream));
-      if (result) {
-        await processCapturedImage(result.dataUrl, result.width, result.height, result.canvas);
+        const merged = await mergeIdCardSides(idFront, side);
+        side.width = side.height = 1;
+        if (!merged?.size || cameraRequest !== cameraRequestRef.current) return;
+        if (await onCapture([merged], false) !== 1) throw new Error('ID card could not be saved');
+        setIdFront(null);
+        setIdCardStep('front');
+        setIdStatusToast('');
       } else {
-        fileInputRef.current?.click();
-        setCapturing(false);
+        if (await onCapture([blob], cropMode === 'auto') !== 1) throw new Error('Page could not be saved');
+        waitingForNextPage.current = true;
+        capturedSignature.current = signatureAtShutter;
+        missingFrames.current = 0;
       }
-    } catch (err) {
-      console.warn('Capture error:', err);
-      fileInputRef.current?.click();
+    } catch (error) {
+      console.warn('Scan capture failed:', error);
+      setCaptureToast(lang === 'ar' ? 'تعذّر التقاط الصفحة أو حفظها. أعد المحاولة.' : 'Could not capture or save the page. Try again.');
+    } finally {
+      captureLock.current = false;
       setCapturing(false);
     }
-  }, [
-    capturing, cropMode, fileInputRef, idCardStep, idFrontDataUrl, onCapture, pagesCount,
-    scanMode, setCaptureToast, setIdCardStep, setIdFrontDataUrl, setIdStatusToast, stream, triggerHaptic,
-  ]);
+  }, [cropMode, fileInputRef, idCardStep, idFront, lang, onCapture, paused, scanMode, setCaptureToast,
+    setIdCardStep, setIdFront, setIdStatusToast, stream, triggerHaptic]);
 
   const handleCaptureRef = useRef(handleCapture);
   useEffect(() => { handleCaptureRef.current = handleCapture; }, [handleCapture]);
@@ -283,7 +286,7 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
   useEffect(() => { autoCaptureRef.current = autoCapture; }, [autoCapture]);
 
   useEffect(() => {
-    if (!hasPermission || !stream) return;
+    if (!hasPermission || !stream || paused || capturing || cropMode !== 'auto' || scanMode === 'idcard') return;
     let cancelled = false;
     let resetWasmPrev = true;
     let analysisBusy = false;
@@ -294,24 +297,51 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
       if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0 || capturing) return;
       analysisBusy = true;
       try {
-        if (!scratchCanvasRef.current) {
-          scratchCanvasRef.current = document.createElement('canvas');
-          scratchCanvasRef.current.width = 180;
-          scratchCanvasRef.current.height = 135;
+        const canvas = scratchCanvasRef.current ??= document.createElement('canvas');
+        const scale = Math.min(1, 260 / Math.max(video.videoWidth, video.videoHeight));
+        const width = Math.max(1, Math.round(video.videoWidth * scale));
+        const height = Math.max(1, Math.round(video.videoHeight * scale));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          resetWasmPrev = true;
+          previousQuad.current = null;
         }
-        const metrics = await analyzeLiveVideoFrame(video, scratchCanvasRef.current, prevFrameLumRef.current, resetWasmPrev);
+        const metrics = await analyzeLiveVideoFrame(video, canvas, prevFrameLumRef.current, resetWasmPrev);
         resetWasmPrev = false;
         if (cancelled || !metrics) return;
         prevFrameLumRef.current = metrics.nextLum;
-        setLiveDocPresent(metrics.isDocumentPresent);
+        currentSignature.current = metrics.pageSignature;
+        const quad = metrics.quad;
+        const normalized = quad && {
+          topLeft: { x: quad.topLeft.x / width, y: quad.topLeft.y / height },
+          topRight: { x: quad.topRight.x / width, y: quad.topRight.y / height },
+          bottomRight: { x: quad.bottomRight.x / width, y: quad.bottomRight.y / height },
+          bottomLeft: { x: quad.bottomLeft.x / width, y: quad.bottomLeft.y / height },
+        };
+        const previous = previousQuad.current;
+        previousQuad.current = normalized;
+        setLiveQuad(normalized);
+        missingFrames.current = normalized ? 0 : missingFrames.current + 1;
+        if (missingFrames.current >= 2) waitingForNextPage.current = false;
 
-        if (autoCaptureRef.current && metrics.isDocumentPresent && metrics.motionScore < 8.5 && metrics.sharpness >= 15) {
+        const stable = previous && normalized && (['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const)
+          .every((corner) => Math.hypot(previous[corner].x - normalized[corner].x, previous[corner].y - normalized[corner].y) <= 0.025);
+        const signature = metrics.pageSignature;
+        const previousContent = previousSignature.current;
+        previousSignature.current = signature;
+        const differentContent = capturedSignature.current && signature && previousContent &&
+          pageContentChanged(capturedSignature.current, signature) && !pageContentChanged(previousContent, signature);
+        if (autoCaptureRef.current && metrics.reliableCrop && (!waitingForNextPage.current || differentContent) && stable && metrics.motionScore < 8.5 && metrics.sharpness >= 15) {
           stabilityStepRef.current += 1;
-          setStabilityProgress(Math.min(100, Math.round((stabilityStepRef.current / 3) * 100)));
+          setStabilityProgress(Math.min(100, Math.round(stabilityStepRef.current / 3 * 100)));
           if (stabilityStepRef.current >= 3) {
             stabilityStepRef.current = 0;
+            previousQuad.current = null;
+            waitingForNextPage.current = true;
+            missingFrames.current = 0;
             setStabilityProgress(0);
-            handleCaptureRef.current();
+            void handleCaptureRef.current();
           }
         } else {
           stabilityStepRef.current = 0;
@@ -321,7 +351,7 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
         if (cancelled) return;
         console.warn('Camera frame analysis failed:', error);
         stabilityStepRef.current = 0;
-        setLiveDocPresent(false);
+        setLiveQuad(null);
         setStabilityProgress(0);
       } finally {
         analysisBusy = false;
@@ -330,13 +360,16 @@ export function useCameraCapture(options: UseCameraCaptureOptions) {
 
     return () => {
       cancelled = true;
+      previousQuad.current = null;
+      previousSignature.current = null;
+      stabilityStepRef.current = 0;
       window.clearInterval(intervalId);
     };
-  }, [capturing, hasPermission, stream]);
+  }, [capturing, cropMode, hasPermission, paused, scanMode, stream]);
 
   return {
     videoRef, viewfinderRef, hasPermission, stream, capturing, flashAnimation, renderedBounds,
-    effectiveLiveDocPresent, effectiveStabilityProgress, focusPoint,
+    visibleQuad, effectiveStabilityProgress, focusPoint,
     initCamera, updateRenderedBounds, handleViewfinderTap, handleCapture,
   };
 }

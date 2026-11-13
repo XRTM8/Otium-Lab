@@ -72,8 +72,8 @@ describe('mergeIdCardSidesToA4', () => {
     engineMocks.drawPngBytesOnCanvas.mockResolvedValueOnce(true);
 
     const out = await mergeIdCardSidesToA4(front, back);
-    expect(out.width).toBe(1800);
-    expect(out.height).toBe(2545);
+    expect(out.width).toBe(2480);
+    expect(out.height).toBe(3508);
     expect(engineMocks.stitchIdCardWithRust).toHaveBeenCalledWith(
       new Uint8Array([1, 2, 3]),
       new Uint8Array([4, 5, 6])
@@ -94,12 +94,12 @@ describe('mergeIdCardSidesToA4', () => {
     engineMocks.stitchIdCardWithRust.mockResolvedValueOnce(null);
 
     const out = await mergeIdCardSidesToA4(front, back);
-    expect(out.width).toBe(1800);
-    expect(out.height).toBe(2545);
-    expect(fakeCtx.fillRect).toHaveBeenCalledWith(0, 0, 1800, 2545);
+    expect(out.width).toBe(2480);
+    expect(out.height).toBe(3508);
+    expect(fakeCtx.fillRect).toHaveBeenCalledWith(0, 0, 2480, 3508);
     expect(fakeCtx.drawImage).toHaveBeenCalledTimes(2);
-    expect(fakeCtx.fillText).toHaveBeenCalledWith('FRONT SIDE', 900, expect.any(Number));
-    expect(fakeCtx.fillText).toHaveBeenCalledWith('BACK SIDE', 900, expect.any(Number));
+    expect(fakeCtx.drawImage).toHaveBeenCalledWith(front, 735, expect.any(Number), 1010, 631.25);
+    expect(fakeCtx.drawImage).toHaveBeenCalledWith(back, 735, expect.any(Number), 1010, 631.25);
   });
 
   it('catches native stitcher errors and renders via Canvas 2D fallback', async () => {
@@ -113,8 +113,8 @@ describe('mergeIdCardSidesToA4', () => {
     engineMocks.canvasToPngBytes.mockRejectedValueOnce(new Error('IPC unavailable'));
 
     const out = await mergeIdCardSidesToA4(front, back);
-    expect(out.width).toBe(1800);
-    expect(out.height).toBe(2545);
+    expect(out.width).toBe(2480);
+    expect(out.height).toBe(3508);
     expect(fakeCtx.drawImage).toHaveBeenCalledTimes(2);
   });
 });

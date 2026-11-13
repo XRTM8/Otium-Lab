@@ -1,5 +1,5 @@
 import React from 'react';
-import { DownloadCloud, Info, UploadCloud, X } from 'lucide-react';
+import { DownloadCloud, Settings, UploadCloud, X } from 'lucide-react';
 import type { ThemeMode } from '../../core/types';
 import type { Language } from '../../core/i18n/translations';
 import { OtiumLogo } from './OtiumLogo';
@@ -10,7 +10,7 @@ export interface LibraryHeaderBarProps {
   documentCount: number;
   onExportBackup: () => void;
   onTriggerRestore: () => void;
-  onOpenSettingsOrAbout: () => void;
+  onOpenSettings?: () => void;
   onClose: () => void;
 }
 
@@ -20,7 +20,7 @@ export const LibraryHeaderBar: React.FC<LibraryHeaderBarProps> = ({
   documentCount,
   onExportBackup,
   onTriggerRestore,
-  onOpenSettingsOrAbout,
+  onOpenSettings,
   onClose,
 }) => {
   return (
@@ -64,13 +64,13 @@ export const LibraryHeaderBar: React.FC<LibraryHeaderBarProps> = ({
           <UploadCloud className="w-4 h-4" />
         </button>
 
-        <button
-          onClick={onOpenSettingsOrAbout}
-          className="fluid-press p-2 rounded-full glass-button text-gray-300 active:text-accent cursor-pointer"
-          title={lang === 'ar' ? 'الإعدادات والتحقق من التحديثات' : 'Settings & Updates'}
-        >
-          <Info className="w-4 h-4" />
-        </button>
+        {onOpenSettings && (
+          <button type="button" onClick={onOpenSettings}
+            className="fluid-press p-2 rounded-full glass-button text-gray-300 active:text-accent cursor-pointer"
+            title={lang === 'ar' ? 'إعدادات المسح' : 'Scan settings'}>
+            <Settings className="w-4 h-4" />
+          </button>
+        )}
 
         <button
           onClick={onClose}

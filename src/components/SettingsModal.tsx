@@ -93,9 +93,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Scanner Preferences
   const [cropMode, setCropMode] = useState<CropMode>(() => {
     try {
-      return (localStorage.getItem('otium_scan_crop_mode') as CropMode) || 'full';
+      return (localStorage.getItem('otium_scan_crop_mode') as CropMode) || 'auto';
     } catch {
-      return 'full';
+      return 'auto';
     }
   });
 

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   detectDocumentCornersWithConfidence,
   calculateLaplacianSharpness,
-  detectDocumentCorners,
   getFullFrameQuad,
 } from './edgeDetection';
 import { expandQuadSafetyMargin, getQuadAspectRatio, isQuadConvex } from './geometry';
@@ -16,18 +15,7 @@ describe('edgeDetection & document analysis intelligence', () => {
 
     expect(res.confidence).toBe(0);
     expect(res.isDocumentPresent).toBe(false);
-    expect(isQuadConvex(res.quad)).toBe(true);
-  });
-
-  it('honors forceFullFrame override', () => {
-    const fakeImage = { width: 1000, height: 1414 } as HTMLImageElement;
-    const res = detectDocumentCornersWithConfidence(fakeImage, true);
-
-    expect(res.confidence).toBe(100);
-    expect(res.isDocumentPresent).toBe(true);
-    expect(res.orientation).toBe('portrait');
-    expect(res.quad.topLeft.x).toBe(5);
-    expect(res.quad.topRight.x).toBe(995);
+    expect(res.quad).toEqual(getFullFrameQuad(0, 0, 0));
   });
 
   it('calculates aspect ratio correctly for A4 portrait document', () => {
@@ -69,7 +57,7 @@ describe('edgeDetection & document analysis intelligence', () => {
   });
 });
 
-function canvasWithPixels(width: number, height: number, shade: (x: number, y: number) => number) {
+function canvasWithPixels(width: number, height: number, shade: (x: number, y: number) => number | [number, number, number]) {
   const source = document.createElement('canvas');
   source.width = width;
   source.height = height;
@@ -77,12 +65,15 @@ function canvasWithPixels(width: number, height: number, shade: (x: number, y: n
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      data.fill(shade(x, y), i, i + 3);
+      const color = shade(x, y);
+      if (typeof color === 'number') data.fill(color, i, i + 3);
+      else data.set(color, i);
       data[i + 3] = 255;
     }
   }
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     drawImage: vi.fn(),
+    fillRect: vi.fn(),
     getImageData: () => ({ data }),
   } as Partial<CanvasRenderingContext2D> as CanvasRenderingContext2D);
   return source;
@@ -94,40 +85,75 @@ describe('document edge detection', () => {
       x >= 17 && x < 123 && y >= 24 && y < 176 ? 240 : 35,
     );
     const result = detectDocumentCornersWithConfidence(source);
-    expect(result).toMatchObject({ isDocumentPresent: true, aspectCategory: 'a4', orientation: 'portrait' });
+    expect(result.isDocumentPresent).toBe(true);
     expect(result.confidence).toBeGreaterThanOrEqual(90);
-    expect(result.sharpness).toBeGreaterThan(0);
     expect(result.quad.topLeft.x).toBeCloseTo(17, -1);
     expect(result.quad.topLeft.y).toBeCloseTo(24, -1);
     expect(result.quad.bottomRight.x).toBeCloseTo(123, -1);
     expect(result.quad.bottomRight.y).toBeCloseTo(176, -1);
   });
 
-  it('uses the full frame on request and handles a source with no dimensions', () => {
-    const source = document.createElement('canvas');
-    source.width = 200;
-    source.height = 140;
-    expect(detectDocumentCorners(source, true)).toEqual(getFullFrameQuad(200, 140, 0.005));
-    expect(detectDocumentCornersWithConfidence(source, true)).toMatchObject({
-      isDocumentPresent: true, confidence: 100, orientation: 'landscape',
-    });
-    source.width = 0;
-    expect(detectDocumentCornersWithConfidence(source)).toMatchObject({
-      isDocumentPresent: false, confidence: 0, sharpness: 0,
-    });
+  it('keeps every pixel of a uniform scene or a page cut off by the frame', () => {
+    for (const shade of [() => 120, (x: number, y: number) => x < 150 && y >= 30 && y < 180 ? 240 : 45]) {
+      expect(detectDocumentCornersWithConfidence(canvasWithPixels(200, 220, shade))).toMatchObject({
+        isDocumentPresent: false,
+        confidence: 0,
+        quad: getFullFrameQuad(200, 220, 0),
+      });
+    }
   });
 
-  it('returns an inset crop if Canvas cannot provide pixels', () => {
+  it('finds a page on a patterned background', () => {
+    const source = canvasWithPixels(200, 280, (x, y) => x >= 35 && x < 165 && y >= 45 && y < 235
+      ? 240 : (Math.floor(x / 9) + Math.floor(y / 9)) % 2 ? 40 : 96);
+    const result = detectDocumentCornersWithConfidence(source);
+    expect(result.isDocumentPresent).toBe(true);
+    expect(result.quad.topLeft.x).toBeCloseTo(35, -1);
+    expect(result.quad.bottomRight.y).toBeCloseTo(235, -1);
+  });
+
+  it('finds paper separated by color when the paper and background have equal luminance', () => {
+    const source = canvasWithPixels(200, 280, (x, y) => x >= 35 && x < 165 && y >= 45 && y < 235
+      ? [190, 190, 250] : [220, 190, 170]);
+    const result = detectDocumentCornersWithConfidence(source);
+    expect(result.isDocumentPresent).toBe(true);
+    expect(result.quad.topLeft.x).toBeCloseTo(35, -1);
+    expect(result.quad.topLeft.y).toBeCloseTo(45, -1);
+    expect(result.quad.bottomRight.x).toBeCloseTo(165, -1);
+    expect(result.quad.bottomRight.y).toBeCloseTo(235, -1);
+  });
+
+  it('finds a tilted low-contrast page and a narrow off-centre receipt', () => {
+    const tilted = canvasWithPixels(240, 260, (x, y) =>
+      y > 38 + x * 0.22 && y < 209 + x * 0.15 && x > 45 - y * 0.12 && x < 195 - y * 0.16 ? 236 : 210);
+    const result = detectDocumentCornersWithConfidence(tilted);
+    expect(result.isDocumentPresent).toBe(true);
+    expect(result.quad.topRight.y - result.quad.topLeft.y).toBeGreaterThan(20);
+    const receipt = canvasWithPixels(220, 260, (x, y) => x >= 20 && x < 66 && y >= 27 && y < 235 ? 223 : 60);
+    const narrow = detectDocumentCornersWithConfidence(receipt);
+    expect(narrow.isDocumentPresent).toBe(true);
+    expect(narrow.quad.topRight.x).toBeCloseTo(66, -1);
+  });
+
+  it('keeps the complete paper when a diagonal shadow splits its brightness', () => {
+    const source = canvasWithPixels(240, 280, (x, y) => {
+      const paper = x >= 33 && x <= 203 && y >= 32 && y <= 244;
+      return (paper ? 236 : 83) - (x + y * 0.42 > 169 ? 79 : 0);
+    });
+    const result = detectDocumentCornersWithConfidence(source);
+    expect(result.isDocumentPresent).toBe(true);
+    expect(result.quad.topLeft.x).toBeCloseTo(33, -1);
+    expect(result.quad.bottomRight.x).toBeCloseTo(203, -1);
+    expect(result.quad.bottomRight.y).toBeCloseTo(244, -1);
+  });
+
+  it('returns the full image if Canvas cannot provide pixels', () => {
     const source = document.createElement('canvas');
-    const inset = getFullFrameQuad(source.width, source.height, 0.035);
+    const quad = getFullFrameQuad(source.width, source.height, 0);
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
-    expect(detectDocumentCornersWithConfidence(source)).toMatchObject({
-      quad: inset, isDocumentPresent: false, confidence: 20,
-    });
+    expect(detectDocumentCornersWithConfidence(source)).toEqual({ quad, isDocumentPresent: false, confidence: 0 });
     getContext.mockImplementation(() => { throw new Error('canvas unavailable'); });
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    expect(detectDocumentCornersWithConfidence(source)).toMatchObject({
-      quad: inset, isDocumentPresent: false, confidence: 15,
-    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(detectDocumentCornersWithConfidence(source)).toEqual({ quad, isDocumentPresent: false, confidence: 0 });
   });
 });

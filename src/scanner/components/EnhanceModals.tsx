@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Language } from '../../core/i18n/translations';
 import type { PdfCompressionPreset, PdfPageFormat, PdfWatermarkStyle } from '../core/pdf';
 import type { ScannedPage } from '../core/types';
 import type { SignaturePlacement } from '../core/enhancePdfCompile';
@@ -6,6 +7,7 @@ import { EnhanceConfirmationModals } from './EnhanceConfirmationModals';
 import { EnhanceSettingsModals } from './EnhanceSettingsModals';
 
 export interface EnhanceModalsProps {
+  lang?: Language;
   pages: ScannedPage[];
   safeIndex: number;
   currentPage: ScannedPage;
@@ -45,8 +47,9 @@ export interface EnhanceModalsProps {
   setSignatures: React.Dispatch<React.SetStateAction<Record<string, SignaturePlacement>>>;
   onDeletePage: (index: number) => void;
   onResetAll: () => void;
-  onShareWhatsApp: () => void;
-  onDownloadPdf: () => void;
+  onSharePdf: () => void;
+  onDownloadJpg: () => void;
+  onOpenInReader: () => void;
   onPrintPdf: () => void;
   triggerHaptic: (duration?: number) => void;
 }
@@ -70,12 +73,17 @@ export const EnhanceModals: React.FC<EnhanceModalsProps> = (props) => (
       setSignatures={props.setSignatures}
       onDeletePage={props.onDeletePage}
       onResetAll={props.onResetAll}
-      onShareWhatsApp={props.onShareWhatsApp}
-      onDownloadPdf={props.onDownloadPdf}
+      lang={props.lang}
+      onSharePdf={props.onSharePdf}
+      onDownloadJpg={props.onDownloadJpg}
+      onOpenInReader={props.onOpenInReader}
+      onWatermark={() => props.setIsWatermarkOpen(true)}
+      onPdfOptions={() => props.setIsAdvancedOptionsOpen(true)}
       onPrintPdf={props.onPrintPdf}
       triggerHaptic={props.triggerHaptic}
     />
     <EnhanceSettingsModals
+      lang={props.lang}
       safeIndex={props.safeIndex}
       isWatermarkOpen={props.isWatermarkOpen}
       setIsWatermarkOpen={props.setIsWatermarkOpen}

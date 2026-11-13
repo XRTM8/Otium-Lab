@@ -1,9 +1,11 @@
 import React from 'react';
 import { Copy, FileText, PenTool, SlidersHorizontal, Stamp, X } from 'lucide-react';
+import type { Language } from '../../core/i18n/translations';
 import type { PdfCompressionPreset, PdfPageFormat, PdfWatermarkStyle } from '../core/pdf';
 import { copyTextToClipboard } from '../../core/utils/clipboard';
 
 export interface EnhanceSettingsModalsProps {
+  lang?: Language;
   safeIndex: number;
   isWatermarkOpen: boolean;
   setIsWatermarkOpen: (open: boolean) => void;
@@ -34,6 +36,7 @@ export interface EnhanceSettingsModalsProps {
 }
 
 export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
+  lang = 'ar',
   safeIndex,
   isWatermarkOpen,
   setIsWatermarkOpen,
@@ -61,7 +64,9 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
   setDocTitle,
   setToastMsg,
   triggerHaptic,
-}) => (
+}) => {
+  const ar = lang === 'ar';
+  return (
   <>
     {isWatermarkOpen && (
       <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 select-none font-arabic">
@@ -74,14 +79,10 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
               ✕
             </button>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-white">العلامة المائية الأمنية</span>
+              <span className="text-sm font-bold text-white">{ar ? 'العلامة المائية' : 'Watermark'}</span>
               <Stamp className="w-5 h-5 text-accent" />
             </div>
           </div>
-
-          <p className="text-xs text-gray-400 leading-relaxed">
-            طباعة نص حماية شبه شفاف على صفحات مستند الـ PDF لمنع النسخ غير المصرح به.
-          </p>
 
           <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-white/5 border border-white/10 text-xs">
             <button
@@ -90,7 +91,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                 watermarkStyle === 'diagonal' ? 'bg-accent text-on-accent shadow' : 'text-gray-400'
               }`}
             >
-              قطري في المنتصف
+              {ar ? 'قطري في المنتصف' : 'Diagonal'}
             </button>
             <button
               onClick={() => setWatermarkStyle('tiled')}
@@ -98,7 +99,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                 watermarkStyle === 'tiled' ? 'bg-accent text-on-accent shadow' : 'text-gray-400'
               }`}
             >
-              شبكة حماية مكررة
+              {ar ? 'شبكة حماية مكررة' : 'Tiled'}
             </button>
           </div>
 
@@ -146,7 +147,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
               }}
               className="px-5 py-2 rounded-xl bg-accent text-on-accent font-bold text-xs shadow-lg shadow-accent/25 active:scale-95 mr-auto"
             >
-              تطبيق العلامة
+              {ar ? 'تطبيق العلامة' : 'Apply watermark'}
             </button>
           </div>
         </div>
@@ -159,7 +160,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/[0.08] otium-chrome">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-accent" />
-              <span className="text-sm font-bold text-white">إعدادات PDF المتقدمة</span>
+              <span className="text-sm font-bold text-white">{ar ? 'إعدادات PDF المتقدمة' : 'PDF settings'}</span>
             </div>
             <button
               onClick={() => setIsAdvancedOptionsOpen(false)}
@@ -171,13 +172,13 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
 
           <div className="p-5 overflow-y-auto space-y-4 text-right">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-200 block">جودة وحجم الملف</label>
+              <label className="text-xs font-bold text-gray-200 block">{ar ? 'جودة وحجم الملف' : 'Image quality'}</label>
               <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-white/[0.05] border border-white/[0.08]">
                 {(
                   [
-                    { id: 'compact', label: 'مضغوط', desc: '~35 KB' },
-                    { id: 'balanced', label: 'متوازن', desc: '~180 KB' },
-                    { id: 'max', label: 'فائق', desc: '~850 KB' },
+                    { id: 'compact', label: ar ? 'مضغوط' : 'Compact' },
+                    { id: 'balanced', label: ar ? 'متوازن' : 'Balanced' },
+                    { id: 'max', label: ar ? 'دقة أعلى' : 'High resolution' },
                   ] as const
                 ).map((q) => (
                   <button
@@ -193,16 +194,13 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                     }`}
                   >
                     <span className="text-xs block font-bold">{q.label}</span>
-                    <span className={`text-[9px] block ${compressionPreset === q.id ? 'text-black/80' : 'text-gray-400'}`}>
-                      {q.desc}
-                    </span>
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-200 block">أبعاد الورقة ومقاس الصفحة</label>
+              <label className="text-xs font-bold text-gray-200 block">{ar ? 'أبعاد الورقة ومقاس الصفحة' : 'Page size'}</label>
               <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-white/[0.05] border border-white/[0.08]">
                 <button
                   onClick={() => {
@@ -213,7 +211,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                     pageFormat === 'a4' ? 'bg-accent text-on-accent shadow-md' : 'text-gray-300 hover:text-white'
                   }`}
                 >
-                  معيار A4 الدولي (للطباعة)
+                  {ar ? 'معيار A4 الدولي (للطباعة)' : 'A4'}
                 </button>
                 <button
                   onClick={() => {
@@ -224,7 +222,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                     pageFormat === 'fit' ? 'bg-accent text-on-accent shadow-md' : 'text-gray-300 hover:text-white'
                   }`}
                 >
-                  أبعاد الصورة الأصلية (Fit)
+                  {ar ? 'أبعاد الصورة الأصلية (Fit)' : 'Fit image'}
                 </button>
               </div>
             </div>
@@ -239,11 +237,11 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                   enableOcr ? 'bg-accent text-on-accent shadow' : 'bg-white/[0.08] text-gray-400'
                 }`}
               >
-                {enableOcr ? 'مفعل ✓' : 'معطل'}
+                {enableOcr ? (ar ? 'مفعّل' : 'On') : (ar ? 'معطّل' : 'Off')}
               </button>
               <div>
-                <span className="text-xs font-bold text-gray-200 block">التعرف على النصوص (OCR)</span>
-                <span className="text-[10px] text-gray-400">استخراج النص للبحث والنسخ داخل الـ PDF</span>
+                <span className="text-xs font-bold text-gray-200 block">{ar ? 'التعرف على النصوص (OCR)' : 'Searchable text (OCR)'}</span>
+                <span className="text-[10px] text-gray-400">{ar ? 'استخراج النص للبحث والنسخ داخل الـ PDF' : 'Include text for search and copy'}</span>
               </div>
             </div>
 
@@ -252,7 +250,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                 <span className="text-[10px] text-accent font-mono font-bold">
                   {Math.round(curvature * 100)}%
                 </span>
-                <span className="text-xs font-bold text-gray-200">تسوية انحناء ثنية الكتب</span>
+                <span className="text-xs font-bold text-gray-200">{ar ? 'تعديل انحناء الكتب (تجريبي)' : 'Book curvature (experimental)'}</span>
               </div>
               <div className="flex items-center gap-1.5 justify-center">
                 <button
@@ -261,7 +259,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                     spinePos <= 0.25 ? 'bg-accent text-on-accent' : 'bg-white/[0.06] text-gray-400'
                   }`}
                 >
-                  صفحة يمنى
+                  {ar ? 'صفحة يمنى' : 'Right page'}
                 </button>
                 <button
                   onClick={() => setSpinePos(0.5)}
@@ -269,7 +267,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                     spinePos > 0.25 && spinePos < 0.75 ? 'bg-accent text-on-accent' : 'bg-white/[0.06] text-gray-400'
                   }`}
                 >
-                  الوسط
+                  {ar ? 'الوسط' : 'Center'}
                 </button>
                 <button
                   onClick={() => setSpinePos(0.85)}
@@ -277,7 +275,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                     spinePos >= 0.75 ? 'bg-accent text-on-accent' : 'bg-white/[0.06] text-gray-400'
                   }`}
                 >
-                  صفحة يسرى
+                  {ar ? 'صفحة يسرى' : 'Left page'}
                 </button>
               </div>
               <input
@@ -300,7 +298,7 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
                 className="py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-xs font-semibold text-gray-200 flex items-center justify-center gap-1.5 border border-white/[0.08]"
               >
                 <Stamp className="w-3.5 h-3.5 text-accent" />
-                <span>علامة مائية</span>
+                <span>{ar ? 'علامة مائية' : 'Watermark'}</span>
               </button>
               <button
                 onClick={() => {
@@ -395,3 +393,4 @@ export const EnhanceSettingsModals: React.FC<EnhanceSettingsModalsProps> = ({
     )}
   </>
 );
+};

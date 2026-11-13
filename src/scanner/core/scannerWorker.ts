@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import { applyAdaptiveBwFilter } from './filterPresets';
+
 export type ScannerWorkerRequest =
   | {
       id: number;
@@ -192,6 +194,17 @@ function postFailure(id: number, error: string): void {
 self.onmessage = async (event: MessageEvent<ScannerWorkerRequest>) => {
   const req = event.data;
   try {
+    if (req.type === 'applyFilter' && req.filterId === 4) {
+      const expected = req.width * req.height * 4;
+      if (req.buffer.byteLength !== expected) {
+        postFailure(req.id, 'Invalid RGBA buffer length');
+        return;
+      }
+      applyAdaptiveBwFilter(new Uint8ClampedArray(req.buffer), req.width, req.height);
+      const response: ScannerWorkerResponse = { id: req.id, ok: true, buffer: req.buffer, width: req.width, height: req.height };
+      self.postMessage(response, [req.buffer]);
+      return;
+    }
     const wasm = await getWasm(req.wasmUrl);
     if (!wasm) {
       postFailure(req.id, 'WASM engine unavailable');

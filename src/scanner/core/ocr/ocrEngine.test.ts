@@ -45,7 +45,7 @@ function recognizingWorker(text: string) {
     terminate: vi.fn(async () => undefined),
     recognize: vi.fn(async () => ({ data: {
       text,
-      words: [{ text: text.trim(), bbox: { x0: 10, y0: 20, x1: 40, y1: 50 } }],
+      blocks: [{ paragraphs: [{ lines: [{ words: [{ text: text.trim(), bbox: { x0: 10, y0: 20, x1: 40, y1: 50 } }] }] }] }],
     } })),
   };
 }
@@ -62,7 +62,7 @@ describe('OCR recovery', () => {
       text: 'Invoice', suggestedTitle: 'Invoice',
       words: [{ text: 'Invoice', x: 0.1, y: 0.1, width: 0.3, height: 0.15 }],
     });
-    expect(recovered.recognize).toHaveBeenCalledWith(page);
+    expect(recovered.recognize).toHaveBeenCalledWith(page, {}, { blocks: true });
   });
 
   it('times out a stalled worker and keeps image-only PDF export available', async () => {

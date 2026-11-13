@@ -13,7 +13,7 @@ val tauriProperties = Properties().apply {
         propFile.inputStream().use { load(it) }
     }
 }
-val labBuild = 13
+val labBuild = 14
 
 val keystorePropertiesFile = file("keystore.properties")
 val keystoreProperties = Properties().apply {
@@ -130,6 +130,9 @@ rust {
 }
 
 dependencies {
+    debugImplementation("androidx.camera:camera-camera2:1.6.2")
+    debugImplementation("androidx.camera:camera-lifecycle:1.6.2")
+    debugImplementation("androidx.camera:camera-view:1.6.2")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")

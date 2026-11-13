@@ -145,18 +145,15 @@ export async function extractPageTextAndMetadata(
   const effectiveTimeout = !isOnline && !workers.has(lang) ? Math.min(1500, timeoutMs) : timeoutMs;
 
   return runOcrTask(lang, effectiveTimeout, async (worker) => {
-    const ret = await worker.recognize(canvas);
-    const pageData = ret.data as {
-      text?: string;
-      words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }>;
-      lines?: Array<{ words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> }>;
-    };
-    const fullText = typeof pageData.text === 'string' ? pageData.text.trim() : '';
+    const { data } = await worker.recognize(canvas, {}, { blocks: true });
+    const fullText = data.text.trim();
 
     const words: OcrWordToken[] = [];
     const width = canvas.width;
     const height = canvas.height;
-    const rawWords = pageData.words || pageData.lines?.flatMap((l) => l.words || []) || [];
+    const rawWords = data.blocks?.flatMap((block) =>
+      block.paragraphs.flatMap((paragraph) => paragraph.lines.flatMap((line) => line.words))
+    ) ?? [];
 
     for (const w of rawWords) {
       if (!w || !w.text || typeof w.text !== 'string' || w.text.trim().length === 0) continue;

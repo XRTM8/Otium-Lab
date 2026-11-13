@@ -13,25 +13,6 @@ export function triggerCropHaptic(duration = 10): void {
   }
 }
 
-export function buildAspectRatioQuad(imgW: number, imgH: number, ratio: number): Quad {
-  let targetW = imgW * 0.9;
-  let targetH = targetW / ratio;
-  if (targetH > imgH * 0.9) {
-    targetH = imgH * 0.9;
-    targetW = targetH * ratio;
-  }
-  const x0 = Math.round((imgW - targetW) / 2);
-  const y0 = Math.round((imgH - targetH) / 2);
-  const x1 = Math.round(x0 + targetW);
-  const y1 = Math.round(y0 + targetH);
-  return {
-    topLeft: { x: x0, y: y0 },
-    topRight: { x: x1, y: y0 },
-    bottomRight: { x: x1, y: y1 },
-    bottomLeft: { x: x0, y: y1 },
-  };
-}
-
 export function clampDraggedCorner(
   prev: Quad,
   corner: CornerKey,

@@ -13,7 +13,7 @@ function findButtonByText(text: string): HTMLButtonElement | undefined {
 }
 
 function findButtonByTitle(title: string): HTMLButtonElement | undefined {
-  return [...host.querySelectorAll('button')].find((b) => b.getAttribute('title') === title);
+  return [...host.querySelectorAll('button')].find((b) => b.getAttribute('title') === title || b.getAttribute('aria-label') === title);
 }
 
 describe('CameraView', () => {
@@ -54,26 +54,30 @@ describe('CameraView', () => {
       );
     });
 
-    expect(host.textContent).toContain('إذن الكاميرا مطلوب');
-    expect(host.textContent).toContain('صفحتان ممسوحتان');
+    expect(host.textContent).toContain('الكاميرا غير متاحة');
+    expect(host.textContent).toContain('2 صفحة');
 
-    await act(async () => findButtonByText('هوية')?.click());
-    expect(host.textContent).toContain('ضع الوجه الأمامي للهوية داخل الإطار');
+    await act(async () => findButtonByTitle('المزيد')?.click());
+    await act(async () => findButtonByText('تصوير هوية')?.click());
+    expect(host.textContent).toContain('الوجه الأمامي للبطاقة');
 
-    await act(async () => findButtonByText('مفرد')?.click());
-    expect(host.textContent).toContain('صفحتان ممسوحتان');
+    await act(async () => findButtonByTitle('المزيد')?.click());
+    await act(async () => findButtonByText('مستند')?.click());
+    expect(host.textContent).toContain('2 صفحة');
 
+    await act(async () => findButtonByTitle('المزيد')?.click());
     await act(async () => findButtonByText('يدوي')?.click());
     expect(host.textContent).toContain('تلقائي');
     expect(labStorage.getItem('otium_scan_auto_capture')).toBe('true');
 
-    await act(async () => findButtonByTitle('خزنة المستندات المحفوظة')?.click());
+    await act(async () => findButtonByText('المستندات المحفوظة')?.click());
     expect(onOpenLibrary).toHaveBeenCalledTimes(1);
 
-    await act(async () => findButtonByTitle('الإعدادات والتحديثات')?.click());
+    await act(async () => findButtonByTitle('المزيد')?.click());
+    await act(async () => findButtonByText('إعدادات المسح')?.click());
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
 
-    await act(async () => findButtonByTitle('إنهاء ومراجعة ملف الـ PDF')?.click());
+    await act(async () => findButtonByTitle('مراجعة الصفحات')?.click());
     expect(onFinishBatch).toHaveBeenCalledTimes(1);
 
     await act(async () => findButtonByTitle('إغلاق الماسح الضوئي')?.click());
@@ -121,7 +125,7 @@ describe('CameraView', () => {
       });
 
       expect(capturedSrcObject).toBe(mockStream);
-      expect(host.textContent).not.toContain('إذن الكاميرا مطلوب');
+      expect(host.textContent).not.toContain('الكاميرا غير متاحة');
       await act(async () => root.unmount());
       expect(stop).toHaveBeenCalled();
     } finally {

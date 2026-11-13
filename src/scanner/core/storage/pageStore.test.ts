@@ -5,6 +5,7 @@ import {
   clearActiveSessionPages,
   clearScanSession,
   duplicateStoredPage,
+  loadOriginalBlobFromDisk,
   getActiveSessionPages,
   saveActiveSessionPages,
   storePageToDisk,
@@ -74,9 +75,9 @@ describe('pageStore persistence and sessions', () => {
       toBlob: (callback: BlobCallback) => callback(new Blob(['image'], { type: 'image/jpeg' })),
     } as Partial<HTMLCanvasElement> as HTMLCanvasElement;
     const source = 'data:image/jpeg;base64,YQ==';
-    const put = IDBObjectStore.prototype.put;
-    const abort = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementationOnce(function (this: IDBObjectStore, value, key) {
-      const request = put.call(this, value, key);
+    const add = IDBObjectStore.prototype.add;
+    const abort = vi.spyOn(IDBObjectStore.prototype, 'add').mockImplementationOnce(function (this: IDBObjectStore, value, key) {
+      const request = add.call(this, value, key);
       request.addEventListener('success', () => this.transaction.abort());
       return request;
     });
@@ -87,9 +88,20 @@ describe('pageStore persistence and sessions', () => {
 
   it('does not record a thumbnail when encoding the full scan fails', async () => {
     const canvas = { width: 10, height: 10, toBlob: (callback: BlobCallback) => callback(null) } as Partial<HTMLCanvasElement> as HTMLCanvasElement;
-    const put = vi.spyOn(IDBObjectStore.prototype, 'put');
+    const put = vi.spyOn(IDBObjectStore.prototype, 'add');
     await expect(storePageToDisk('broken', 'data:image/jpeg;base64,YQ==', canvas, canvas, 'magic'))
       .rejects.toThrow('Could not encode the scanned page');
     expect(put).not.toHaveBeenCalled();
   });
+  it('replaces the original in storage when a page is redacted', async () => {
+    const preview = { width: 100, height: 100 } as HTMLCanvasElement;
+    const source = new Blob(['unredacted original'], { type: 'image/jpeg' });
+    await storePageToDisk('redact', source, null, null, 'original', preview);
+    expect((await loadOriginalBlobFromDisk('redact')).size).toBe(source.size);
+    await storePageToDisk('redact', new Blob(['redacted pixels'], { type: 'image/png' }), null, null, 'original', preview, true);
+    await expect(loadOriginalBlobFromDisk('redact')).rejects.toThrow('has been redacted');
+    await duplicateStoredPage('redact', 'copied');
+    await expect(loadOriginalBlobFromDisk('copied')).rejects.toThrow('has been redacted');
+  });
+
 });

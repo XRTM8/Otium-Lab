@@ -5,6 +5,24 @@ function distance(p1: Point, p2: Point): number {
   return Math.hypot(p2.x - p1.x, p2.y - p1.y);
 }
 
+function outputSize(quad: Quad, targetWidth?: number, targetHeight?: number) {
+  const { topLeft, topRight, bottomRight, bottomLeft } = quad;
+  const width = targetWidth ?? Math.max(distance(topLeft, topRight), distance(bottomLeft, bottomRight));
+  const height = targetHeight ?? Math.max(distance(topLeft, bottomLeft), distance(topRight, bottomRight));
+  const scale = Math.min(1, 4200 / Math.max(width, height), Math.sqrt(12_000_000 / (width * height)));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+function isAxisAligned({ topLeft, topRight, bottomRight, bottomLeft }: Quad): boolean {
+  return Math.abs(topLeft.y - topRight.y) <= 1 &&
+    Math.abs(bottomLeft.y - bottomRight.y) <= 1 &&
+    Math.abs(topLeft.x - bottomLeft.x) <= 1 &&
+    Math.abs(topRight.x - bottomRight.x) <= 1;
+}
+
 export function warpPerspective(
   source: HTMLImageElement | HTMLCanvasElement,
   quad: Quad,
@@ -13,39 +31,26 @@ export function warpPerspective(
 ): HTMLCanvasElement {
   const { topLeft, topRight, bottomRight, bottomLeft } = quad;
 
-  const widthTop = distance(topLeft, topRight);
-  const widthBottom = distance(bottomLeft, bottomRight);
-  const heightLeft = distance(topLeft, bottomLeft);
-  const heightRight = distance(topRight, bottomRight);
-
-  const outW = Math.round(targetWidth || Math.max(widthTop, widthBottom));
-  const outH = Math.round(targetHeight || Math.max(heightLeft, heightRight));
-
+  const { width, height } = outputSize(quad, targetWidth, targetHeight);
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(outW, 100);
-  canvas.height = Math.max(outH, 100);
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Could not prepare the cropped image');
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const isRectangular =
-    Math.abs(topLeft.y - topRight.y) < 8 &&
-    Math.abs(bottomLeft.y - bottomRight.y) < 8 &&
-    Math.abs(topLeft.x - bottomLeft.x) < 8 &&
-    Math.abs(topRight.x - bottomRight.x) < 8;
-
-  if (isRectangular) {
+  if (isAxisAligned(quad)) {
     const sx = Math.max(0, Math.min(topLeft.x, bottomLeft.x));
     const sy = Math.max(0, Math.min(topLeft.y, topRight.y));
-    const sw = Math.max(10, Math.max(topRight.x, bottomRight.x) - sx);
-    const sh = Math.max(10, Math.max(bottomLeft.y, bottomRight.y) - sy);
+    const sw = Math.max(1, Math.max(topRight.x, bottomRight.x) - sx);
+    const sh = Math.max(1, Math.max(bottomLeft.y, bottomRight.y) - sy);
     ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     return canvas;
   }
 
-  renderQuadSubdivision(ctx, source, quad, outW, outH);
+  renderQuadSubdivision(ctx, source, quad, width, height);
   return canvas;
 }
 
@@ -60,30 +65,15 @@ export async function warpPerspectiveAsync(
   targetWidth?: number,
   targetHeight?: number
 ): Promise<HTMLCanvasElement> {
-  const { topLeft, topRight, bottomRight, bottomLeft } = quad;
-
-  const isRectangular =
-    Math.abs(topLeft.y - topRight.y) < 8 &&
-    Math.abs(bottomLeft.y - bottomRight.y) < 8 &&
-    Math.abs(topLeft.x - bottomLeft.x) < 8 &&
-    Math.abs(topRight.x - bottomRight.x) < 8;
-
-  if (isRectangular) {
+  if (isAxisAligned(quad)) {
     return warpPerspective(source, quad, targetWidth, targetHeight);
   }
-
-  const widthTop = distance(topLeft, topRight);
-  const widthBottom = distance(bottomLeft, bottomRight);
-  const heightLeft = distance(topLeft, bottomLeft);
-  const heightRight = distance(topRight, bottomRight);
-
-  const outW = Math.max(Math.round(targetWidth || Math.max(widthTop, widthBottom)), 100);
-  const outH = Math.max(Math.round(targetHeight || Math.max(heightLeft, heightRight)), 100);
+  const { width: outW, height: outH } = outputSize(quad, targetWidth, targetHeight);
 
   const srcW = 'naturalWidth' in source ? source.naturalWidth : source.width;
   const srcH = 'naturalHeight' in source ? source.naturalHeight : source.height;
 
-  if (srcW >= 2 && srcH >= 2 && srcW * srcH <= 16_000_000 && outW * outH <= 16_000_000) {
+  if (srcW >= 2 && srcH >= 2 && srcW * srcH <= 16_000_000) {
     try {
       let srcCanvas: HTMLCanvasElement;
       if (source instanceof HTMLCanvasElement) {

@@ -77,14 +77,28 @@ function readPageRecord(db: IDBDatabase, id: string): Promise<StoredPageRecord |
   });
 }
 
-function writePageRecord(db: IDBDatabase, record: StoredPageRecord): Promise<void> {
+function writePageRecord(db: IDBDatabase, record: StoredPageRecord, expectedRevision?: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    store.put(record);
+    let conflict = false;
+    if (expectedRevision === undefined) {
+      store.add(record);
+    } else {
+      const current = store.get(record.id);
+      current.onsuccess = () => {
+        const existing = current.result as StoredPageRecord | undefined;
+        if (!existing || (existing.revision ?? 0) !== expectedRevision) {
+          conflict = true;
+          tx.abort();
+          return;
+        }
+        store.put({ ...record, revision: expectedRevision + 1 });
+      };
+    }
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error ?? new Error('Saving the scan was interrupted'));
+    tx.onabort = () => reject(tx.error ?? new Error(conflict ? 'The scan changed. Try again.' : 'Saving the scan was interrupted'));
   });
 }
 
@@ -108,26 +122,30 @@ function base64ToBlob(dataUrl: string): Blob {
 /** Saves a scanned page to local disk cache and returns its thumbnail. */
 export async function storePageToDisk(
   id: string,
-  originalDataUrl: string,
-  warpedCanvas: HTMLCanvasElement,
-  filteredCanvas: HTMLCanvasElement,
-  filter: string
+  original: string | Blob,
+  warpedCanvas: HTMLCanvasElement | null,
+  filteredCanvas: HTMLCanvasElement | null,
+  filter: string,
+  sourcePreview?: HTMLImageElement | HTMLCanvasElement,
+  redacted = false,
 ): Promise<string> {
-  const originalBlob = base64ToBlob(originalDataUrl);
-  const [warpedBlob, filteredBlob] = await Promise.all([
-    new Promise<Blob>((resolve) =>
-      warpedCanvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.88)
-    ),
-    new Promise<Blob>((resolve) =>
-      filteredCanvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.88)
-    ),
-  ]);
+  const db = await getDB();
+  const existing = redacted ? await readPageRecord(db, id) : undefined;
+  if (redacted && !existing) throw new Error('Page not found');
+  const originalBlob = typeof original === 'string' ? base64ToBlob(original) : original;
+  const encode = (canvas: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob?.size ? resolve(blob) : reject(new Error('Could not encode the scanned page')), 'image/jpeg', 0.96);
+  });
+  const warpedBlob = warpedCanvas ? await encode(warpedCanvas) : originalBlob;
+  const filteredBlob = filteredCanvas && filteredCanvas !== warpedCanvas ? await encode(filteredCanvas) : warpedBlob;
   if (!originalBlob.size || !warpedBlob.size || !filteredBlob.size) {
     throw new Error('Could not encode the scanned page');
   }
 
-  const aspect = filteredCanvas.width / Math.max(1, filteredCanvas.height);
-  const thumbnailDataUrl = generateThumbnailDataUrl(filteredCanvas, aspect, 0.65);
+  const preview = filteredCanvas ?? sourcePreview ?? await createImageFromBlob(originalBlob);
+  const width = 'naturalWidth' in preview ? preview.naturalWidth : preview.width;
+  const height = 'naturalHeight' in preview ? preview.naturalHeight : preview.height;
+  const thumbnailDataUrl = generateThumbnailDataUrl(preview, width / Math.max(1, height), 0.65);
 
   const record: StoredPageRecord = {
     id,
@@ -137,25 +155,21 @@ export async function storePageToDisk(
     thumbnailDataUrl,
     filter,
     timestamp: Date.now(),
+    redacted,
   };
 
-  const db = await getDB();
-  await writePageRecord(db, record);
+  await writePageRecord(db, record, existing ? existing.revision ?? 0 : undefined);
   return thumbnailDataUrl;
 }
 
-export async function loadOriginalDataUrlFromDisk(id: string): Promise<string> {
+export async function loadOriginalBlobFromDisk(id: string): Promise<Blob> {
   const db = await getDB();
   const record = await readPageRecord(db, id);
   if (!record) {
     throw new Error(`Page not found: ${id}`);
   }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(record.originalBlob);
-  });
+  if (record.redacted) throw new Error('This page has been redacted');
+  return record.originalBlob;
 }
 
 export async function loadPageCanvasFromDisk(id: string): Promise<HTMLCanvasElement> {
@@ -169,7 +183,10 @@ export async function loadPageCanvasFromDisk(id: string): Promise<HTMLCanvasElem
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
   const ctx = canvas.getContext('2d');
-  if (ctx) ctx.drawImage(img, 0, 0);
+  if (!ctx) throw new Error('Could not prepare the saved scan');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
   return canvas;
 }
 
@@ -179,7 +196,7 @@ export async function rotateStoredPage(id: string): Promise<string> {
   const record = await readPageRecord(db, id);
   if (!record) throw new Error('Page not found');
   const updated = await transformRotatedRecord(record);
-  await writePageRecord(db, updated);
+  await writePageRecord(db, updated, record.revision ?? 0);
   return updated.thumbnailDataUrl;
 }
 
@@ -189,7 +206,7 @@ export async function updateStoredPageFilter(id: string, filter: FilterType): Pr
   const record = await readPageRecord(db, id);
   if (!record) throw new Error('Page not found');
   const updated = await transformFilteredRecord(record, filter);
-  await writePageRecord(db, updated);
+  await writePageRecord(db, updated, record.revision ?? 0);
   return updated.thumbnailDataUrl;
 }
 
@@ -199,9 +216,10 @@ export async function deleteStoredPage(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('Scan storage operation interrupted'));
   });
 }
 
@@ -223,8 +241,9 @@ export async function clearScanSession(): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.clear();
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    store.clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('Scan storage operation interrupted'));
   });
 }

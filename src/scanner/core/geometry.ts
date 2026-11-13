@@ -128,9 +128,9 @@ export function getFullFrameQuad(width: number, height: number, marginPercent: n
 
   return {
     topLeft: { x: insetX, y: insetY },
-    topRight: { x: Math.max(insetX + 10, width - insetX), y: insetY },
-    bottomRight: { x: Math.max(insetX + 10, width - insetX), y: Math.max(insetY + 10, height - insetY) },
-    bottomLeft: { x: insetX, y: Math.max(insetY + 10, height - insetY) },
+    topRight: { x: width - insetX, y: insetY },
+    bottomRight: { x: width - insetX, y: height - insetY },
+    bottomLeft: { x: insetX, y: height - insetY },
   };
 }
 
