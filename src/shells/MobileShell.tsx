@@ -13,6 +13,8 @@ import { TeachingProvider } from '../components/TeachingContext';
 import { useTeaching } from '../components/teachingContextValue';
 import { DocumentInkProvider } from '../components/DocumentInk';
 import { useMobileFullscreen } from '../platform/useMobileFullscreen';
+import { useBeamRemoteKeys } from '../board/beam/useBeamRemoteKeys';
+import { beamService } from '../board/beam/beamService';
 import { useDeviceUsage } from '../platform/deviceUsage';
 import type { BoardSnippet } from '../board/types';
 import { useAppMedia } from '../media/useAppMedia';
@@ -91,6 +93,8 @@ const MobileReader: React.FC = () => {
     }
   });
   const [snippets, setSnippets] = useState<BoardSnippet[]>([]);
+  useBeamRemoteKeys(reader, Boolean(media.active), isScannerOpen || reader.isSettingsOpen || reader.isSearchOpen ||
+    reader.isSidebarOpen || reader.passwordModal.isOpen || (isBeamOpen && Boolean(reader.doc)));
   const isBoardOpen = teaching.prefs.boardEnabled && teaching.layout !== 'document';
   const setBoardOpen = React.useCallback((open: boolean) => {
     if (!boardEnabled) return;
@@ -150,7 +154,12 @@ const MobileReader: React.FC = () => {
       className={`relative w-full h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme} transition-colors duration-500 ease-out`}
       style={{ backgroundColor: getThemeBackground(reader.theme), height: '100dvh' }}
     >
-      {media.active ? <Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}><MediaWorkspace key={media.active.item.id} source={media.active} reader={reader} onClose={() => void media.close()} onOpen={file => void media.open(file)} onProgress={media.updateProgress} /></Suspense> : !reader.doc ? (
+      {media.active ? <Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}>
+        <MediaWorkspace key={media.active.item.id} source={media.active} reader={reader}
+          onClose={() => void media.close()} onOpen={file => void media.open(file)}
+          onProgress={media.updateProgress} onOpenBeam={() => setIsBeamOpen(true)}
+          remotePage={media.beam.remotePage} enableVolumePages={!isBeamOpen} />
+      </Suspense> : !reader.doc ? (
         <WelcomeScreen
           currentTheme={reader.theme}
           currentLang={reader.lang}
@@ -191,7 +200,7 @@ const MobileReader: React.FC = () => {
             onToggleBoard={teaching.prefs.boardEnabled ? () => setBoardOpen(!isBoardOpen) : undefined}
             isBoardOpen={isBoardOpen}
             isBeaming={reader.beamPeerConnected}
-            beamRoom={reader.beamRoom}
+            beamRoom={beamService.isLanSession() ? 'LAN' : reader.beamRoom}
             beamRole={reader.beamRole}
             onDisconnectBeam={reader.disconnectBeam}
             onOpenSettings={() => reader.setIsSettingsOpen(true)}
@@ -248,6 +257,10 @@ const MobileReader: React.FC = () => {
             lang={reader.lang}
             theme={reader.theme}
             reader={reader}
+            mediaFile={media.beam.canSend ? media.active?.file : null}
+            mediaError={media.beam.error}
+            retryMedia={media.beam.retry}
+            onOpenFile={media.open}
             formFactor="mobile"
             preferredRole={receiver ? 'receiver' : 'sender'}
             isBoardOpen={isBoardOpen}

@@ -4999,7 +4999,10 @@ dependencies = [
 name = "otium"
 version = "1.9.17"
 dependencies = [
+ "chacha20poly1305",
+ "futures-util",
  "image",
+ "libc",
  "mimalloc",
  "otium-beam",
  "otium-core",
@@ -5008,6 +5011,7 @@ dependencies = [
  "otium-scanner",
  "otium-slides",
  "otium-vault",
+ "rand 0.8.8",
  "serde",
  "serde_json",
  "tauri",
@@ -5015,6 +5019,8 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-updater",
+ "tokio",
+ "windows-sys 0.61.2",
  "winreg 0.55.0",
 ]
 

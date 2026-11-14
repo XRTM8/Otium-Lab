@@ -59,6 +59,7 @@ export function useReaderBeamSync({
   const pendingBeamPageRef = useRef<number | null>(null);
 
   const beamSyncRef = useRef({
+    hasPdf: Boolean(doc),
     docTitle,
     currentPage,
     numPages,
@@ -72,6 +73,7 @@ export function useReaderBeamSync({
 
   useEffect(() => {
     beamSyncRef.current = {
+      hasPdf: Boolean(doc),
       docTitle,
       currentPage,
       numPages,
@@ -85,7 +87,7 @@ export function useReaderBeamSync({
   });
 
   useEffect(() => {
-    if (beamState.role === 'sender' && beamState.room) {
+    if (doc && beamState.role === 'sender' && beamState.room) {
       if (lastBroadcastedPageRef.current !== currentPage) {
         lastBroadcastedPageRef.current = currentPage;
         beamService.broadcastPageChange(currentPage);
@@ -93,7 +95,7 @@ export function useReaderBeamSync({
     } else {
       lastBroadcastedPageRef.current = null;
     }
-  }, [currentPage, beamState.role, beamState.room]);
+  }, [doc, currentPage, beamState.role, beamState.room]);
 
   useEffect(() => {
     if (!beamState.room || beamState.role !== 'receiver') return;
@@ -108,76 +110,80 @@ export function useReaderBeamSync({
       );
     }
 
-    const unsubscribe = beamService.subscribe(async (msg: BeamMessage) => {
+    const unsubscribe = beamService.subscribe((msg: BeamMessage) => {
       if (!beamService.isMatchingRoom(msg.roomCode, currentRoom)) return;
       const sync = beamSyncRef.current;
 
       if (msg.type === 'BEAM_PAGE_CHANGE' && typeof msg.pageNumber === 'number') {
         if (beamLoadingRef.current) {
           pendingBeamPageRef.current = msg.pageNumber;
-        } else {
+        } else if (sync.hasPdf) {
           sync.scrollToPage(msg.pageNumber);
         }
-      } else if (msg.type === 'BEAM_VIEW_MODE' && msg.viewMode) {
+      } else if (msg.type === 'BEAM_VIEW_MODE' && msg.viewMode && sync.hasPdf) {
         sync.changeViewMode(msg.viewMode);
-      } else if (msg.type === 'BEAM_STEP') {
+      } else if (msg.type === 'BEAM_STEP' && sync.hasPdf) {
         if (msg.direction === 'next') {
           sync.goToNextPage();
         } else if (msg.direction === 'prev') {
           sync.goToPrevPage();
         }
-      } else if (msg.type === 'BEAM_PAYLOAD') {
-        const payloadTitle = msg.payload?.title || 'Beamed Document';
-        try {
-          beamLoadingRef.current = true;
-          pendingBeamPageRef.current = null;
-          setIsLoading(true);
-          let buffer: ArrayBuffer | null = null;
-          if (msg.payload?.pdfData) {
-            buffer = msg.payload.pdfData;
-          } else if (msg.payload?.pdfBase64) {
-            buffer = base64ToArrayBuffer(msg.payload.pdfBase64);
-          } else if (msg.payload?.pdfUrl) {
-            buffer = await beamService.downloadRelayDocument(msg.payload.pdfUrl);
-          } else if (msg.payload?.chunks && msg.payload.chunks.length > 0) {
-            buffer = await beamService.downloadRelayChunks(
-              msg.payload.chunks,
-              msg.payload.totalSize,
-              msg.payload.sha256
-            );
-          }
-
-          if (!buffer) {
-            throw new Error('No PDF payload found');
-          }
-
-          const opened = await loadDocumentRef.current(
-            buffer,
-            payloadTitle,
-            msg.payload?.pageNumber,
-            true
-          );
-          if (!opened) {
-            throw new Error('The receiving device could not open this PDF. Check the error on its screen.');
-          }
-          if (msg.payload?.theme) {
-            sync.changeTheme(msg.payload.theme);
-          }
-          beamService.announceState(
-            payloadTitle,
-            msg.payload?.pageNumber || 1,
-            msg.payload?.totalPages || 1
-          );
-        } catch (err) {
-          console.error('Failed to load beamed PDF in reader:', err);
-          setIsLoading(false);
-          setDocumentError(describeDocumentError(err, sync.lang));
-          throw err;
-        } finally {
-          beamLoadingRef.current = false;
-        }
+      } else if (msg.type === 'BEAM_PAYLOAD' && msg.payload?.fileName === undefined) {
+        return openPdf(msg, sync);
       }
     });
+
+    async function openPdf(msg: BeamMessage, sync: typeof beamSyncRef.current) {
+      const payloadTitle = msg.payload?.title || 'Beamed Document';
+      try {
+        beamLoadingRef.current = true;
+        pendingBeamPageRef.current = null;
+        setIsLoading(true);
+        let buffer: ArrayBuffer | null = null;
+        if (msg.payload?.pdfData) {
+          buffer = msg.payload.pdfData;
+        } else if (msg.payload?.pdfBase64) {
+          buffer = base64ToArrayBuffer(msg.payload.pdfBase64);
+        } else if (msg.payload?.pdfUrl) {
+          buffer = await beamService.downloadRelayDocument(msg.payload.pdfUrl);
+        } else if (msg.payload?.chunks && msg.payload.chunks.length > 0) {
+          buffer = await beamService.downloadRelayChunks(
+            msg.payload.chunks,
+            msg.payload.totalSize,
+            msg.payload.sha256
+          );
+        }
+
+        if (!buffer) {
+          throw new Error('No PDF payload found');
+        }
+
+        const opened = await loadDocumentRef.current(
+          buffer,
+          payloadTitle,
+          msg.payload?.pageNumber,
+          true
+        );
+        if (!opened) {
+          throw new Error('The receiving device could not open this PDF. Check the error on its screen.');
+        }
+        if (msg.payload?.theme) {
+          sync.changeTheme(msg.payload.theme);
+        }
+        beamService.announceState(
+          payloadTitle,
+          msg.payload?.pageNumber || 1,
+          msg.payload?.totalPages || 1
+        );
+      } catch (err) {
+        console.error('Failed to load beamed PDF in reader:', err);
+        setIsLoading(false);
+        setDocumentError(describeDocumentError(err, sync.lang));
+        throw err;
+      } finally {
+        beamLoadingRef.current = false;
+      }
+    }
 
     return () => {
       unsubscribe();
@@ -216,7 +222,7 @@ export function useReaderBeamSync({
 
   useEffect(() => {
     if (beamState.role === 'receiver' && beamState.room && docTitle) {
-      beamService.announceState(docTitle, currentPage, numPages);
+      beamService.setLocalDocumentState(docTitle, currentPage, numPages);
     }
   }, [currentPage, numPages, docTitle, beamState.role, beamState.room]);
 }

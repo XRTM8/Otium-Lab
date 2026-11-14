@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, FolderOpen, Palette, Maximize, EyeOff, Hand, PenLine, Highlighter, Undo2, Redo2, Trash2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Scan, Info, Download, Upload } from 'lucide-react';
+import { ArrowLeft, Cast, FolderOpen, Palette, Maximize, EyeOff, Hand, PenLine, Highlighter, Undo2, Redo2, Trash2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Scan, Info, Download, Upload } from 'lucide-react';
 import type { ReaderController } from '../app/useReaderController';
 import type { ThemeMode } from '../core/types';
 import { OtiumLogo } from '../components/OtiumLogo';
@@ -7,7 +7,7 @@ import { registerBackHandler } from '../core/navigation/backHandler';
 import { useTeaching } from '../components/teachingContextValue';
 import { APP_FILE_ACCEPT, type MediaProgress } from './library';
 import type { ActiveMedia } from './useAppMedia';
-import { fitSize } from './media';
+import { fitSize, isBeamMediaFile } from './media';
 import { openPptx, type Deck } from './pptx';
 import { Pptx } from './SlideView';
 import { Player } from './Player';
@@ -18,6 +18,7 @@ import type { MediaDrawing } from './drawing';
 import { saveTextFile } from '../platform/saveFile';
 import { ConfirmDialog } from '../library/ConfirmDialog';
 import { formatBytes } from '../library/model';
+import { useVolumePageKeys } from '../platform/useVolumePageKeys';
 import './media.css';
 function placePopup(details: HTMLDetailsElement) {
   if (!details.open) return;
@@ -28,8 +29,11 @@ function placePopup(details: HTMLDetailsElement) {
   Object.assign(panel.style, { left: `${left}px`, top: `${top}px`, right: 'auto', bottom: 'auto' });
 }
 
-export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: {
+export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress, onOpenBeam, remotePage, enableVolumePages }: {
   source: ActiveMedia; reader: ReaderController; onClose: () => void; onOpen: (file: File) => void; onProgress: (value: MediaProgress) => void;
+  onOpenBeam?: () => void;
+  remotePage?: { page: number } | null;
+  enableVolumePages?: boolean;
 }) {
   const ar = reader.lang === 'ar', label = (a: string, e: string) => ar ? a : e;
   const { setLayout } = useTeaching();
@@ -49,6 +53,9 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
   const persistentInk = kind === 'presentation' || kind === 'image';
   const ink = useMediaDrawing(source.item.id, source.saved, persistentInk, page);
   const total = deck?.slides.length ?? 1;
+  useVolumePageKeys(Boolean(enableVolumePages && deck && total > 1 && !restoring), direction => {
+    setPage(value => Math.max(1, Math.min(total, value + (direction === 'next' ? 1 : -1))));
+  });
   const changeZoom = (value: number) => {
     const viewport = stage.current, surface = viewport?.querySelector('.media-surface');
     if (!viewport || !surface) { setZoom(value); return; }
@@ -91,7 +98,7 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
     void (async () => {
       try {
         if (kind === 'presentation') {
-          const value = await openPptx(await source.file.arrayBuffer(), controller.signal);
+          const value = source.deck ?? await openPptx(await source.file.arrayBuffer(), controller.signal);
           if (!controller.signal.aborted) { setDeck(value); setDimensions({ width: value.width, height: value.height }); setPage(valuePage => Math.min(valuePage, value.slides.length)); setLoading(false); }
         } else if (kind === 'text') {
           const value = await source.file.text(); if (!controller.signal.aborted) { setText(value); setLoading(false); }
@@ -100,6 +107,11 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
     })();
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [source, kind, setLayout]);
+  const [appliedRemotePage, setAppliedRemotePage] = useState<typeof remotePage>(null);
+  if (deck && remotePage && remotePage !== appliedRemotePage) {
+    setAppliedRemotePage(remotePage);
+    setPage(Math.max(1, Math.min(total, remotePage.page)));
+  }
   useEffect(() => {
     if (!stage.current) return;
     const observer = new ResizeObserver(entries => {
@@ -134,6 +146,11 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
       <button type="button" className="toolbar-icon flex gap-1 min-h-11 px-2" onClick={onClose}><ArrowLeft size={18} /><span>{label('المكتبة', 'Library')}</span></button>
       <OtiumLogo size={22} theme={reader.theme} />
       <strong className="flex-1 min-w-0 truncate text-xs sm:text-sm" dir="auto">{source.item.name}</strong>
+      {onOpenBeam && isBeamMediaFile(source.file.name) && (
+        <button type="button" className="toolbar-icon min-h-11 min-w-11" onClick={onOpenBeam} aria-label={label('بث الملف إلى الشاشة', 'Beam file to screen')}>
+          <Cast size={19} />
+        </button>
+      )}
       <span className="text-[10px] text-accent">{label('تجريبي', 'Preview')}</span>
       <details className="media-popup media-info" onToggle={event => placePopup(event.currentTarget)}><summary tabIndex={0} role="button" aria-label={label('تفاصيل الملف', 'File details')}><Info size={19} /></summary><div>
         <strong dir="auto">{source.file.name}</strong><span>{formatBytes(source.file.size)} · {source.saved ? label('محفوظ في المكتبة', 'Saved in library') : label('غير محفوظ في المكتبة', 'Not stored in library')}</span>
@@ -161,7 +178,7 @@ export function MediaWorkspace({ source, reader, onClose, onOpen, onProgress }: 
     <div className={`media-stage ${zoom > 1 ? 'media-zoomed' : ''}`} ref={stage}>
       {loading && <span className="media-loading" role="status">{label('جارٍ فتح الملف…', 'Opening file…')}</span>}
       {kind === 'text' ? <pre className="media-text" dir="auto">{text}</pre> : <div className="media-surface" style={{ width: size.width * zoom, height: size.height * zoom }}>
-        {(kind === 'video' || kind === 'audio') && url && <Player url={url} audio={kind === 'audio'} frozen={draw} initialTime={source.item.position} lang={reader.lang}
+        {(kind === 'video' || kind === 'audio') && url && <Player url={url} audio={kind === 'audio'} frozen={draw} autoPlay={source.received} initialTime={source.item.position} lang={reader.lang}
           onSize={(width, height) => setDimensions(previous => previous.width === width && previous.height === height ? previous : { width, height })} onError={setError}
           onPosition={value => { position.current = value; onProgress({ lastPage: page, totalPages: total, position: value }); }} />}
         {kind === 'image' && url && <img src={url} alt={source.item.name} onLoad={event => { setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }); setLoading(false); }} onError={() => { setError(label('تعذر فتح الصورة.', 'Could not decode this image.')); setLoading(false); }} />}

@@ -1,5 +1,6 @@
 import type { BeamMessage, BeamTransferState, BeamTransport } from '../types';
 import type { ThemeMode } from '../../core/types';
+import type { BeamDirectChannel } from './beamLanTransport';
 import { tryBestEffort } from '../../core/utils/bestEffort';
 import {
   ICE_SERVERS,
@@ -16,13 +17,13 @@ export {
 export interface BeamWebRtcState {
   isRtcSupported: boolean;
   rtcPeer: RTCPeerConnection | null;
-  rtcDataChannel: RTCDataChannel | null;
+  rtcDataChannel: BeamDirectChannel | null;
   remoteDescriptionSet: boolean;
   queuedIce: RTCIceCandidateInit[];
   rtcAttempt: number;
   lastOfferSdp: string | null;
   incomingFile: IncomingFileState | null;
-  incomingFileChannel?: RTCDataChannel | null;
+  incomingFileChannel?: BeamDirectChannel | null;
   openedFile?: Pick<IncomingFileState, 'transferId' | 'sessionId' | 'size' | 'sha256'>;
   acceptOffset?: (transferId: string, offset: number, complete: boolean) => void;
   interruptTransfer?: () => void;
@@ -270,15 +271,14 @@ export function bindBeamDataChannel(host: BeamWebRtcHost, channel: RTCDataChanne
 export function closeBeamRtcPeer(state: BeamWebRtcState): void {
   state.interruptTransfer?.();
   if (state.rtcDataChannel) {
-    tryBestEffort('rtc-datachannel-close', () => {
-      if (!state.rtcDataChannel) return;
-      state.rtcDataChannel.onopen = null;
-      state.rtcDataChannel.onclose = null;
-      state.rtcDataChannel.onerror = null;
-      state.rtcDataChannel.onmessage = null;
-      state.rtcDataChannel.close();
-    });
+    const channel = state.rtcDataChannel;
     state.rtcDataChannel = null;
+    tryBestEffort('rtc-datachannel-close', () => {
+      if (typeof RTCDataChannel !== 'undefined' && channel instanceof RTCDataChannel) {
+        channel.onopen = channel.onclose = channel.onerror = channel.onmessage = null;
+      }
+      channel.close();
+    });
   }
   if (state.rtcPeer) {
     tryBestEffort('rtc-peer-close', () => {

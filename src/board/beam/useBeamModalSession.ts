@@ -18,6 +18,9 @@ import type { BeamModalTab } from './BeamModalChrome';
 import { formatBeamTransferPhaseText } from './beamSessionFrames';
 import { useBeamModalCamera } from './useBeamModalCamera';
 import type { BeamMessage, BeamPeerState, BeamTransferState } from '../types';
+import { describeFile, isBeamMediaFile } from '../../media/media';
+import { lanPairingCode, parseLanTarget, type LanInvitation } from './beamLanTransport';
+import { isTauriRuntime } from '../../platform/runtime';
 
 export function useBeamModalSession({
   isOpen,
@@ -25,6 +28,9 @@ export function useBeamModalSession({
   reader,
   formFactor,
   preferredRole,
+  mediaFile,
+  onOpenFile,
+  retryMedia,
   onSetBoardOpen,
   onClose,
 }: {
@@ -33,9 +39,24 @@ export function useBeamModalSession({
   reader: ReaderController;
   formFactor: 'desktop' | 'mobile';
   preferredRole?: 'receiver' | 'sender';
+  mediaFile?: File | null;
+  onOpenFile?: (file: File) => Promise<boolean>;
+  retryMedia?: () => void;
   onSetBoardOpen: (open: boolean) => void;
   onClose: () => void;
 }) {
+  const hasFile = Boolean(reader.doc || mediaFile);
+  const lanAvailable = isTauriRuntime();
+  const [network, setNetwork] = useState<'lan' | 'cloud'>(() =>
+    lanAvailable && (beamService.isLanSession() || !beamService.getRole()) ? 'lan' : 'cloud');
+  const [lanInvitation, setLanInvitation] = useState<LanInvitation | null>(() => beamService.getLanInvitation());
+  const [lanAddress, setLanAddress] = useState('');
+  const [lanBusy, setLanBusy] = useState(false);
+  const [lanAttempt, setLanAttempt] = useState<'idle' | 'ready' | 'failed'>(() =>
+    beamService.getLanInvitation() ? 'ready' : 'idle');
+  const lanRequest = useRef(0);
+  const startingFile = useRef(false);
+  useEffect(() => () => { lanRequest.current++; }, []);
   const [initialLaunch] = useState(() =>
     parseBeamLaunch(
       typeof window !== 'undefined' ? window.location.hash : '',
@@ -46,13 +67,17 @@ export function useBeamModalSession({
 
   const [activeTab, setActiveTab] = useState<BeamModalTab>(() => {
     const role = beamService.getRole();
-    if (role === 'receiver') return 'receive';
+    if (role === 'receiver') return mediaFile && preferredRole !== 'receiver' ? 'send' : 'receive';
     if (role === 'sender') return beamService.getConnectedRoom() ? 'remote' : 'send';
     if (initialLaunch.role === 'receiver') return 'receive';
     if (initialLaunch.role === 'sender') return 'send';
-    return defaultBeamTab(formFactor, Boolean(reader.doc), preferredRole);
+    return defaultBeamTab(formFactor, hasFile, preferredRole);
   });
-  const [targetRoomCode, setTargetRoomCode] = useState(() => initialLaunch.room || '');
+  const [targetRoomCode, setTargetRoomCode] = useState(() => {
+    const target = beamService.getLanSenderTarget();
+    return target ? lanPairingCode(target) :
+      (beamService.getRole() === 'sender' ? beamService.getConnectedRoom() : null) || initialLaunch.room || '';
+  });
   const [receiverRoomCode, setReceiverRoomCode] = useState(() => {
     const existing = beamService.getConnectedRoom();
     if (existing && beamService.getRole() === 'receiver') return existing;
@@ -81,6 +106,9 @@ export function useBeamModalSession({
   const [peer, setPeer] = useState<BeamPeerState>(() => beamService.getPeerState());
   const [peerLeft, setPeerLeft] = useState(false);
   const [transfer, setTransfer] = useState<BeamTransferState>(() => beamService.getTransferState());
+  const closeAfterSend = useRef<'file' | 'remote' | null>(null);
+  const pendingTransfer = useRef(false);
+  const peerWasConnected = useRef(beamService.getPeerState().connected);
 
   const isSending = transfer.active && transfer.direction === 'send';
   const connectedRoom = beamState.room;
@@ -97,7 +125,11 @@ export function useBeamModalSession({
     let hadPeer = beamService.getPeerState().connected;
     const unsubState = beamService.onStateChange((state) => {
       setBeamState(state);
-      if (!state.role) setSendSuccess(false);
+      if (!state.role) {
+        setSendSuccess(false);
+        closeAfterSend.current = null;
+        pendingTransfer.current = false;
+      }
     });
     const unsubStatus = beamService.onConnectionStatusChange((status) => {
       setConnStatus(status);
@@ -116,6 +148,7 @@ export function useBeamModalSession({
       if (typeof state.totalPages === 'number') setRemoteTotal(state.totalPages);
     });
     const unsubTransfer = beamService.onTransferProgress((state) => {
+      if (closeAfterSend.current === 'file' && state.active && state.direction === 'send') pendingTransfer.current = true;
       setTransfer(state);
       setUploadProgress(state.active && state.direction === 'send' ? Math.round(state.progress) : null);
       if (state.phase === 'error' && state.error) {
@@ -154,6 +187,7 @@ export function useBeamModalSession({
     if (!launch.auto) return;
     launchAppliedRef.current = true;
 
+    setNetwork('cloud');
     if (launch.room) setTargetRoomCode(launch.room);
     if (launch.role === 'receiver') {
       const room = launch.room || receiverRoomRef.current;
@@ -166,12 +200,12 @@ export function useBeamModalSession({
       setActiveTab('send');
       return;
     }
-    if (!reader.doc && formFactor === 'desktop' && launch.room) {
+    if (!hasFile && formFactor === 'desktop' && launch.room) {
       setReceiverRoomCode(launch.room);
       setActiveTab('receive');
       beamService.startReceiver(launch.room);
     }
-  }, [isOpen, formFactor, reader.doc]);
+  }, [isOpen, formFactor, hasFile]);
 
   const defaultRoleRef = useRef({ open: false, formFactor, preferredRole });
   useEffect(() => {
@@ -179,8 +213,8 @@ export function useBeamModalSession({
     defaultRoleRef.current = { open: isOpen, formFactor, preferredRole };
     if (!isOpen || (previous.open && previous.formFactor === formFactor && previous.preferredRole === preferredRole)) return;
     if (reader.beamPeerConnected || beamService.getConnectedRoom() || launchRef.current.role) return;
-    setActiveTab(defaultBeamTab(formFactor, Boolean(reader.doc), preferredRole));
-  }, [isOpen, formFactor, preferredRole, reader.doc, reader.beamPeerConnected]);
+    setActiveTab(defaultBeamTab(formFactor, hasFile, preferredRole));
+  }, [isOpen, formFactor, preferredRole, hasFile, reader.beamPeerConnected]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -197,9 +231,39 @@ export function useBeamModalSession({
 
   useEffect(() => {
     if (!isOpen || activeTab !== 'receive') return;
-    beamService.setLocalDocumentState(reader.docTitle || '', reader.currentPage || 1, reader.numPages || 0);
-    beamService.startReceiver(receiverRoomCode);
-  }, [isOpen, activeTab, receiverRoomCode, reader.docTitle, reader.currentPage, reader.numPages]);
+    if (!mediaFile) {
+      beamService.setLocalDocumentState(reader.docTitle || '', reader.currentPage || 1, reader.numPages || 0);
+    }
+  }, [isOpen, activeTab, reader.docTitle, reader.currentPage, reader.numPages, mediaFile]);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'receive') return;
+    if (network === 'cloud') {
+      beamService.startReceiver(receiverRoomCode);
+      return;
+    }
+    if (lanAttempt === 'ready' || lanAttempt === 'failed' || beamService.getLanInvitation()) return;
+    let current = true;
+    const timer = setTimeout(async () => {
+      setLanBusy(true);
+      setLanInvitation(null);
+      try {
+        const invitation = await beamService.startLanReceiver(() => current);
+        if (current && invitation) {
+          setLanInvitation(invitation);
+          setLanAttempt('ready');
+        }
+      } catch {
+        if (current) {
+          setLanAttempt('failed');
+          setBeamError(lang === 'ar'
+            ? 'تعذر فتح استقبال LAN. تأكد أن الشاشة متصلة بواي فاي أو إيثرنت، ثم حاول مرة ثانية.'
+            : 'Could not open LAN receiving. Connect the screen to Wi-Fi or Ethernet and retry.');
+        }
+      } finally { if (current) setLanBusy(false); }
+    }, 0);
+    return () => { current = false; clearTimeout(timer); };
+  }, [isOpen, activeTab, network, receiverRoomCode, lang, lanAttempt]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,9 +272,9 @@ export function useBeamModalSession({
         msg.type === 'BEAM_DOCUMENT_OPENED' &&
         msg.payload &&
         beamService.getRole() === 'receiver' &&
-        beamService.isMatchingRoom(msg.roomCode, receiverRoomRef.current)
+        beamService.isMatchingRoom(msg.roomCode, beamService.getConnectedRoom() || receiverRoomRef.current)
       ) {
-        saveRecentRoom(receiverRoomRef.current);
+        if (!beamService.isLanSession()) saveRecentRoom(msg.roomCode);
         onSetBoardOpen(false);
         onClose();
       }
@@ -218,58 +282,112 @@ export function useBeamModalSession({
     return () => unsubscribe();
   }, [isOpen, onSetBoardOpen, onClose]);
 
-  const handleBeamDocument = useCallback(async (overrideCode?: string) => {
-    const code = formatRoomCode((overrideCode || targetRoomCode || beamService.getConnectedRoom() || '').trim());
-    if (!code) {
-      setBeamError(lang === 'ar' ? 'يرجى إدخال رمز السبورة أولاً.' : 'Please enter the board code first.');
+  useEffect(() => {
+    const justConnected = peer.connected && !peerWasConnected.current;
+    peerWasConnected.current = peer.connected;
+    if (!isOpen || !peer.connected) return;
+    if (beamState.role === 'receiver' && activeTab === 'receive' && justConnected) {
+      onClose();
       return;
     }
-    if (!reader.doc || !reader.docId) {
+    if (beamState.role !== 'sender') return;
+    const shouldClose = closeAfterSend.current === 'remote' ||
+      (closeAfterSend.current === 'file' && pendingTransfer.current &&
+        transfer.direction === 'send' && transfer.phase === 'done');
+    if (shouldClose) {
+      closeAfterSend.current = null;
+      pendingTransfer.current = false;
+      onClose();
+    }
+  }, [isOpen, peer.connected, beamState.role, activeTab, transfer, onClose]);
+
+  const connect = useCallback(async (raw: string, action: 'file' | 'remote') => {
+    const local = /^otium-lan:/i.test(raw.trim()) || (network === 'lan' && !/^OTM-/i.test(raw.trim()));
+    const target = local ? parseLanTarget(raw) : null;
+    const code = local ? (target && lanPairingCode(target)) : formatRoomCode(raw);
+    if (!code || (local && !lanAvailable)) {
+      setBeamError(local
+        ? (lang === 'ar' ? 'امسح QR المحلي أو الصق الرمز في تطبيق Otium المثبّت.' : 'Scan or paste the LAN code in the installed Otium app.')
+        : (lang === 'ar' ? 'يرجى إدخال رمز السبورة أولاً.' : 'Please enter the board code first.'));
+      return false;
+    }
+    setBeamError(null);
+    if (!startingFile.current) {
+      closeAfterSend.current = action;
+      pendingTransfer.current = false;
+    }
+    setTargetRoomCode(code);
+    if (target) {
+      setNetwork('lan');
+      const existing = beamService.getLanSenderTarget();
+      if (!existing || lanPairingCode(existing) !== code || !beamService.getPeerState().connected) {
+        const request = ++lanRequest.current;
+        setLanBusy(true);
+        try {
+          await beamService.startLanSender(target);
+          if (request !== lanRequest.current) return false;
+        } catch {
+          if (request !== lanRequest.current) return false;
+          closeAfterSend.current = null;
+          setBeamError(lang === 'ar'
+            ? 'ما قدرنا نوصل للشاشة عبر LAN. تأكد من نفس الشبكة والرمز، أو اختَر «عبر الإنترنت».'
+            : 'Could not reach the screen over LAN. Check the network and code, or select Via internet.');
+          return false;
+        } finally { if (request === lanRequest.current) setLanBusy(false); }
+      }
+    } else {
+      setNetwork('cloud');
+      beamService.startSender(code);
+    }
+    setBeamError(null);
+    setSendSuccess(true);
+    setActiveTab('remote');
+    return true;
+  }, [lang, lanAvailable, network]);
+
+  const handleBeamDocument = useCallback(async (overrideCode?: string) => {
+    if (!hasFile) {
       beamFileInputRef.current?.click();
       return;
     }
-    setBeamError(null);
-    beamService.startSender(code);
-    reader.autoBeam.retry();
-    setTargetRoomCode(code);
-    setSendSuccess(true);
-    setActiveTab('remote');
-  }, [targetRoomCode, reader, lang]);
+    const code = overrideCode || targetRoomCode ||
+      (beamService.getRole() === 'sender' ? beamService.getConnectedRoom() : '') || '';
+    if (!await connect(code, 'file')) return;
+    if (mediaFile) retryMedia?.();
+    else reader.autoBeam.retry();
+  }, [targetRoomCode, reader, hasFile, mediaFile, retryMedia, connect]);
 
   const handlePairAsRemote = useCallback((overrideCode?: string) => {
-    const code = formatRoomCode((overrideCode || targetRoomCode).trim());
-    if (!code) {
-      setBeamError(lang === 'ar' ? 'يرجى إدخال رمز السبورة أولاً.' : 'Please enter the board code first.');
-      return;
-    }
-    setBeamError(null);
-    if (reader.doc) {
-      void handleBeamDocument(code);
-      return;
-    }
-    beamService.startSender(code);
-    setTargetRoomCode(code);
-    setSendSuccess(true);
-    setTimeout(() => setActiveTab('remote'), 200);
-  }, [targetRoomCode, reader.doc, handleBeamDocument, lang]);
+    const code = overrideCode || targetRoomCode;
+    if (hasFile) void handleBeamDocument(code);
+    else void connect(code, 'remote');
+  }, [targetRoomCode, hasFile, handleBeamDocument, connect]);
 
   const handleBeamFileDirect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const selectionRequest = lanRequest.current;
     try {
-      const code = formatRoomCode(targetRoomCode.trim() || connectedRoom || '');
+      const code = targetRoomCode.trim() || (beamState.role === 'sender' ? connectedRoom : '') || '';
       if (!code) {
         setBeamError(lang === 'ar' ? 'يرجى إدخال رمز السبورة أولاً' : 'Please enter room code first');
         return;
       }
-      const opened = await reader.openFile(file);
-      if (!opened) return;
-      beamService.startSender(code);
-      setTargetRoomCode(code);
-      setActiveTab('remote');
+      if (describeFile(file.name).kind !== 'pdf' && !isBeamMediaFile(file.name)) {
+        setBeamError(lang === 'ar' ? 'اختر PDF أو صورة أو فيديو أو عرض PPTX/PPSX.' : 'Choose a PDF, image, video, or PPTX/PPSX presentation.');
+        return;
+      }
+      setBeamError(null);
+      startingFile.current = true;
+      closeAfterSend.current = 'file';
+      pendingTransfer.current = false;
+      const opened = await (onOpenFile ?? reader.openFile)(file);
+      if (lanRequest.current !== selectionRequest) return;
+      if (!opened || !await connect(code, 'file')) closeAfterSend.current = null;
     } catch {
       setBeamError(lang === 'ar' ? 'تعذر قراءة الملف المحدد' : 'Failed to read selected file');
     } finally {
+      startingFile.current = false;
       e.target.value = '';
     }
   };
@@ -277,11 +395,11 @@ export function useBeamModalSession({
   const camera = useBeamModalCamera({
     isOpen,
     lang,
-    hasDoc: Boolean(reader.doc),
-    readerDoc: reader.doc,
-    onDetectedRoom: (detected, hasDoc) => {
+    onDetectedRoom: (detected) => {
+      if (parseLanTarget(detected)) setNetwork('lan');
+      else setNetwork('cloud');
       setTargetRoomCode(detected);
-      if (hasDoc) void handleBeamDocument(detected);
+      if (hasFile) void handleBeamDocument(detected);
       else handlePairAsRemote(detected);
     },
   });
@@ -289,7 +407,7 @@ export function useBeamModalSession({
   const openPickedFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      void reader.openFile(file);
+      void (onOpenFile ?? reader.openFile)(file);
       onSetBoardOpen(true);
       onClose();
     }
@@ -297,6 +415,13 @@ export function useBeamModalSession({
 
   const handleRegenerateCode = () => {
     beamService.disconnect();
+    if (network === 'lan') {
+      setLanAddress('');
+      setLanInvitation(null);
+      setBeamError(null);
+      setLanAttempt('idle');
+      return;
+    }
     const newCode = generateNewReceiverRoomCode();
     setReceiverRoomCode(newCode);
     setBeamError(null);
@@ -314,7 +439,7 @@ export function useBeamModalSession({
   }, []);
 
   const activeDocTitle =
-    reader.docTitle || remoteDocTitle || (lang === 'ar' ? 'المستند المتصل بالسبورة' : 'Connected Document');
+    mediaFile?.name || reader.docTitle || remoteDocTitle || (lang === 'ar' ? 'المستند المتصل بالسبورة' : 'Connected Document');
   const activePage = reader.doc ? reader.currentPage : remotePage;
   const activeTotal = reader.doc ? reader.numPages : remoteTotal;
 
@@ -324,8 +449,10 @@ export function useBeamModalSession({
     triggerHaptic();
     const nextPage = activePage + 1;
     if (reader.doc) reader.goToNextPage();
-    else setRemotePage(nextPage);
-    beamService.broadcastPageChange(nextPage);
+    else {
+      setRemotePage(nextPage);
+      beamService.sendStep('next');
+    }
   }, [activeTotal, activePage, reader, isReceiverAcknowledged, triggerHaptic]);
 
   const handleRemotePrev = useCallback(() => {
@@ -334,8 +461,10 @@ export function useBeamModalSession({
     triggerHaptic();
     const prevPage = Math.max(1, activePage - 1);
     if (reader.doc) reader.goToPrevPage();
-    else setRemotePage(prevPage);
-    beamService.broadcastPageChange(prevPage);
+    else {
+      setRemotePage(prevPage);
+      beamService.sendStep('prev');
+    }
   }, [activeTotal, activePage, reader, isReceiverAcknowledged, triggerHaptic]);
 
   useEffect(() => {
@@ -354,11 +483,26 @@ export function useBeamModalSession({
   }, [isOpen, activeTab, handleRemoteNext, handleRemotePrev]);
 
   const handleCopyCode = () => {
-    navigator.clipboard?.writeText(receiverRoomCode);
+    navigator.clipboard?.writeText(network === 'lan' ? lanCode : receiverRoomCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const selectedAddress = lanAddress || lanInvitation?.addresses[0];
+  const lanCode = lanInvitation && selectedAddress ? lanPairingCode({ ...lanInvitation, address: selectedAddress }) : '';
+  const selectNetwork = (mode: 'lan' | 'cloud') => {
+    if (mode === network) return;
+    lanRequest.current++;
+    beamService.disconnect();
+    setNetwork(mode);
+    setTargetRoomCode('');
+    setLanAddress('');
+    setLanInvitation(null);
+    setLanAttempt('idle');
+    setLanBusy(false);
+    setBeamError(null);
+    setSendSuccess(false);
+  };
   return {
     activeTab, setActiveTab,
     targetRoomCode, setTargetRoomCode,
@@ -372,6 +516,8 @@ export function useBeamModalSession({
     openPickedFile, handleRegenerateCode, handleCopyCode,
     handleRemoteNext, handleRemotePrev,
     activeDocTitle, activePage, activeTotal,
+    network, selectNetwork, lanAvailable, lanBusy, lanCode, selectedAddress, lanAddresses: lanInvitation?.addresses ?? [],
+    setLanAddress,
     transferPhaseText: formatBeamTransferPhaseText(transfer, lang),
     smartboardUrl: buildBeamLink(receiverRoomCode, 'sender'),
     ...camera,

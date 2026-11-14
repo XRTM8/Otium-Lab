@@ -143,4 +143,54 @@ describe('BeamModal', () => {
     expect(startSenderSpy).toHaveBeenCalledWith('OTM-ABCD1234EFGH');
     expect(beamService.getRole()).toBe('sender');
   });
+
+  it('closes the receiving sheet after pairing and keeps the receiver session', async () => {
+    let notifyPeer!: Parameters<typeof beamService.onPeerChange>[0];
+    const close = vi.fn();
+    vi.spyOn(beamService, 'onPeerChange').mockImplementation(listener => {
+      notifyPeer = listener;
+      return () => {};
+    });
+    await act(async () => root.render(<BeamModal isOpen lang="en" reader={fakeReader()}
+      formFactor="desktop" onSetBoardOpen={vi.fn()} onClose={close} />));
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => notifyPeer({ connected: true, peerName: 'Phone', transport: 'p2p',
+      docTitle: null, pageNumber: null, totalPages: null }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(beamService.getRole()).toBe('receiver');
+  });
+
+  it('keeps the sending sheet through transfer and closes after the file is confirmed open', async () => {
+    let notifyPeer!: Parameters<typeof beamService.onPeerChange>[0];
+    let notifyTransfer!: Parameters<typeof beamService.onTransferProgress>[0];
+    const close = vi.fn();
+    const opened = vi.fn(async () => true);
+    vi.spyOn(beamService, 'onPeerChange').mockImplementation(listener => { notifyPeer = listener; return () => {}; });
+    vi.spyOn(beamService, 'onTransferProgress').mockImplementation(listener => { notifyTransfer = listener; return () => {}; });
+    await act(async () => root.render(<BeamModal isOpen lang="en" reader={fakeReader()}
+      formFactor="mobile" preferredRole="sender" onOpenFile={opened} onSetBoardOpen={vi.fn()} onClose={close} />));
+    const room = host.querySelector<HTMLInputElement>('input[placeholder="OTM-XXXXXXXXXXXX"]')!;
+    const fileInput = host.querySelector<HTMLInputElement>('input[type=file]')!;
+    const file = new File(['photo'], 'lecture.png');
+    expect(fileInput.accept).toContain('.pptx');
+    expect(fileInput.accept).toContain('.mp4');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(room, 'OTM-ABCD1234EFGH');
+      room.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      Object.defineProperty(fileInput, 'files', { value: [file] });
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(opened).toHaveBeenCalledWith(file);
+    await act(async () => notifyPeer({ connected: true, peerName: 'Board', transport: 'p2p',
+      docTitle: null, pageNumber: null, totalPages: null }));
+    expect(close).not.toHaveBeenCalled();
+    const state = { ...beamService.getTransferState(), direction: 'send' as const, mode: 'p2p' as const };
+    await act(async () => notifyTransfer({ ...state, active: true, phase: 'transferring' }));
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => notifyTransfer({ ...state, active: false, phase: 'done', progress: 100 }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(beamService.getRole()).toBe('sender');
+  });
 });

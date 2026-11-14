@@ -1,6 +1,7 @@
 import React from 'react';
 import { Cast, Radio, Smartphone, Tv, WifiOff, X } from 'lucide-react';
 import type { Language } from '../../core/i18n/translations';
+import { BEAM_MEDIA_ACCEPT } from '../../media/media';
 
 export type BeamModalTab = 'send' | 'receive' | 'remote' | 'offline';
 
@@ -33,20 +34,13 @@ export const BeamModalHeaderAndTabs: React.FC<BeamModalChromeProps> = ({
           <h3 className="text-sm font-bold text-ink leading-none">
             {lang === 'ar' ? 'البث الذكي للسبورة' : 'Smart Beam'}
           </h3>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-[10px] font-mono text-accent bg-accent/10 px-1.5 py-0.2 rounded-md font-bold">
-              xrtm8.github.io/Otium-Lab/
-            </span>
-            <span className="text-[10px] text-ink-muted">
-              {lang === 'ar' ? 'ربط فوري' : 'Zero-config'}
-            </span>
-          </div>
         </div>
       </div>
 
       <button
         type="button"
         onClick={onClose}
+        aria-label={lang === 'ar' ? 'إغلاق البث' : 'Close Beam'}
         className="p-1.5 rounded-xl hover:bg-hover text-ink-muted hover:text-ink transition-colors cursor-pointer"
       >
         <X className="w-4 h-4" />
@@ -133,7 +127,7 @@ export const BeamHiddenFileInputs: React.FC<BeamHiddenFileInputsProps> = ({
     <input
       ref={beamFileInputRef}
       type="file"
-      accept=".pdf,application/pdf"
+      accept={`.pdf,application/pdf,${BEAM_MEDIA_ACCEPT}`}
       className="hidden"
       onChange={onBeamFileDirect}
     />

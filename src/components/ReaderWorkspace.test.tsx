@@ -40,6 +40,7 @@ function makeReader(overrides: Partial<ReaderController> = {}): ReaderController
     currentPage: 1,
     zoom: 1,
     setZoom: vi.fn(),
+    refitViewport: vi.fn(),
     theme: 'paper',
     viewMode: 'single',
     lang: 'en',

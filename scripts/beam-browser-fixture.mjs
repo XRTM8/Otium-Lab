@@ -1,10 +1,16 @@
 import { PDFDocument } from 'pdf-lib';
 import { BeamService } from '../src/board/beam/beamService.ts';
 import { BeamAnnotationQueue } from '../src/board/beam/beamAnnotationQueue.ts';
-import { computeSha256, P2P_CHUNK_SIZE } from '../src/board/beam/beamUtils.ts';
+import { arrayBufferToBase64, computeSha256, P2P_CHUNK_SIZE } from '../src/board/beam/beamUtils.ts';
 import { mergeInk } from '../src/core/annotations/ink.ts';
+import { openPptx } from '../src/media/pptx.ts';
 
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+let videoFixture;
+
+export async function makeBeamVideoBase64() {
+  return arrayBufferToBase64(await (videoFixture ??= recordBeamVideo()));
+}
 
 async function until(predicate, description) {
   const deadline = performance.now() + 15000;
@@ -96,7 +102,8 @@ export async function runBeamRecovery() {
         pdf.bytesOnReplacement !== pdf.expectedReplacementBytes) {
       throw new Error(`Unexpected WebRTC PDF recovery: ${JSON.stringify(pdf)}`);
     }
-    return { pdf, ink: await verifyInkRecovery(sender, receiver, channels, room) };
+    const media = await verifyMediaTransfer(sender, receiver, room, nativeFetch);
+    return { pdf, media, ink: await verifyInkRecovery(sender, receiver, channels, room) };
   } finally {
     sender.disconnect();
     receiver.disconnect();
@@ -104,6 +111,79 @@ export async function runBeamRecovery() {
     globalThis.fetch = nativeFetch;
     globalThis.EventSource = NativeEventSource;
   }
+}
+
+async function recordBeamVideo() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 48;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  const stream = canvas.captureStream(15);
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+  const video = await new Promise(resolve => {
+    recorder.ondataavailable = event => resolve(event.data.arrayBuffer());
+    recorder.start();
+    ctx.fillStyle = 'red';
+    ctx.fillRect(0, 0, 48, 32);
+    setTimeout(() => {
+      ctx.fillStyle = 'blue';
+      ctx.fillRect(0, 0, 48, 32);
+    }, 125);
+    setTimeout(() => recorder.stop(), 340);
+  });
+  stream.getTracks().forEach(track => track.stop());
+  return video;
+}
+
+async function verifyMediaTransfer(sender, receiver, room, nativeFetch) {
+  const image = await (await nativeFetch('./photo.png')).arrayBuffer();
+  const slides = await (await nativeFetch('./slides.pptx')).arrayBuffer();
+  const video = await (videoFixture ??= recordBeamVideo());
+  const decoded = new Map();
+  const stop = receiver.subscribe(message => {
+    const payload = message.payload;
+    if (message.type !== 'BEAM_PAYLOAD' || !payload?.fileData || !payload.fileName) return;
+    return (async () => {
+      const { fileData, fileName, pageNumber } = payload;
+      let opened;
+      if (fileName.endsWith('.pptx')) {
+        const deck = await openPptx(fileData);
+        opened = deck.slides.length === 2 && pageNumber === 2;
+      } else if (fileName.endsWith('.png')) {
+        const bitmap = await createImageBitmap(new Blob([fileData], { type: 'image/png' }));
+        opened = bitmap.width > 0 && bitmap.height > 0;
+        bitmap.close();
+      } else {
+        const element = document.createElement('video');
+        const url = URL.createObjectURL(new Blob([fileData], { type: 'video/webm' }));
+        try {
+          await new Promise((resolve, reject) => {
+            element.onloadeddata = resolve;
+            element.onerror = () => reject(new Error('Received video failed to decode'));
+            element.preload = 'auto';
+            element.src = url;
+          });
+          opened = element.videoWidth === 48 && element.videoHeight === 32;
+        } finally { URL.revokeObjectURL(url); }
+      }
+      decoded.set(fileName, { opened, hash: await computeSha256(fileData) });
+      if (!opened) throw new Error(`Received ${fileName} could not be displayed`);
+    })();
+  });
+  try {
+    const results = {};
+    for (const [fileName, buffer] of [['photo.png', image], ['clip.webm', video], ['slides.pptx', slides]]) {
+      const presentation = fileName.endsWith('.pptx');
+      const { mode } = await sender.sendDocument({ roomCode: room, buffer, title: fileName, fileName,
+        pageNumber: presentation ? 2 : 1, totalPages: presentation ? 2 : 1, theme: 'paper' });
+      const result = decoded.get(fileName);
+      if (mode !== 'p2p' || !result?.opened || result.hash !== await computeSha256(buffer)) {
+        throw new Error(`Unexpected Beam delivery for ${fileName}`);
+      }
+      results[fileName] = { mode, bytes: buffer.byteLength, opened: true };
+    }
+    return results;
+  } finally { stop(); }
 }
 
 async function verifyInkRecovery(sender, receiver, channels, room) {

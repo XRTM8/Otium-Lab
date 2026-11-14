@@ -46,7 +46,7 @@ export async function dispatchReceiverBeamMessage(
       const isNewSession = !existingPeerSession || existingPeerSession !== message.sessionId;
       if (isNewSession) {
         host.setPeerSessionId(message.sessionId);
-        host.closeRtc();
+        if (transport !== 'p2p') host.closeRtc();
         host.resetTransfer();
         host.resetRtcAttempt();
         host.setPeerDocument(null, null, null);

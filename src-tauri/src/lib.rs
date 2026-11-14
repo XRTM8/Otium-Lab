@@ -6,6 +6,7 @@ use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::State;
 
 mod vault_ink_pdf;
+mod beam_lan;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -254,6 +255,7 @@ pub fn run() {
 
   let builder = tauri::Builder::default()
     .manage(otium_core::PageSearchCache::default())
+    .manage(beam_lan::LanBeam::default())
     .plugin(tauri_plugin_opener::init());
 
   #[cfg(not(mobile))]
@@ -270,6 +272,10 @@ pub fn run() {
       get_rust_engine_status,
       rust_parse_pptx,
       rust_generate_beam_qr,
+      beam_lan::beam_lan_listen,
+      beam_lan::beam_lan_connect,
+      beam_lan::beam_lan_send,
+      beam_lan::beam_lan_stop,
       rust_clean_document_image,
       rust_stitch_id_cards,
       rust_search_document_pages_arabic,

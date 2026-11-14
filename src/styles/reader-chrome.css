@@ -332,6 +332,7 @@ body[data-has-selection='true'] .teacher-dock {
 
 .reader-viewport {
   scroll-behavior: smooth;
+  overflow-anchor: none;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   transform: translateZ(0);
@@ -340,6 +341,10 @@ body[data-has-selection='true'] .teacher-dock {
     color-mix(in srgb, var(--accent) 5%, transparent) 0%,
     transparent 60%
   );
+}
+
+.reader-viewport[data-reader-resizing="true"] {
+  transition: none !important;
 }
 
 /* Android webview suppresses its own context menu; the in-app action bar

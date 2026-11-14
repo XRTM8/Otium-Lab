@@ -19,6 +19,8 @@ import {
 import type { RelayAttachmentPayload } from './beamRelayTransport';
 import { prepareBeamDocument, type BeamDocumentAttempt } from './beamDocumentCheckpoint';
 import { BeamDirectInterrupted } from './beamWebRtcTransfer';
+import { isBeamMediaFile, validateFile } from '../../media/media';
+import type { BeamDirectChannel } from './beamLanTransport';
 
 export interface BeamSignalingState {
   documentCheckpoint?: BeamDocumentAttempt['checkpoint'];
@@ -202,9 +204,10 @@ export interface BeamSendDocumentHost {
   setSendingDocument: (val: boolean) => void;
   startSender: (room: string, force: boolean) => void;
   isRtcSupported: () => boolean;
+  isLan?: () => boolean;
   updateTransfer: (patch: Partial<BeamTransferState>) => void;
   waitForPeer: (timeoutMs: number) => Promise<boolean>;
-  waitForDataChannel: (timeoutMs: number) => Promise<RTCDataChannel | null>;
+  waitForDataChannel: (timeoutMs: number) => Promise<BeamDirectChannel | null>;
   sendFileOverDataChannel: (options: BeamDocumentAttempt) => Promise<void>;
   sendFileOverRelay: (options: BeamDocumentAttempt) => Promise<void>;
 }
@@ -216,11 +219,17 @@ export async function executeBeamSendDocument(
   if (host.isSendingDocument()) {
     throw new BeamSendError('busy', 'Another document transfer is already in progress.');
   }
-  if (!isPdfHeader(options.buffer)) {
+  const { fileName } = options;
+  const media = fileName !== undefined;
+  if (media && (!isBeamMediaFile(fileName) ||
+      validateFile({ name: fileName, size: options.buffer.byteLength }))) {
+    throw new BeamSendError('invalid-document', 'This image, video, or presentation format or size is unsupported.');
+  }
+  if (!media && !isPdfHeader(options.buffer)) {
     throw new BeamSendError('invalid-document', 'The selected file does not look like a valid PDF.');
   }
   if (options.buffer.byteLength <= 0 || options.buffer.byteLength > MAX_FILE_BYTES) {
-    throw new BeamSendError('too-large', 'The PDF exceeds the maximum Beam transfer size.');
+    throw new BeamSendError('too-large', 'The file exceeds the 300 MB Beam transfer limit.');
   }
   const room = formatRoomCode(options.roomCode);
   if (!room) {
@@ -280,12 +289,19 @@ export async function executeBeamSendDocument(
           assertActive();
           if (error instanceof BeamSendError && error.code === 'invalid-document') throw error;
           if (retry === 0 && (error instanceof BeamDirectInterrupted || error instanceof BeamTransferTimeout)) continue;
+          if (media || host.isLan?.()) throw error;
           console.warn('P2P transfer failed, trying cloud relay:', error);
           break;
         }
       }
     }
 
+    if (host.isLan?.()) {
+      throw new BeamSendError('peer-unreachable', 'The local connection closed. Reconnect on the same Wi-Fi and retry the file.');
+    }
+    if (media) {
+      throw new BeamSendError('peer-unreachable', 'Media requires a direct connection. Keep both devices on the same Wi-Fi or hotspot and update Otium Lab on both devices.');
+    }
     if (options.buffer.byteLength > RELAY_MAX_BYTES) {
       throw new BeamSendError(
         'too-large',
@@ -338,14 +354,14 @@ export async function waitUntilBeamPeerConnected(
 }
 
 export async function waitForOpenBeamDataChannel(params: {
-  getDataChannel: () => RTCDataChannel | null;
+  getDataChannel: () => BeamDirectChannel | null;
   getConnectedRoom: () => string | null;
   getRole: () => 'receiver' | 'sender' | null;
   hasRtcPeer: () => boolean;
   isPeerConnected: () => boolean;
   initiateRtc: () => Promise<void>;
   timeoutMs: number;
-}): Promise<RTCDataChannel | null> {
+}): Promise<BeamDirectChannel | null> {
   const started = Date.now();
   while (Date.now() - started < params.timeoutMs && params.getConnectedRoom() && params.getRole() === 'sender') {
     const channel = params.getDataChannel();

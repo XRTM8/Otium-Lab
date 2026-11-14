@@ -17,6 +17,7 @@ import { formatBeamBytes } from './beamUtils';
 export const BeamSendTab: React.FC<{
   lang: Language;
   reader: ReaderController;
+  mediaFile?: File | null;
   beamFileInputRef: React.RefObject<HTMLInputElement | null>;
   isScanningCamera: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -33,9 +34,12 @@ export const BeamSendTab: React.FC<{
   targetRoomCode: string;
   isSending: boolean;
   sendSuccess: boolean;
+  local?: boolean;
+  pairingBusy?: boolean;
 }> = ({
   lang,
   reader,
+  mediaFile,
   beamFileInputRef,
   isScanningCamera,
   videoRef,
@@ -52,19 +56,21 @@ export const BeamSendTab: React.FC<{
   targetRoomCode,
   isSending,
   sendSuccess,
+  local,
+  pairingBusy,
 }) => (
   <div className="p-5 space-y-3.5">
-    {reader.doc ? (
+    {reader.doc || mediaFile ? (
       <div className="px-3.5 py-2.5 rounded-2xl bg-hover-subtle border border-line flex items-center justify-between">
         <div className="min-w-0 flex-1">
           <div className="text-[10px] text-accent font-semibold uppercase tracking-wider">
             {lang === 'ar' ? 'الملف الجاهز للبث' : 'Ready Document'}
           </div>
-          <div className="text-xs font-bold truncate text-ink">{reader.docTitle}</div>
+          <div className="text-xs font-bold truncate text-ink">{mediaFile?.name ?? reader.docTitle}</div>
         </div>
-        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent shrink-0">
+        {reader.doc && <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent shrink-0">
           {lang === 'ar' ? `ص ${reader.currentPage}` : `p. ${reader.currentPage}`}
-        </span>
+        </span>}
       </div>
     ) : (
       <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2 text-start">
@@ -74,8 +80,8 @@ export const BeamSendTab: React.FC<{
         </div>
         <p className="text-[11px] text-ink-muted leading-tight">
           {lang === 'ar'
-            ? 'اختر ملف الملزمة لبثها للسبورة، أو اتصل كريموت تحكم إذا كانت معروضة بالفعل على شاشة السبورة:'
-            : 'Pick a PDF file to beam to smartboard, or pair as remote if already displayed on screen:'}
+            ? 'اختر PDF أو صورة أو فيديو أو عرض PowerPoint، أو اربط الهاتف للتحكم بملف مفتوح على الشاشة.'
+            : 'Choose a PDF, image, video, or PowerPoint presentation, or pair to control a file already on screen.'}
         </p>
         <button
           type="button"
@@ -83,7 +89,7 @@ export const BeamSendTab: React.FC<{
           className="w-full py-2 px-3 rounded-xl bg-accent text-on-accent font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs hover:bg-accent-strong transition-all cursor-pointer"
         >
           <FileUp className="w-3.5 h-3.5" />
-          <span>{lang === 'ar' ? '📂 اختيار ملف الملزمة وبثها الآن' : '📂 Select PDF & Beam to Board'}</span>
+          <span>{lang === 'ar' ? 'اختيار ملف للبث' : 'Choose file to beam'}</span>
         </button>
       </div>
     )}
@@ -94,8 +100,11 @@ export const BeamSendTab: React.FC<{
           ١
         </span>
         <span className="text-ink-muted leading-tight">
-          {lang === 'ar' ? 'على السبورة: افتح الرابط ' : 'On Board: Open '}
-          <strong className="text-accent font-mono font-bold">xrtm8.github.io/Otium-Lab/</strong>
+          {local ? (lang === 'ar' ? 'على الشاشة افتح Otium المثبّت واختر «استقبال» ثم «شبكة محلية».' :
+            'On the screen, open installed Otium and choose Receiver, then Local network.') : <>
+            {lang === 'ar' ? 'على السبورة افتح الرابط ' : 'On the board, open '}
+            <strong className="text-accent font-mono font-bold">xrtm8.github.io/Otium-Lab/</strong>
+          </>}
         </span>
       </div>
       <div className="flex items-start gap-1.5">
@@ -138,7 +147,7 @@ export const BeamSendTab: React.FC<{
       <div className="text-[10px] text-amber-500 text-center font-medium">{cameraError}</div>
     )}
 
-    {recentRooms.length > 0 && !isScanningCamera && (
+    {!local && recentRooms.length > 0 && !isScanningCamera && (
       <div className="space-y-1">
         <div className="flex items-center gap-1 text-[10px] text-ink-muted">
           <History className="w-3 h-3" />
@@ -198,17 +207,23 @@ export const BeamSendTab: React.FC<{
     <div className="space-y-2">
       <input
         type="text"
+        dir="ltr"
         value={targetRoomCode}
-        onChange={(e) => setTargetRoomCode(e.target.value.toUpperCase())}
-        placeholder="OTM-XXXXXXXXXXXX"
-        className="w-full px-3 py-2.5 rounded-2xl bg-hover border border-line font-mono text-sm font-bold text-center tracking-widest text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+        onChange={(e) => setTargetRoomCode(e.target.value)}
+        placeholder={local ? 'OTIUM-LAN:…' : 'OTM-XXXXXXXXXXXX'}
+        aria-label={lang === 'ar' ? 'رمز الربط' : 'Pairing code'}
+        autoCapitalize="none" autoComplete="off" spellCheck={false}
+        className="w-full px-3 py-2.5 rounded-2xl bg-hover border border-line font-mono text-sm font-bold text-center text-ink focus:outline-none focus:ring-2 focus:ring-accent"
       />
+      {pairingBusy && <p role="status" className="text-xs text-ink-muted">
+        {lang === 'ar' ? 'جارٍ الاتصال بالشاشة على الشبكة المحلية…' : 'Connecting to the screen on the local network…'}
+      </p>}
       <div className="flex flex-col gap-2">
-        {reader.doc ? (
+        {reader.doc || mediaFile ? (
           <button
             type="button"
             onClick={() => void handleBeamDocument()}
-            disabled={isSending || !targetRoomCode.trim()}
+            disabled={isSending || pairingBusy || !targetRoomCode.trim()}
             className="w-full py-3 px-3 rounded-2xl bg-accent text-on-accent font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-accent-strong active:scale-98 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer"
           >
             {isSending ? (
@@ -227,32 +242,25 @@ export const BeamSendTab: React.FC<{
             </span>
           </button>
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => beamFileInputRef.current?.click()}
-              disabled={isSending}
-              className="w-full py-2.5 px-3 rounded-2xl bg-accent text-on-accent font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-accent-strong active:scale-98 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer"
-            >
-              <FileUp className="w-3.5 h-3.5" />
-              <span>{lang === 'ar' ? '📂 اختيار ملف وبثه للسبورة' : '📂 Select PDF & Beam to Board'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handlePairAsRemote()}
-              disabled={!targetRoomCode.trim()}
-              className="w-full py-2 px-3 rounded-2xl bg-hover border border-line hover:border-accent/40 text-ink text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-accent/15 active:scale-98 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer"
-            >
-              <Radio className="w-3.5 h-3.5 text-accent" />
-              <span>
-                {lang === 'ar'
-                  ? '📱 اقتران كريموت فقط (إذا كانت الملزمة مفتوحة بالسبورة)'
-                  : '📱 Pair as Remote Only (if PDF is on screen)'}
-              </span>
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => handlePairAsRemote()}
+            disabled={pairingBusy || !targetRoomCode.trim()}
+            className="w-full py-2 px-3 rounded-2xl bg-hover border border-line hover:border-accent/40 text-ink text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-accent/15 active:scale-98 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer"
+          >
+            <Radio className="w-3.5 h-3.5 text-accent" />
+            {lang === 'ar' ? 'اتصال للتحكم بملف مفتوح' : 'Pair as remote'}
+          </button>
         )}
+        {(reader.doc || mediaFile) && <button
+          type="button"
+          onClick={() => beamFileInputRef.current?.click()}
+          disabled={isSending}
+          className="w-full py-2 px-3 rounded-xl bg-hover border border-line text-ink font-semibold text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"
+        >
+          <FileUp className="w-3.5 h-3.5" />
+          {lang === 'ar' ? 'بث ملف آخر' : 'Beam another file'}
+        </button>}
       </div>
     </div>
   </div>

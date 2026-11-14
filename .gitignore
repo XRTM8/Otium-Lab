@@ -42,3 +42,5 @@ src-tauri/target
 
 # OCR engine assets (copied from node_modules by scripts/copy-ocr-assets.mjs)
 /public/tesseract
+
+.codex-attachments/

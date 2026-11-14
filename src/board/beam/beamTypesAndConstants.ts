@@ -41,6 +41,7 @@ export interface IncomingFileState {
   sessionId?: string;
   title: string;
   name: string;
+  fileName?: string;
   size: number;
   sha256?: string;
   pageNumber: number;
@@ -61,6 +62,7 @@ export interface SendDocumentOptions {
   roomCode: string;
   buffer: ArrayBuffer;
   title: string;
+  fileName?: string;
   pageNumber: number;
   totalPages: number;
   theme: BeamPayload['theme'];

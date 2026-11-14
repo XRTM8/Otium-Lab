@@ -17,7 +17,7 @@ export async function prepareBeamDocument(
   session: string | null, options: SendDocumentOptions, previous?: DocumentCheckpoint,
 ): Promise<DocumentCheckpoint> {
   const sha256 = await computeSha256(options.buffer);
-  const metadata = JSON.stringify([options.title, options.pageNumber, options.totalPages, options.theme, options.buffer.byteLength]);
+  const metadata = JSON.stringify([options.title, options.fileName, options.pageNumber, options.totalPages, options.theme, options.buffer.byteLength]);
   if (previous?.session === session && previous.metadata === metadata &&
       (sha256 ? previous.sha256 === sha256 : previous.buffer === options.buffer)) return previous;
   return {

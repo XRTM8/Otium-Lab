@@ -17,6 +17,15 @@ export function describeFile(name: string) {
   return { kind, mime, ext };
 }
 
+export const BEAM_MEDIA_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,.avif,.mp4,.m4v,.webm,.mov,.mkv,.ogv,.pptx,.ppsx';
+
+export function isBeamMediaFile(name: string): boolean {
+  const { kind } = describeFile(name);
+  return name.length <= 255 && !name.includes('/') && !name.includes('\\') &&
+    !Array.from(name).some(character => character.charCodeAt(0) < 32) &&
+    (kind === 'image' || kind === 'presentation' || kind === 'video');
+}
+
 export function validateFile(file: Pick<File, 'name' | 'size'>): string | null {
   const { kind } = describeFile(file.name);
   if (!file.size) return 'الملف فارغ.';

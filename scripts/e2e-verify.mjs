@@ -10,6 +10,7 @@ import { build } from 'vite';
 const DIST_DIR = path.resolve(process.env.OTIUM_E2E_DIST || 'dist');
 const liveOfflineAudit = process.argv.includes('--live-offline');
 const beamOnly = process.argv.includes('--beam-only');
+const beamUiOnly = process.argv.includes('--beam-ui-only');
 const scannerFullResolution = process.argv.includes('--scanner-full-resolution');
 if (!liveOfflineAudit && !beamOnly && !fs.existsSync(DIST_DIR)) {
   console.error('[e2e-verify] dist/ does not exist. Build the web app first.');
@@ -316,12 +317,15 @@ if (!liveOfflineAudit) {
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'otium-e2e-'));
 const testPdfPath = path.join(tempDir, 'test-sample.pdf');
 const touchPdfPath = path.join(tempDir, 'touch-sample.pdf');
+const rotationPdfPath = path.join(tempDir, 'rotation-sample.pdf');
 const testPptxPath = path.join(tempDir, 'test-deck.pptx');
 const testOcrPngPath = path.join(tempDir, 'test-ocr-otium.png');
+const testWebmPath = path.join(tempDir, 'beam-clip.webm');
 const userDataDir = path.join(tempDir, 'browser-profile');
 
 fs.writeFileSync(testPdfPath, buildMinimalPdf());
 fs.writeFileSync(touchPdfPath, buildMinimalPdf(3));
+fs.writeFileSync(rotationPdfPath, buildMinimalPdf(12));
 fs.writeFileSync(testPptxPath, buildMinimalPptx());
 fs.writeFileSync(testOcrPngPath, buildTextPng(['HELLO', 'TIME']));
 fs.mkdirSync(userDataDir, { recursive: true });
@@ -336,6 +340,11 @@ const server = http.createServer((req, res) => {
   if (beamFixture && urlPath === '/beam-test/fixture.js') {
     res.writeHead(200, { 'Content-Type': MIME['.js'] });
     res.end(beamFixture);
+    return;
+  }
+  if (beamFixture && (urlPath === '/beam-test/photo.png' || urlPath === '/beam-test/slides.pptx')) {
+    res.writeHead(200);
+    res.end(fs.readFileSync(urlPath.endsWith('.png') ? testOcrPngPath : testPptxPath));
     return;
   }
   if (!urlPath.startsWith('/Otium-Lab')) {
@@ -416,7 +425,7 @@ if (!cdpPort) {
 
 let allPassed = true;
 
-async function runAudit(name, mobileMode, scenarioFn, url = appUrl, expectsWasm = false) {
+async function runAudit(name, mobileMode, scenarioFn, url = appUrl, expectsWasm = false, startupScript) {
   const created = await (await fetch(`http://127.0.0.1:${cdpPort}/json/new?about:blank`, { method: 'PUT' })).json();
   const cdp = new CdpClient(created.webSocketDebuggerUrl);
   await cdp.connect();
@@ -439,6 +448,7 @@ async function runAudit(name, mobileMode, scenarioFn, url = appUrl, expectsWasm 
       });
     }
     await cdp.send('Emulation.setEmitTouchEventsForMouse', { enabled: mobileMode });
+    if (startupScript) await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: startupScript });
     const navigation = await cdp.send('Page.navigate', { url });
     if (navigation.errorText) throw new Error(`Navigation failed: ${navigation.errorText}`);
     await wait(1600);
@@ -782,6 +792,133 @@ async function auditLocalBuild() {
     return { before, spreading, closing, after, afterScroll, passed };
   });
 
+  await runAudit('MOBILE PDF ROTATION PRESERVES PAGE AND READING POSITION', true, async (cdp) => {
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    const doc = await cdp.send('DOM.getDocument', { depth: -1 });
+    const input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' });
+    await cdp.send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [rotationPdfPath] });
+    const progress = `document.querySelector('[role="progressbar"][aria-valuemax="12"]')`;
+    await waitForBrowser(cdp, `!!${progress} && !!document.querySelector('[data-page-slot="7"]')`, 'multi-page rotation fixture');
+    const state = () => cdp.evalJs(`(() => {
+      const viewport = document.querySelector('.reader-viewport');
+      const rect = document.querySelector('[data-page-slot="7"]').getBoundingClientRect();
+      const readingY = viewport.getBoundingClientRect().top + viewport.clientHeight * 0.38;
+      return {
+        page: Number(${progress}.getAttribute('aria-valuenow')),
+        y: (readingY - rect.top) / rect.height,
+        width: rect.width,
+      };
+    })()`);
+    const scrollToFraction = (page, fraction) => cdp.evalJs(`(() => {
+      const viewport = document.querySelector('.reader-viewport');
+      const rect = document.querySelector('[data-page-slot="${page}"]').getBoundingClientRect();
+      viewport.scrollBy({ top: rect.top + rect.height * ${fraction} - viewport.getBoundingClientRect().top - viewport.clientHeight * 0.38, behavior: 'instant' });
+    })()`);
+    const rotate = async (width, height, type, angle) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width, height, deviceScaleFactor: 2, mobile: true, screenOrientation: { type, angle },
+      });
+      await wait(500);
+    };
+
+    await scrollToFraction(7, 0.48);
+    await waitForBrowser(cdp, `${progress}.getAttribute('aria-valuenow') === '7'`, 'page seven selected');
+    const before = await state();
+    await rotate(844, 390, 'landscapePrimary', 90);
+    const landscape = await state();
+    await rotate(390, 844, 'portraitPrimary', 0);
+    const portrait = await state();
+    await dispatchTouch(cdp, 'touchStart', [142, 380]);
+    await dispatchTouch(cdp, 'touchStart', [248, 380, 1]);
+    await dispatchTouch(cdp, 'touchMove', [105, 380], [285, 380, 1]);
+    await wait(110);
+    await dispatchTouch(cdp, 'touchEnd');
+    await wait(110);
+    await scrollToFraction(7, 0.48);
+    await wait(80);
+    const zoomed = await state();
+    await rotate(844, 390, 'landscapePrimary', 90);
+    const zoomedLandscape = await state();
+    await rotate(390, 844, 'portraitPrimary', 0);
+    const zoomedPortrait = await state();
+    await scrollToFraction(8, 0.3);
+    await waitForBrowser(cdp, `${progress}.getAttribute('aria-valuenow') === '8'`, 'navigation after rotation');
+    const sameReadingPosition = (a, b) => a.page === b.page && Math.abs(a.y - b.y) < 0.025;
+    const passed = landscape.width > before.width * 1.4 && Math.abs(portrait.width - before.width) <= 2 &&
+      [landscape, portrait].every(snapshot => sameReadingPosition(snapshot, before)) &&
+      zoomed.width > portrait.width * 1.08 && [zoomedLandscape, zoomedPortrait].every(snapshot =>
+        Math.abs(snapshot.width - zoomed.width) <= 2 && sameReadingPosition(snapshot, zoomed));
+    if (!passed) allPassed = false;
+    return { before, landscape, portrait, zoomed, zoomedLandscape, zoomedPortrait, passed };
+  });
+
+  await auditBeamUi();
+  await auditScanner();
+}
+
+async function auditBeamUi() {
+  const localBeamSignaling = `
+    window.EventSource = undefined;
+    const fetchNetwork = window.fetch.bind(window);
+    window.fetch = (resource, options) => /^https:\\/\\/ntfy\\./.test(String(resource))
+      ? Promise.resolve(new Response(''))
+      : fetchNetwork(resource, options);
+  `;
+  await runAudit('BEAM UI SENDS FILES AND CLOSES BOTH SHEETS', false, async (receiver) => {
+    const beamTitle = `[...document.querySelectorAll('h3')].some(h => /البث الذكي للسبورة|Smart Beam/.test(h.textContent))`;
+    const room = 'OTM-UI1234567890';
+    await waitForBrowser(receiver, beamTitle, 'receiver sheet');
+    await runAudit('BEAM PHONE SENDER', true, async (sender) => {
+      const selectBeamFile = async file => {
+        await waitForBrowser(sender, `(${beamTitle}) && document.querySelector('input[placeholder="OTM-XXXXXXXXXXXX"]')?.value === '${room}'`, 'sender room code');
+        const root = await sender.send('DOM.getDocument', { depth: -1 });
+        const input = await sender.send('DOM.querySelector', { nodeId: root.root.nodeId, selector: '[role="dialog"] input[type=file][accept*=".ppsx"]' });
+        await sender.send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [file] });
+      };
+      const reopenSendSheet = async () => {
+        await sender.evalJs(`document.querySelector('button[aria-label="بث الملف إلى الشاشة"]')?.click()`);
+        await waitForBrowser(sender, beamTitle, 'reopened sender sheet');
+        await sender.evalJs(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'بث للسبورة')?.click()`);
+      };
+      await selectBeamFile(testOcrPngPath);
+      try {
+        await waitForBrowser(receiver, `document.querySelector('.media-stage img')?.naturalWidth > 0 && !(${beamTitle})`, 'picture opened and receiver sheet closed');
+      } catch (error) {
+        console.error('Beam sender UI:', await sender.evalJs('document.body.innerText.slice(-1800)'));
+        console.error('Beam receiver UI:', await receiver.evalJs('document.body.innerText.slice(-1800)'));
+        throw error;
+      }
+      await waitForBrowser(sender, `! (${beamTitle}) && !!document.querySelector('.media-stage img')`, 'sender sheet closed after open confirmation');
+      await reopenSendSheet();
+      await selectBeamFile(testWebmPath);
+      await receiver.send('Page.bringToFront');
+      try {
+        await waitForBrowser(receiver, `!!document.querySelector('.media-stage video')?.muted && document.querySelector('.media-stage video')?.currentTime > 0.05`, 'video automatically started muted on the receiving screen');
+      } catch (error) {
+        console.error('Beam sender video:', await sender.evalJs('document.body.innerText.slice(-1200)'));
+        console.error('Beam receiver video:', await receiver.evalJs(`(() => {
+          const video = document.querySelector('.media-stage video');
+          return { text: document.body.innerText.slice(-1200), muted: video?.muted,
+            ready: video?.readyState, paused: video?.paused, time: video?.currentTime, duration: video?.duration };
+        })()`));
+        throw error;
+      }
+      await waitForBrowser(sender, `!(${beamTitle}) && !!document.querySelector('.media-stage video')`, 'video opened and sender sheet closed');
+      await reopenSendSheet();
+      await selectBeamFile(testPptxPath);
+      await waitForBrowser(receiver, `document.body.innerText.includes('First Slide')`, 'presentation replaced image on receiver');
+      await waitForBrowser(sender, `!(${beamTitle}) && document.body.innerText.includes('First Slide')`, 'presentation ready on sender');
+      await sender.evalJs(`window.dispatchEvent(new CustomEvent('otium:volume-page', { detail: 'next' }))`);
+      await waitForBrowser(receiver, `document.body.innerText.includes('Second Slide')`, 'receiver followed volume page command');
+      await sender.evalJs(`window.dispatchEvent(new CustomEvent('otium:volume-page', { detail: 'prev' }))`);
+      await waitForBrowser(receiver, `document.body.innerText.includes('First Slide')`, 'receiver followed reverse volume page command');
+      return { imageOpened: true, videoPlayed: true, presentationOpened: true, senderClosed: true, volumeSlideSync: true };
+    }, `${appUrl}#/beam?room=${room}&role=send`, false, localBeamSignaling);
+    return { receiverClosed: true, receivedImageVideoAndSlides: true };
+  }, `${appUrl}#/beam?room=OTM-UI1234567890&role=receive`, false, localBeamSignaling);
+}
+
+async function auditScanner() {
   await runAudit('MOBILE + SCANNER + WASM + REAL TESSERACT OCR', true, async (cdp) => {
     const res = {};
     res.hasOverflow = await cdp.evalJs(`document.documentElement.scrollWidth > window.innerWidth + 2`);
@@ -1105,10 +1242,15 @@ async function auditLocalBuild() {
 try {
   if (liveOfflineAudit) await runAudit('LIVE PAGES OFFLINE RELOAD', false, auditOffline);
   else {
-    await runAudit('NATIVE WEBRTC BEAM RECOVERY', false,
-      cdp => cdp.evalJs("import('./fixture.js').then(module => module.runBeamRecovery())"),
+    await runAudit('NATIVE WEBRTC BEAM RECOVERY', false, async (cdp) => {
+      const fixture = await cdp.evalJs("import('./fixture.js').then(async module => ({ ...await module.runBeamRecovery(), videoBase64: await module.makeBeamVideoBase64() }))");
+      const { videoBase64, ...results } = fixture;
+      fs.writeFileSync(testWebmPath, Buffer.from(videoBase64, 'base64'));
+      return results;
+    },
       `http://127.0.0.1:${port}/beam-test/`);
-    if (!beamOnly) {
+    if (beamUiOnly) await auditBeamUi();
+    else if (!beamOnly) {
       await auditLocalBuild();
       await runAudit('SCHEDULED THEME STARTUP AND OFFLINE RELOAD', false, auditScheduledTheme);
     }
@@ -1131,4 +1273,5 @@ if (!allPassed) {
 console.log(liveOfflineAudit
   ? '\n[e2e-verify] LIVE OFFLINE RELOAD PASSED'
   : beamOnly ? '\n[e2e-verify] NATIVE WEBRTC BEAM RECOVERY PASSED'
+    : beamUiOnly ? '\n[e2e-verify] BEAM TRANSPORT AND UI PASSED'
     : '\n[e2e-verify] ALL BEAM + DESKTOP + MOBILE + WASM + REAL OCR E2E VERIFICATIONS PASSED');

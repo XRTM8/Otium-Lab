@@ -29,7 +29,6 @@ describe('useReaderViewportAndZoom', () => {
       const docIdRef = useRef('doc-vp-1');
       const pageSaveTimerRef = useRef<number | null>(null);
       const actionsRef = useRef({
-        scrollToRenderedPage: vi.fn(),
         goToNextPage: vi.fn(),
         goToPrevPage: vi.fn(),
       });

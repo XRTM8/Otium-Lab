@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ViewMode } from '../core/types';
 import { markScrollActivity } from '../core/reader/renderScheduler';
-import { computeOptimalPageScale } from '../core/reader/device';
+import { READER_READING_LINE } from '../core/reader/readingPosition';
 import { triggerHaptic } from '../core/utils/haptics';
 
 interface UseReaderWorkspaceSyncOptions {
@@ -12,13 +12,13 @@ interface UseReaderWorkspaceSyncOptions {
   numPages: number;
   currentPage: number;
   zoom: number;
-  setZoom: (zoom: number) => void;
   viewMode: ViewMode;
   basePageSize: { width: number; height: number } | null;
   isImmersive: boolean;
   handlePageVisible: (page: number) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   touchZoomActiveRef: React.RefObject<boolean>;
+  viewportResizingRef: React.RefObject<boolean>;
   scrollToPage: (page: number) => void;
 }
 
@@ -28,13 +28,13 @@ export function useReaderWorkspaceSync({
   numPages,
   currentPage,
   zoom,
-  setZoom,
   viewMode,
   basePageSize,
   isImmersive,
   handlePageVisible,
   scrollContainerRef,
   touchZoomActiveRef,
+  viewportResizingRef,
   scrollToPage,
 }: UseReaderWorkspaceSyncOptions) {
   const [compactLandscape, setCompactLandscape] = useState(false);
@@ -117,7 +117,7 @@ export function useReaderWorkspaceSync({
 
     const measure = () => {
       scrollFrameRef.current = null;
-      if (numPages === 0 || touchZoomActiveRef.current) return;
+      if (numPages === 0 || touchZoomActiveRef.current || viewportResizingRef.current) return;
 
       const approxSlotHeight = Math.max(100, (basePageSize?.height || 842) * zoom + 32);
       const estimatedPage = Math.max(
@@ -126,7 +126,7 @@ export function useReaderWorkspaceSync({
       );
 
       const containerRect = container.getBoundingClientRect();
-      const readingLine = containerRect.top + containerRect.height * 0.38;
+      const readingLine = containerRect.top + container.clientHeight * READER_READING_LINE;
       let bestPage = lastScrollPageRef.current;
       let bestDistance = Number.POSITIVE_INFINITY;
 
@@ -168,7 +168,7 @@ export function useReaderWorkspaceSync({
 
     const onScroll = () => {
       markScrollActivity();
-      if (touchZoomActiveRef.current) return;
+      if (touchZoomActiveRef.current || viewportResizingRef.current) return;
       setShowScrubberPill((prev) => (prev ? prev : true));
       if (scrubberTimeoutRef.current !== null) {
         window.clearTimeout(scrubberTimeoutRef.current);
@@ -189,7 +189,7 @@ export function useReaderWorkspaceSync({
         scrollFrameRef.current = null;
       }
     };
-  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef, touchZoomActiveRef]);
+  }, [viewMode, doc, currentPage, numPages, basePageSize, zoom, handlePageVisible, scrollContainerRef, touchZoomActiveRef, viewportResizingRef]);
 
   useEffect(() => {
     if (isImmersive || settledPage === currentPage) return;
@@ -206,37 +206,6 @@ export function useReaderWorkspaceSync({
       }
     };
   }, []);
-
-  useLayoutEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !doc || typeof ResizeObserver === 'undefined') return;
-    let previousWidth = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const observer = new ResizeObserver(() => {
-      if (container.closest('[data-board-resizing="true"]')) return;
-      const width = container.clientWidth;
-      if (!width || Math.abs(width - previousWidth) < 24) return;
-      previousWidth = width;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (!basePageSize) return;
-        setZoom(
-          computeOptimalPageScale(
-            basePageSize.width,
-            basePageSize.height,
-            container.clientWidth,
-            container.clientHeight,
-            viewMode
-          )
-        );
-      }, 80);
-    });
-    observer.observe(container);
-    return () => {
-      observer.disconnect();
-      clearTimeout(timer);
-    };
-  }, [doc, viewMode, basePageSize, scrollContainerRef, setZoom]);
 
   return {
     compactLandscape,

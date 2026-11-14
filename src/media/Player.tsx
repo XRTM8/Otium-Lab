@@ -3,10 +3,11 @@ import type { KeyboardEvent } from 'react';
 import { Play, Pause, Volume2, VolumeX, RotateCcw, RotateCw } from 'lucide-react';
 import { formatTime, mediaErrorMessage } from './media';
 
-export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, onPosition, lang = 'ar' }: {
+export function Player({ url, audio, frozen, autoPlay = false, onSize, onError, initialTime = 0, onPosition, lang = 'ar' }: {
   url?: string; audio?: boolean; frozen: boolean;
   onSize: (width: number, height: number) => void; onError: (message: string) => void;
   initialTime?: number; onPosition?: (position: number) => void;
+  autoPlay?: boolean;
   lang?: 'ar' | 'en';
 }) {
   const label = (ar: string, en: string) => lang === 'ar' ? ar : en;
@@ -14,7 +15,7 @@ export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, o
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(autoPlay);
   const [rate, setRate] = useState(1);
   const [buffering, setBuffering] = useState(true);
   useEffect(() => {
@@ -48,7 +49,7 @@ export function Player({ url, audio, frozen, onSize, onError, initialTime = 0, o
     else if (event.key.toLowerCase() === 'm') { event.preventDefault(); setMuted(value => !value); }
   };
   return <>
-    <video ref={media} src={url} playsInline preload="metadata" muted={muted} className={audio ? 'audio-element' : ''} tabIndex={frozen ? -1 : 0} aria-label={label('تشغيل المقطع، مسافة للإيقاف وأسهم للتقديم', 'Video: Space to play or pause, arrows to seek')} onKeyDown={keyboard} onClick={toggle}
+    <video ref={media} src={url} playsInline autoPlay={autoPlay && !frozen} preload="metadata" muted={muted} className={audio ? 'audio-element' : ''} tabIndex={frozen ? -1 : 0} aria-label={label('تشغيل المقطع، مسافة للإيقاف وأسهم للتقديم', 'Video: Space to play or pause, arrows to seek')} onKeyDown={keyboard} onClick={toggle}
       onLoadedMetadata={event => {
         const element = event.currentTarget;
         setDuration(Number.isFinite(element.duration) ? element.duration : 0);

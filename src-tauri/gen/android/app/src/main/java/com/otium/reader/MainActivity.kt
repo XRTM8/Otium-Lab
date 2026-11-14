@@ -18,6 +18,7 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -36,6 +37,8 @@ class MainActivity : TauriActivity() {
   private var appWebView: WebView? = null
   private var ttsBridge: AndroidTtsBridge? = null
   private var immersive = true
+  private var volumePageKeys = false
+  private val heldPageKeys = mutableSetOf<Int>()
 
   private val incomingDocuments by lazy { IncomingPdfStore(cacheDir) }
   private var pendingExportContent: String? = null
@@ -112,6 +115,26 @@ class MainActivity : TauriActivity() {
     notifyWebIncomingPdf()
   }
 
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    val direction = when (event.keyCode) {
+      KeyEvent.KEYCODE_VOLUME_DOWN -> "next"
+      KeyEvent.KEYCODE_VOLUME_UP -> "prev"
+      else -> return super.dispatchKeyEvent(event)
+    }
+    if (event.action == KeyEvent.ACTION_UP && heldPageKeys.remove(event.keyCode)) return true
+    val webView = appWebView
+    if (event.action != KeyEvent.ACTION_DOWN || !volumePageKeys || webView == null) {
+      return super.dispatchKeyEvent(event)
+    }
+    if (event.repeatCount == 0) {
+      heldPageKeys.add(event.keyCode)
+      webView.evaluateJavascript(
+        "window.dispatchEvent(new CustomEvent('otium:volume-page',{detail:'$direction'}))", null
+      )
+    }
+    return true
+  }
+
   /** Receives the active theme from the shared web UI. */
   private inner class ThemeBridge {
     @JavascriptInterface
@@ -124,6 +147,10 @@ class MainActivity : TauriActivity() {
 
   /** Lets the reader hide the Android status and navigation bars on a page tap. */
   private inner class UiBridge {
+    @JavascriptInterface
+    fun setVolumePageKeys(enabled: Boolean) {
+      runOnUiThread { volumePageKeys = enabled }
+    }
     @JavascriptInterface
     fun getDeviceType(): String {
       val mode = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK

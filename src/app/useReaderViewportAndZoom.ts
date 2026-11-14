@@ -24,7 +24,6 @@ interface UseReaderViewportAndZoomOptions {
   docIdRef: React.MutableRefObject<string>;
   pageSaveTimerRef: React.MutableRefObject<number | null>;
   actionsRef: React.MutableRefObject<{
-    scrollToRenderedPage: (pageNumber: number, offsetRatio?: number) => void;
     goToNextPage: () => void;
     goToPrevPage: () => void;
   }>;
@@ -88,6 +87,17 @@ export function useReaderViewportAndZoom({
     );
   }, [basePageSize, chromeInset, viewMode]);
 
+  const refitViewport = useCallback(() => {
+    const fit = getFitScale();
+    const previousFit = lastFitScaleRef.current || fit;
+    lastFitScaleRef.current = fit;
+    setFitScaleState(fit);
+    const minZoom = Math.max(0.04, Math.min(0.5, Number((fit * 0.5).toFixed(2))));
+    const maxZoom = Math.max(3.5, Number((fit * 4).toFixed(2)));
+    setZoom(current => Math.abs(current / previousFit - 1) <= 0.08
+      ? fit : Math.min(maxZoom, Math.max(minZoom, current)));
+  }, [getFitScale]);
+
   const getMinZoom = useCallback(() => {
     const fit = lastFitScaleRef.current || getFitScale();
     return Math.max(0.04, Math.min(0.5, Number((fit * 0.5).toFixed(2))));
@@ -149,48 +159,8 @@ export function useReaderViewportAndZoom({
   }, [zoom]);
 
   useEffect(() => {
-    let timer: number | null = null;
-    let stabilizeTimer: number | null = null;
-
-    const rescale = () => {
-      if (typeof window === 'undefined') return;
-      if (window.innerWidth <= 0 || window.innerHeight <= 0) return;
-      if (!doc || !basePageSize.width || !basePageSize.height) return;
-
-      const fit = computeOptimalPageScale(
-        basePageSize.width,
-        basePageSize.height,
-        scrollContainerRef.current?.clientWidth || window.innerWidth,
-        (scrollContainerRef.current?.clientHeight || window.innerHeight) - chromeInset,
-        viewMode
-      );
-      const previousFit = lastFitScaleRef.current;
-      lastFitScaleRef.current = fit;
-      setFitScaleState(fit);
-      const minZ = Math.max(0.04, Math.min(0.5, Number((fit * 0.5).toFixed(2))));
-      const maxZ = Math.max(3.5, Number((fit * 4.0).toFixed(2)));
-      setZoom((current) =>
-        current <= (previousFit || fit) * 1.08
-          ? fit
-          : Math.min(maxZ, Math.max(minZ, current))
-      );
-      window.requestAnimationFrame(() => {
-        actionsRef.current.scrollToRenderedPage(currentPageRef.current);
-      });
-    };
-
-    const handleResizeOrOrientation = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      if (stabilizeTimer !== null) window.clearTimeout(stabilizeTimer);
-      timer = window.setTimeout(rescale, 80);
-      stabilizeTimer = window.setTimeout(rescale, 320);
-    };
-
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        rescale();
-        window.setTimeout(rescale, 220);
-      } else if (document.visibilityState === 'hidden') {
+      if (document.visibilityState === 'hidden') {
         stopTts();
         const activeDocId = docIdRef.current;
         const activePage = currentPageRef.current;
@@ -215,20 +185,14 @@ export function useReaderViewportAndZoom({
       }
     };
 
-    window.addEventListener('resize', handleResizeOrOrientation);
-    window.addEventListener('orientationchange', handleResizeOrOrientation);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('pagehide', handlePageHide);
 
     return () => {
-      if (timer !== null) window.clearTimeout(timer);
-      if (stabilizeTimer !== null) window.clearTimeout(stabilizeTimer);
-      window.removeEventListener('resize', handleResizeOrOrientation);
-      window.removeEventListener('orientationchange', handleResizeOrOrientation);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [doc, basePageSize, chromeInset, viewMode, actionsRef, currentPageRef, docIdRef, pageSaveTimerRef]);
+  }, [currentPageRef, docIdRef, pageSaveTimerRef]);
 
   const { resetWheelTurnAccum } = useReaderWheelNavigation({
     doc,
@@ -386,6 +350,7 @@ export function useReaderViewportAndZoom({
     lastFitScaleRef,
     scrollContainerRef,
     getFitScale,
+    refitViewport,
     getMinZoom,
     getMaxZoom,
     renderFitScale,

@@ -23,7 +23,7 @@ export const BeamOfflineTab: React.FC<{
     <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs">
       <WifiOff className="w-4 h-4 shrink-0" />
       <span className="font-semibold">
-        {lang === 'ar' ? 'يعمل التطبيق والسبورة 100% بدون إنترنت' : 'Otium works 100% offline'}
+        {lang === 'ar' ? 'افتح الملفات الموجودة على هذا الجهاز' : 'Open files stored on this device'}
       </span>
     </div>
 
@@ -79,6 +79,7 @@ export const BeamOfflineTab: React.FC<{
 export const BeamRemoteTab: React.FC<{
   lang: Language;
   reader: ReaderController;
+  mediaFile?: File | null;
   isReceiverAcknowledged: boolean;
   peerLeft: boolean;
   connectedRoom: string | null;
@@ -89,14 +90,17 @@ export const BeamRemoteTab: React.FC<{
   activeDocTitle: string;
   isSending: boolean;
   uploadProgress: number | null;
+  beamError?: string | null;
   onDisconnectToSend: () => void;
   beamFileInputRef: React.RefObject<HTMLInputElement | null>;
   handleBeamDocument: (overrideCode?: string) => Promise<void>;
   handleRemotePrev: () => void;
   handleRemoteNext: () => void;
+  onReconnect?: () => void;
 }> = ({
   lang,
   reader,
+  mediaFile,
   isReceiverAcknowledged,
   peerLeft,
   connectedRoom,
@@ -107,11 +111,13 @@ export const BeamRemoteTab: React.FC<{
   activeDocTitle,
   isSending,
   uploadProgress,
+  beamError,
   onDisconnectToSend,
   beamFileInputRef,
   handleBeamDocument,
   handleRemotePrev,
   handleRemoteNext,
+  onReconnect,
 }) => (
   <div className="p-5 space-y-4 text-center">
     <div className="flex items-center justify-between text-xs text-ink-muted px-1">
@@ -157,7 +163,12 @@ export const BeamRemoteTab: React.FC<{
       </div>
     )}
 
-    {isReceiverAcknowledged && !reader.doc && (!remoteDocTitle || remoteTotal === 0) && (
+    {onReconnect && <button type="button" onClick={onReconnect}
+      className="rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-on-accent cursor-pointer">
+      {lang === 'ar' ? 'إعادة الاتصال بالشاشة' : 'Reconnect to the screen'}
+    </button>}
+    {beamError && <p role="alert" className="text-sm text-danger-ink">{beamError}</p>}
+    {isReceiverAcknowledged && !reader.doc && !mediaFile && (!remoteDocTitle || remoteTotal === 0) && (
       <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-start space-y-2">
         <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
           <FolderOpen className="w-4 h-4 text-amber-500" />
@@ -165,8 +176,8 @@ export const BeamRemoteTab: React.FC<{
         </div>
         <p className="text-[11px] text-ink-muted leading-tight">
           {lang === 'ar'
-            ? 'الحاسبة متصلة لكن لم يتم فتح أي ملف عليها بعد. اختر ملف الملزمة من هاتفك لبثها وعرضها فوراً:'
-            : 'Board is connected but has no file loaded. Pick a PDF on your phone to beam it now:'}
+            ? 'اختر PDF أو صورة أو فيديو أو PowerPoint لعرضه على الشاشة.'
+            : 'Choose a PDF, image, video, or PowerPoint presentation to show on the screen.'}
         </p>
         <button
           type="button"
@@ -174,7 +185,7 @@ export const BeamRemoteTab: React.FC<{
           className="w-full py-2 px-3 rounded-xl bg-accent text-on-accent font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:bg-accent-strong transition-all"
         >
           <FileUp className="w-3.5 h-3.5" />
-          <span>{lang === 'ar' ? '📂 اختيار ملف الملزمة وبثها الآن' : '📂 Select PDF & Beam Now'}</span>
+          <span>{lang === 'ar' ? 'اختيار ملف للبث' : 'Choose file to beam'}</span>
         </button>
       </div>
     )}
@@ -204,7 +215,7 @@ export const BeamRemoteTab: React.FC<{
       <div className="text-[11px] text-ink-muted truncate max-w-xs mx-auto">{activeDocTitle}</div>
     </div>
 
-    {reader.doc && connectedRoom && (
+    {(reader.doc || mediaFile) && connectedRoom && (
       <button
         type="button"
         onClick={() => void handleBeamDocument(connectedRoom)}
@@ -224,8 +235,8 @@ export const BeamRemoteTab: React.FC<{
                 ? 'جارٍ الإرسال...'
                 : 'Sending...'
             : lang === 'ar'
-              ? 'إعادة بث هذه الملزمة للسبورة فوراً 📡'
-              : 'Re-beam this PDF to Smartboard 📡'}
+              ? 'إعادة بث الملف'
+              : 'Send file again'}
         </span>
       </button>
     )}

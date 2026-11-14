@@ -15,6 +15,7 @@ import { useTeaching } from '../components/teachingContextValue';
 import { useDeviceUsage } from '../platform/deviceUsage';
 import { useAppMedia } from '../media/useAppMedia';
 import { describeFile } from '../media/media';
+import { beamService } from '../board/beam/beamService';
 const MediaWorkspace = React.lazy(() => import('../media/MediaWorkspace').then(module => ({ default: module.MediaWorkspace })));
 const BoardSplitWorkspace = React.lazy(() => import('../board/components/BoardSplitWorkspace').then(module => ({ default: module.BoardSplitWorkspace })));
 const BeamModal = React.lazy(() => import('../board/beam/BeamModal').then(module => ({ default: module.BeamModal })));
@@ -220,7 +221,11 @@ const DesktopReader: React.FC = () => {
       className={`relative w-screen h-screen overflow-hidden flex flex-col font-sans theme-${reader.theme} transition-colors duration-500 ease-out`}
       style={{ backgroundColor: getThemeBackground(reader.theme) }}
     >
-      {media.active ? <React.Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}><MediaWorkspace key={media.active.item.id} source={media.active} reader={reader} onClose={() => void media.close()} onOpen={file => void media.open(file)} onProgress={media.updateProgress} /></React.Suspense> : !reader.doc ? (
+      {media.active ? <React.Suspense fallback={<p className="m-auto text-ink-muted">جارٍ فتح الملف…</p>}>
+        <MediaWorkspace key={media.active.item.id} source={media.active} reader={reader}
+          onClose={() => void media.close()} onOpen={file => void media.open(file)}
+          onProgress={media.updateProgress} onOpenBeam={() => setIsBeamOpen(true)} remotePage={media.beam.remotePage} />
+      </React.Suspense> : !reader.doc ? (
         <>
           <WelcomeScreen
             currentTheme={reader.theme}
@@ -282,7 +287,7 @@ const DesktopReader: React.FC = () => {
             isBoardOpen={isBoardOpen}
             onOpenBeam={() => setIsBeamOpen(true)}
             isBeaming={reader.beamPeerConnected}
-            beamRoom={reader.beamRoom}
+            beamRoom={beamService.isLanSession() ? 'LAN' : reader.beamRoom}
             beamRole={reader.beamRole}
             onDisconnectBeam={reader.disconnectBeam}
             onCloseDocument={reader.closeDocument}
@@ -328,6 +333,10 @@ const DesktopReader: React.FC = () => {
             lang={reader.lang}
             theme={reader.theme}
             reader={reader}
+            mediaFile={media.beam.canSend ? media.active?.file : null}
+            mediaError={media.beam.error}
+            retryMedia={media.beam.retry}
+            onOpenFile={media.open}
             formFactor="desktop"
             preferredRole={receiver ? 'receiver' : role === 'handheld' ? 'sender' : undefined}
             isBoardOpen={isBoardOpen}

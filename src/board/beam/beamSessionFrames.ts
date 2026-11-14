@@ -1,6 +1,7 @@
 import type { Language } from '../../core/i18n/translations';
 import { LAB_PREFIX, localStorage } from '../../lab/storage';
 import type { BeamMessage, BeamTransferState, BeamTransport } from '../types';
+import type { BeamDirectChannel } from './beamLanTransport';
 import type { BeamSignalingState } from './beamSignalingTransport';
 import {
   BEAM_CHANNEL_NAME,
@@ -142,7 +143,8 @@ export async function dispatchBeamMessage(params: {
   message: BeamMessage;
   sessionId?: string;
   deviceId: string;
-  dataChannel: RTCDataChannel | null;
+  dataChannel: BeamDirectChannel | null;
+  lanOnly?: boolean;
   broadcastChannel: BroadcastChannel | null;
   seenMessages: Map<string, number>;
   publishRelay: (message: BeamMessage) => Promise<boolean>;
@@ -164,6 +166,7 @@ export async function dispatchBeamMessage(params: {
       console.debug('P2P channel send note, relay fallback active:', error);
     }
   }
+  if (params.lanOnly) return;
   if (params.broadcastChannel) {
     try {
       params.broadcastChannel.postMessage(outgoing);
@@ -209,7 +212,7 @@ export function formatBeamTransferPhaseText(transfer: BeamTransferState, lang: L
     return ar ? 'جارٍ تجهيز الاتصال المباشر…' : 'Preparing the direct connection…';
   }
   if (transfer.phase === 'finalizing') {
-    return ar ? 'بانتظار فتح الملف على الجهاز الآخر…' : 'Waiting for the receiver to open the PDF…';
+    return ar ? 'بانتظار فتح الملف على الجهاز الآخر…' : 'Waiting for the receiver to open the file…';
   }
   if (transfer.phase === 'transferring') {
     const channel = transfer.mode === 'p2p' ? (ar ? 'P2P مباشر' : 'Direct P2P') : ar ? 'سحابة' : 'Cloud';

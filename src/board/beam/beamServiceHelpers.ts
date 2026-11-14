@@ -1,4 +1,5 @@
 import type { BeamMessage, BeamPeerState, BeamTransferState, BeamTransport } from '../types';
+import type { BeamDirectChannel } from './beamLanTransport';
 import {
   buildBeamDisconnectMessage,
   buildBeamHandshakeMessage,
@@ -70,7 +71,7 @@ export function markClosedSessionBounded(closedSessions: Set<string>, id: string
   }
 }
 
-export function sendDataChannelJson(channel: RTCDataChannel | null, message: Record<string, unknown>): void {
+export function sendDataChannelJson(channel: BeamDirectChannel | null, message: Record<string, unknown>): void {
   if (channel?.readyState !== 'open') return;
   try {
     channel.send(JSON.stringify(message));

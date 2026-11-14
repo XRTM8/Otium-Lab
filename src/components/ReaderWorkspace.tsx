@@ -9,6 +9,7 @@ import { useChromeTap } from '../core/reader/useChromeTap';
 import { useReaderWorkspaceSync } from './useReaderWorkspaceSync';
 import { ReaderWorkspaceProgressBar, ReaderWorkspaceReadingPill } from './ReaderWorkspaceProgress';
 import { ReaderWorkspacePagedSpreads } from './ReaderWorkspacePagedSpreads';
+import { useReaderViewportResize } from '../app/useReaderViewportResize';
 
 interface ReaderWorkspaceProps {
   reader: ReaderController;
@@ -28,7 +29,7 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     numPages,
     currentPage,
     zoom,
-    setZoom,
+    refitViewport,
     theme,
     viewMode,
     lang,
@@ -57,6 +58,9 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
   const isRtl = lang === 'ar';
   const docIsRtl = reader.docIsRtl;
   const mousePan = useRef<{ pointer: number; x: number; y: number; left: number; top: number } | null>(null);
+  const viewportResizingRef = useReaderViewportResize({
+    doc, viewMode, currentPage, scrollContainerRef, zoom, refitViewport,
+  });
 
   const {
     compactLandscape,
@@ -73,13 +77,13 @@ export const ReaderWorkspace: React.FC<ReaderWorkspaceProps> = ({ reader, compac
     numPages,
     currentPage,
     zoom,
-    setZoom,
     viewMode,
     basePageSize,
     isImmersive,
     handlePageVisible,
     scrollContainerRef,
     touchZoomActiveRef,
+    viewportResizingRef,
     scrollToPage,
   });
 

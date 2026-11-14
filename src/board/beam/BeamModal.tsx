@@ -15,6 +15,10 @@ interface BeamModalProps {
   formFactor: 'desktop' | 'mobile';
   preferredRole?: 'receiver' | 'sender';
   isBoardOpen?: boolean;
+  mediaFile?: File | null;
+  onOpenFile?: (file: File) => Promise<boolean>;
+  retryMedia?: () => void;
+  mediaError?: string | null;
   onSetBoardOpen: (open: boolean) => void;
   onClose: () => void;
 }
@@ -25,6 +29,10 @@ export const BeamModal: React.FC<BeamModalProps> = ({
   reader,
   formFactor,
   preferredRole,
+  mediaFile,
+  onOpenFile,
+  retryMedia,
+  mediaError,
   onSetBoardOpen,
   onClose,
 }) => {
@@ -34,6 +42,9 @@ export const BeamModal: React.FC<BeamModalProps> = ({
     reader,
     formFactor,
     preferredRole,
+    mediaFile,
+    onOpenFile,
+    retryMedia,
     onSetBoardOpen,
     onClose,
   });
@@ -42,6 +53,9 @@ export const BeamModal: React.FC<BeamModalProps> = ({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={lang === 'ar' ? 'البث الذكي للسبورة' : 'Smart Beam'}
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
       className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-md p-0 sm:p-4 select-none animate-in fade-in duration-200 theme-${reader.theme}`}
     >
@@ -57,10 +71,29 @@ export const BeamModal: React.FC<BeamModalProps> = ({
           onClose={onClose}
         />
 
+        {s.lanAvailable && (s.activeTab === 'send' || s.activeTab === 'receive' || !s.isReceiverAcknowledged && s.activeTab === 'remote') && (
+          <div role="group" aria-label={lang === 'ar' ? 'طريقة الربط' : 'Connection mode'}
+            className="mx-5 mt-3 grid grid-cols-2 gap-1 rounded-xl bg-hover p-1 text-xs">
+            {(['lan', 'cloud'] as const).map(mode => (
+              <button key={mode} type="button" aria-pressed={s.network === mode}
+                className={`rounded-lg px-2 py-2 cursor-pointer ${s.network === mode ? 'bg-surface font-semibold text-accent' : 'text-ink-muted'}`}
+                onClick={() => {
+                  s.stopCamera();
+                  s.selectNetwork(mode);
+                  if (s.activeTab === 'remote' && mode !== s.network) s.setActiveTab('send');
+                }}>
+                {mode === 'lan' ? (lang === 'ar' ? 'شبكة محلية (LAN)' : 'Local network (LAN)') :
+                  (lang === 'ar' ? 'عبر الإنترنت' : 'Via internet')}
+              </button>
+            ))}
+          </div>
+        )}
+
         {s.activeTab === 'send' && (
           <BeamSendTab
             lang={lang}
             reader={reader}
+            mediaFile={mediaFile}
             beamFileInputRef={s.beamFileInputRef}
             isScanningCamera={s.isScanningCamera}
             videoRef={s.videoRef}
@@ -73,10 +106,12 @@ export const BeamModal: React.FC<BeamModalProps> = ({
             handlePairAsRemote={s.handlePairAsRemote}
             transfer={s.transfer}
             transferPhaseText={s.transferPhaseText}
-            beamError={s.beamError}
+            beamError={s.beamError || mediaError || null}
             targetRoomCode={s.targetRoomCode}
             isSending={s.isSending}
             sendSuccess={s.sendSuccess}
+            local={s.network === 'lan'}
+            pairingBusy={s.lanBusy}
           />
         )}
 
@@ -99,6 +134,12 @@ export const BeamModal: React.FC<BeamModalProps> = ({
             peerLeft={s.peerLeft}
             peer={s.peer}
             connStatus={s.connStatus}
+            local={s.network === 'lan'}
+            lanCode={s.lanCode}
+            lanAddresses={s.lanAddresses}
+            lanAddress={s.selectedAddress}
+            selectLanAddress={s.setLanAddress}
+            pairingBusy={s.lanBusy}
           />
         )}
 
@@ -110,9 +151,10 @@ export const BeamModal: React.FC<BeamModalProps> = ({
           <BeamRemoteTab
             lang={lang}
             reader={reader}
+            mediaFile={mediaFile}
             isReceiverAcknowledged={s.isReceiverAcknowledged}
             peerLeft={s.peerLeft}
-            connectedRoom={s.connectedRoom}
+            connectedRoom={s.network === 'lan' ? 'LAN' : s.connectedRoom}
             remoteDocTitle={s.remoteDocTitle}
             remoteTotal={s.remoteTotal}
             activePage={s.activePage}
@@ -120,11 +162,13 @@ export const BeamModal: React.FC<BeamModalProps> = ({
             activeDocTitle={s.activeDocTitle}
             isSending={s.isSending}
             uploadProgress={s.uploadProgress}
+            beamError={s.beamError || mediaError}
             onDisconnectToSend={() => s.setActiveTab('send')}
             beamFileInputRef={s.beamFileInputRef}
             handleBeamDocument={s.handleBeamDocument}
             handleRemotePrev={s.handleRemotePrev}
             handleRemoteNext={s.handleRemoteNext}
+            onReconnect={s.network === 'lan' && s.connStatus === 'error' ? () => s.handlePairAsRemote() : undefined}
           />
         )}
 

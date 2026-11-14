@@ -82,7 +82,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   } = useReaderThemeAndWake({ doc, docIdRef });
 
   const viewportActionsRef = useRef({
-    scrollToRenderedPage: (_pageNumber: number, _offsetRatio?: number) => {},
     goToNextPage: () => {},
     goToPrevPage: () => {},
   });
@@ -94,6 +93,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     lastFitScaleRef,
     scrollContainerRef,
     getFitScale,
+    refitViewport,
     getMinZoom,
     getMaxZoom,
     minZoom,
@@ -119,7 +119,6 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   });
 
   const {
-    scrollToRenderedPage,
     scrollToPage,
     handlePageVisible,
     goToNextPage,
@@ -144,8 +143,8 @@ export function useReaderController(capabilities: ReaderCapabilities) {
   });
 
   useLayoutEffect(() => {
-    viewportActionsRef.current = { scrollToRenderedPage, goToNextPage, goToPrevPage };
-  }, [scrollToRenderedPage, goToNextPage, goToPrevPage]);
+    viewportActionsRef.current = { goToNextPage, goToPrevPage };
+  }, [goToNextPage, goToPrevPage]);
 
   useReaderEffects({
     keyboardCapable: capabilities.keyboard,
@@ -330,6 +329,7 @@ export function useReaderController(capabilities: ReaderCapabilities) {
     maxZoom,
     getFitScale,
     setZoom,
+    refitViewport,
     captureZoomAnchor,
     clearZoomAnchor,
     theme,

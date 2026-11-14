@@ -25,6 +25,12 @@ export const BeamReceiveTab: React.FC<{
   peerLeft: boolean;
   peer: BeamPeerState;
   connStatus: BeamConnectionStatus;
+  local?: boolean;
+  lanCode?: string;
+  lanAddresses?: string[];
+  lanAddress?: string;
+  selectLanAddress?: (address: string) => void;
+  pairingBusy?: boolean;
 }> = ({
   lang,
   reader,
@@ -43,6 +49,12 @@ export const BeamReceiveTab: React.FC<{
   peerLeft,
   peer,
   connStatus,
+  local,
+  lanCode,
+  lanAddresses,
+  lanAddress,
+  selectLanAddress,
+  pairingBusy,
 }) => (
   <div className="p-5 flex flex-col items-center justify-center space-y-3.5 text-center">
     {connectedRemotePeer && (
@@ -53,7 +65,7 @@ export const BeamReceiveTab: React.FC<{
             <span>{lang === 'ar' ? `✅ متصل الآن بجهازك (${connectedRemotePeer})!` : `✅ Paired with ${connectedRemotePeer}!`}</span>
           </span>
           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300">
-            {receiverRoomCode}
+            {local ? 'LAN' : receiverRoomCode}
           </span>
         </div>
         <p className="text-xs text-ink leading-relaxed">
@@ -62,7 +74,7 @@ export const BeamReceiveTab: React.FC<{
               ? 'الملزمة جاهزة ومعروضة على السبورة، يمكنك تقليبها فوراً من هاتفك!'
               : 'Document is open; turn pages using your phone clicker!'
             : lang === 'ar'
-              ? 'السبورة جاهزة ومقترنة بهاتفك! بانتظار استلام الملزمة من هاتفك، أو اختر فتحها مباشرة من هذا الجهاز:'
+              ? 'الشاشة متصلة بالهاتف وتنتظر الملف.'
               : 'Ready and paired! Waiting for document stream from phone, or open it directly here:'}
         </p>
         {reader.doc ? (
@@ -94,7 +106,7 @@ export const BeamReceiveTab: React.FC<{
         <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-accent">
           <span className="flex items-center gap-1.5">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>{transferPhaseText || (lang === 'ar' ? 'جارٍ استلام الملزمة…' : 'Receiving the document…')}</span>
+            <span>{transferPhaseText || (lang === 'ar' ? 'جارٍ استلام الملف…' : 'Receiving the file…')}</span>
           </span>
           <span className="font-mono">
             {formatBeamBytes(transfer.bytesTransferred)} / {formatBeamBytes(transfer.totalBytes)}
@@ -118,27 +130,42 @@ export const BeamReceiveTab: React.FC<{
     {!connectedRemotePeer && (
       <div className="space-y-0.5">
         <h4 className="text-xs font-bold text-ink">
-          {lang === 'ar' ? 'وجّه كاميرا الهاتف نحو الرمز لبث المحاضرة' : 'Point phone camera at QR to beam'}
+          {local ? (lang === 'ar' ? 'امسح هذا الرمز من داخل Otium على الهاتف' : 'Scan this code from Otium on your phone') :
+            (lang === 'ar' ? 'وجّه كاميرا الهاتف نحو الرمز لبث المحاضرة' : 'Point phone camera at QR to beam')}
         </h4>
         <p className="text-[11px] text-ink-muted">
-          {lang === 'ar' ? 'أو افتح Otium بهاتفك واضغط بث' : 'Or open Otium on phone and tap Beam'}
+          {local ? (lang === 'ar' ? 'يكفي أن يكون الجهازان على نفس الشبكة.' : 'Keep both devices on the same local network.') :
+            (lang === 'ar' ? 'أو افتح Otium بهاتفك واضغط بث' : 'Or open Otium on phone and tap Beam')}
         </p>
       </div>
     )}
 
-    {!connectedRemotePeer && (
+    {!connectedRemotePeer && (!local || lanCode) && (
       <div className="my-0.5 shadow-sm rounded-2xl p-1 bg-white border border-line">
-        <QrCodeView value={smartboardUrl} size={160} />
+        <QrCodeView key={local ? lanCode : smartboardUrl} value={local ? lanCode! : smartboardUrl} size={170} />
       </div>
     )}
 
+    {local && lanAddresses && lanAddresses.length > 1 && !connectedRemotePeer && (
+      <select aria-label={lang === 'ar' ? 'عنوان الشاشة المحلي' : 'Screen LAN address'} dir="ltr"
+        className="rounded-lg border border-line bg-surface px-2 py-1 text-xs"
+        value={lanAddress} onChange={event => selectLanAddress?.(event.target.value)}>
+        {lanAddresses.map(address => <option key={address}>{address}</option>)}
+      </select>
+    )}
+    {local && !connectedRemotePeer && lanCode && (
+      <input readOnly dir="ltr" aria-label={lang === 'ar' ? 'رمز LAN' : 'LAN code'} value={lanCode}
+        onFocus={event => event.currentTarget.select()}
+        className="w-full rounded-lg border border-line bg-hover px-2 py-1 font-mono text-xs" />
+    )}
     <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-hover border border-line">
       <span className="font-mono text-xl font-black tracking-[0.2em] text-accent">
-        {receiverRoomCode}
+        {local ? (lanAddress || 'LAN') : receiverRoomCode}
       </span>
       <button
         type="button"
         onClick={handleCopyCode}
+        disabled={local && !lanCode}
         className="p-1 rounded-lg hover:bg-surface text-ink-muted hover:text-ink transition-colors cursor-pointer"
         title={lang === 'ar' ? 'نسخ الرمز' : 'Copy Code'}
       >
@@ -147,6 +174,7 @@ export const BeamReceiveTab: React.FC<{
       <button
         type="button"
         onClick={handleRegenerateCode}
+        disabled={pairingBusy}
         className="p-1 rounded-lg hover:bg-surface text-ink-muted hover:text-ink transition-colors cursor-pointer"
         title={lang === 'ar' ? 'توليد رمز جديد' : 'Generate New Code'}
       >
@@ -154,10 +182,10 @@ export const BeamReceiveTab: React.FC<{
       </button>
     </div>
 
-    <div className="text-[10px] text-ink-muted flex items-center gap-1 font-mono">
+    {!local && <div className="text-[10px] text-ink-muted flex items-center gap-1 font-mono">
       <span>{lang === 'ar' ? 'رابط السبورة السريع:' : 'Quick link:'}</span>
       <strong className="text-accent underline">xrtm8.github.io/Otium-Lab/</strong>
-    </div>
+    </div>}
 
     {reader.doc ? (
       <div className="w-full p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-start space-y-1">
@@ -185,7 +213,7 @@ export const BeamReceiveTab: React.FC<{
         </div>
         <p className="text-[11px] text-ink-muted leading-tight">
           {lang === 'ar'
-            ? 'إذا كانت الملزمة موجودة بحاسوبك أو فلاشة USB، افتحها هنا واستخدم الهاتف كريموت تحكم فقط (أسرع 100 مرة وبدون انتظار الرفع عبر النت).'
+            ? 'إذا كانت الملزمة موجودة على هذه الشاشة أو فلاشة USB، افتحها هنا وتحكّم بالصفحات من الهاتف.'
             : 'If you have the PDF on this PC or USB, open it here and use your phone as a wireless clicker.'}
         </p>
         <button
@@ -204,6 +232,11 @@ export const BeamReceiveTab: React.FC<{
         <span className="font-semibold text-ink-muted">
           {lang === 'ar' ? 'تم فصل الجهاز — بانتظار ربط جديد' : 'Device disconnected — waiting for a new pairing'}
         </span>
+      ) : local ? (
+        <span role="status">{pairingBusy
+          ? (lang === 'ar' ? 'جارٍ فتح الاتصال المحلي…' : 'Starting local receiving…')
+          : connectedRemotePeer ? (lang === 'ar' ? 'الهاتف مرتبط عبر LAN' : 'Phone paired over LAN')
+          : lanCode ? (lang === 'ar' ? 'LAN جاهز وينتظر الهاتف' : 'Ready for local pairing') : null}</span>
       ) : connStatus === 'connected' ? (
         <>
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />

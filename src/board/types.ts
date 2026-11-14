@@ -54,6 +54,8 @@ export interface BeamPayload {
   theme: ThemeMode;
   pdfBase64?: string;
   pdfData?: ArrayBuffer;
+  fileName?: string;
+  fileData?: ArrayBuffer;
   pdfUrl?: string;
   chunks?: string[];
   totalSize?: number;

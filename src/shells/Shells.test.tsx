@@ -29,6 +29,7 @@ vi.mock('../media/useAppMedia', () => ({
     pending: false,
     open: vi.fn(),
     close: vi.fn(),
+    beam: { canSend: false, error: null, retry: vi.fn(), remotePage: null },
   }),
 }));
 

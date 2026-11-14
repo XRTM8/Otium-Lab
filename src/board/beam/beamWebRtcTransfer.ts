@@ -13,7 +13,9 @@ import {
   sleep,
 } from './beamUtils';
 import type { BeamWebRtcHost } from './beamWebRtcTransport';
+import type { BeamDirectChannel } from './beamLanTransport';
 import type { BeamDocumentAttempt } from './beamDocumentCheckpoint';
+import { isBeamMediaFile, validateFile } from '../../media/media';
 
 interface DataChannelControlMessage {
   kind?: string;
@@ -28,6 +30,7 @@ interface DataChannelControlMessage {
   complete?: boolean;
   title?: string;
   name?: string;
+  fileName?: string;
   sha256?: string;
   pageNumber?: number;
   totalPages?: number;
@@ -105,8 +108,8 @@ export async function processDataChannelPayload(host: BeamWebRtcHost, data: unkn
 
   if (file.received + buffer.byteLength > file.size) {
     host.state.incomingFile = null;
-    host.sendDataChannelControl({ kind: 'file-error', transferId: file.transferId, message: 'The PDF exceeds its declared size.' });
-    host.updateTransfer({ active: false, phase: 'error', error: 'The PDF exceeds its declared size.' });
+    host.sendDataChannelControl({ kind: 'file-error', transferId: file.transferId, message: 'The file exceeds its declared size.' });
+    host.updateTransfer({ active: false, phase: 'error', error: 'The file exceeds its declared size.' });
     return;
   }
   file.parts.push(buffer);
@@ -143,6 +146,13 @@ export function beginBeamIncomingFile(
     });
     return;
   }
+  if (meta.fileName !== undefined && (typeof meta.fileName !== 'string' || !isBeamMediaFile(meta.fileName) ||
+      validateFile({ name: meta.fileName, size }))) {
+    const message = 'The incoming media type or size is unsupported.';
+    host.updateTransfer({ active: false, phase: 'error', error: message });
+    host.sendDataChannelControl({ kind: 'file-error', transferId: meta.transferId, message });
+    return;
+  }
 
   const offset = meta.offset ?? 0;
   const retained = host.state.incomingFile;
@@ -159,6 +169,7 @@ export function beginBeamIncomingFile(
     sessionId: meta.sessionId,
     title: String(meta.title || 'Beamed Document'),
     name: String(meta.name || 'document.pdf'),
+    fileName: meta.fileName,
     size,
     sha256: typeof meta.sha256 === 'string' ? meta.sha256 : undefined,
     pageNumber: Number(meta.pageNumber) || 1,
@@ -202,7 +213,7 @@ export async function finishBeamIncomingFile(host: BeamWebRtcHost, transferId: s
     }
 
     const merged = mergeBuffers(file.parts);
-    if (!isPdfHeader(merged)) {
+    if (!file.fileName && !isPdfHeader(merged)) {
       throw new Error('The received file is not a valid PDF.');
     }
     if (file.sha256) {
@@ -223,7 +234,7 @@ export async function finishBeamIncomingFile(host: BeamWebRtcHost, transferId: s
         pageNumber: file.pageNumber,
         totalPages: file.totalPages,
         theme: file.theme,
-        pdfData: merged,
+        ...(file.fileName ? { fileName: file.fileName, fileData: merged } : { pdfData: merged }),
         totalSize: merged.byteLength,
         sha256: file.sha256,
         transferId: file.transferId,
@@ -308,7 +319,8 @@ export async function sendFileOverBeamChannel(
         kind: 'file-begin',
         ...meta,
         offset: resume.offset,
-        name: options.title ? `${options.title}.pdf` : 'document.pdf',
+        name: options.fileName || (options.title ? `${options.title}.pdf` : 'document.pdf'),
+        fileName: options.fileName,
         title: options.title,
         pageNumber: options.pageNumber,
         totalPages: options.totalPages,
@@ -366,7 +378,7 @@ export async function sendFileOverBeamChannel(
 }
 
 async function requestBeamFileOffset(
-  host: BeamWebRtcHost, channel: RTCDataChannel,
+  host: BeamWebRtcHost, channel: BeamDirectChannel,
   meta: { transferId: string; sessionId: string | null; size: number; sha256: string },
   interruption: Promise<never>,
 ): Promise<{ offset: number; complete: boolean }> {
