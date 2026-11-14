@@ -3,7 +3,7 @@ import type React from 'react';
 import type { BoardStroke, BoardTool, StrokePoint } from '../types';
 import { type CoalescedPointerLike, sampleCoalescedBoardPoints } from '../utils/boardCanvasDom';
 import { recognizeGeometricShape } from '../utils/shapeRecognition';
-import { drawBoardInk } from '../utils/boardInk';
+import { drawBoardInk, isStrokeNearPoint } from '../utils/boardInk';
 import type { LaserPoint } from '../utils/laserTrail';
 
 interface UseBoardLiveInkOptions {
@@ -49,6 +49,7 @@ export function useBoardLiveInk({
   const livePaintRafRef = useRef<number | null>(null);
   const strokeRectRef = useRef<DOMRect | null>(null);
   const undoSnapshotRef = useRef<BoardStroke[] | null>(null);
+  const erasedInCurrentGestureRef = useRef(false);
   const pointer = useRef<number | null>(null);
   const lastPen = useRef(0);
   const isDrawingRef = useRef(false);
@@ -138,17 +139,17 @@ export function useBoardLiveInk({
 
   const eraseStrokesNearPoint = (x: number, y: number, radius = 20) => {
     setStrokes((prevStrokes) => {
-      const remaining = prevStrokes.filter((stroke) => {
-        return !stroke.points.some((p) => {
-          const dx = p.x - x;
-          const dy = p.y - y;
-          return dx * dx + dy * dy <= radius * radius;
-        });
-      });
-      if (remaining.length !== prevStrokes.length) {
-        setRedoStack([]);
+      const hasHit = prevStrokes.some((stroke) => isStrokeNearPoint(stroke, x, y, radius));
+      if (!hasHit) {
+        return prevStrokes;
       }
-      return remaining;
+      if (!erasedInCurrentGestureRef.current && undoSnapshotRef.current) {
+        const snapshot = undoSnapshotRef.current;
+        setUndoStack((prev) => [...prev, snapshot].slice(-60));
+        erasedInCurrentGestureRef.current = true;
+      }
+      setRedoStack([]);
+      return prevStrokes.filter((stroke) => !isStrokeNearPoint(stroke, x, y, radius));
     });
   };
 
@@ -190,7 +191,8 @@ export function useBoardLiveInk({
     }
 
     if (activeTool === 'eraser') {
-      setUndoStack((prev) => [...prev, strokes].slice(-60));
+      undoSnapshotRef.current = strokes;
+      erasedInCurrentGestureRef.current = false;
       eraseStrokesNearPoint(coords.x, coords.y);
       isDrawingRef.current = true;
       return;
@@ -295,6 +297,7 @@ export function useBoardLiveInk({
     liveStrokeRef.current = null;
     const prevSnapshot = undoSnapshotRef.current;
     undoSnapshotRef.current = null;
+    erasedInCurrentGestureRef.current = false;
     if (finished) {
       if (prevSnapshot) {
         setUndoStack((prev) => [...prev, prevSnapshot].slice(-60));
