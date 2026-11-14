@@ -301,7 +301,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           onRequestDelete={(target) => setDeleting(target)}
         />
 
-        <WelcomeFooterDock currentLang={currentLang} buildLabel="Otium Lab 15" />
+        <WelcomeFooterDock currentLang={currentLang} buildLabel="Otium Lab 16" />
 
       </div>
 
