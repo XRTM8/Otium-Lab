@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReaderController } from '../../app/useReaderController';
 import { beamService } from './beamService';
 import { BeamModal } from './BeamModal';
+import { saveRecentLanTarget } from './beamLanTransport';
 
 let host: HTMLDivElement;
 let root: Root;
@@ -24,6 +25,7 @@ function fakeReader(hasDoc = false): ReaderController {
     scrollToPage: vi.fn(),
     changeViewMode: vi.fn(),
     loadDocumentBytes: vi.fn(async () => {}),
+    autoBeam: { retry: vi.fn() },
   } as unknown as ReaderController;
 }
 
@@ -192,5 +194,50 @@ describe('BeamModal', () => {
     await act(async () => notifyTransfer({ ...state, active: false, phase: 'done', progress: 100 }));
     expect(close).toHaveBeenCalledOnce();
     expect(beamService.getRole()).toBe('sender');
+  });
+
+  it('renders recent LAN targets on send tab in LAN mode and connects on click', async () => {
+    localStorage.clear();
+    const target = { address: '192.168.1.55', port: 52123, key: 'CD'.repeat(32) };
+    saveRecentLanTarget(target);
+
+    (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {};
+    const startLanSpy = vi.spyOn(beamService, 'startLanSender').mockResolvedValue();
+
+    await act(async () => {
+      root.render(
+        <BeamModal
+          isOpen
+          lang="ar"
+          reader={fakeReader(true)}
+          formFactor="mobile"
+          preferredRole="sender"
+          onSetBoardOpen={vi.fn()}
+          onClose={vi.fn()}
+        />
+      );
+      await new Promise((r) => setTimeout(r, 15));
+    });
+
+    // Switch to LAN network tab
+    const lanTabBtn = [...host.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('شبكة محلية')
+    );
+    expect(lanTabBtn).toBeDefined();
+    await act(async () => {
+      lanTabBtn!.click();
+    });
+
+    // Recent LAN screens list should be rendered
+    const recentBtn = [...host.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('192.168.1.55:52123')
+    );
+    expect(recentBtn).toBeDefined();
+
+    await act(async () => {
+      recentBtn!.click();
+    });
+
+    expect(startLanSpy).toHaveBeenCalledWith(target);
   });
 });

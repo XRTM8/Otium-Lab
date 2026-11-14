@@ -19,7 +19,15 @@ import { formatBeamTransferPhaseText } from './beamSessionFrames';
 import { useBeamModalCamera } from './useBeamModalCamera';
 import type { BeamMessage, BeamPeerState, BeamTransferState } from '../types';
 import { describeFile, isBeamMediaFile } from '../../media/media';
-import { lanPairingCode, parseLanTarget, type LanInvitation } from './beamLanTransport';
+import {
+  clearRecentLanTargets,
+  getRecentLanTargets,
+  lanPairingCode,
+  parseLanTarget,
+  saveRecentLanTarget,
+  type LanInvitation,
+  type SavedLanTarget,
+} from './beamLanTransport';
 import { isTauriRuntime } from '../../platform/runtime';
 
 export function useBeamModalSession({
@@ -93,6 +101,7 @@ export function useBeamModalSession({
   const [sendSuccess, setSendSuccess] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [recentRooms, setRecentRooms] = useState<string[]>(() => getRecentRooms());
+  const [recentLanTargets, setRecentLanTargets] = useState<SavedLanTarget[]>(() => getRecentLanTargets());
   const [beamError, setBeamError] = useState<string | null>(null);
   const [remoteDocTitle, setRemoteDocTitle] = useState<string>(() => reader.docTitle || '');
   const [remotePage, setRemotePage] = useState<number>(() => reader.currentPage || 1);
@@ -326,6 +335,8 @@ export function useBeamModalSession({
         try {
           await beamService.startLanSender(target);
           if (request !== lanRequest.current) return false;
+          saveRecentLanTarget(target);
+          setRecentLanTargets(getRecentLanTargets());
         } catch {
           if (request !== lanRequest.current) return false;
           closeAfterSend.current = null;
@@ -488,6 +499,11 @@ export function useBeamModalSession({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const handleClearRecentLanTargets = useCallback(() => {
+    clearRecentLanTargets();
+    setRecentLanTargets([]);
+  }, []);
+
   const selectedAddress = lanAddress || lanInvitation?.addresses[0];
   const lanCode = lanInvitation && selectedAddress ? lanPairingCode({ ...lanInvitation, address: selectedAddress }) : '';
   const selectNetwork = (mode: 'lan' | 'cloud') => {
@@ -495,7 +511,17 @@ export function useBeamModalSession({
     lanRequest.current++;
     beamService.disconnect();
     setNetwork(mode);
-    setTargetRoomCode('');
+    if (mode === 'lan') {
+      const recents = getRecentLanTargets();
+      setRecentLanTargets(recents);
+      if (recents[0] && !targetRoomCode) {
+        setTargetRoomCode(recents[0].code);
+      } else {
+        setTargetRoomCode('');
+      }
+    } else {
+      setTargetRoomCode('');
+    }
     setLanAddress('');
     setLanInvitation(null);
     setLanAttempt('idle');
@@ -507,7 +533,7 @@ export function useBeamModalSession({
     activeTab, setActiveTab,
     targetRoomCode, setTargetRoomCode,
     receiverRoomCode,
-    sendSuccess, copiedCode, recentRooms, beamError,
+    sendSuccess, copiedCode, recentRooms, recentLanTargets, handleClearRecentLanTargets, beamError,
     remoteDocTitle, remoteTotal, uploadProgress, connStatus,
     beamState, peer, peerLeft, transfer,
     isSending, connectedRoom, connectedRemotePeer, isReceiverAcknowledged,

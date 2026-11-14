@@ -36,6 +36,72 @@ export function lanRoomCode(key: string): string {
   return `LAN${key.slice(0, 24)}`;
 }
 
+export interface SavedLanTarget {
+  address: string;
+  port: number;
+  key: string;
+  code: string;
+  timestamp: number;
+}
+
+const RECENT_LAN_TARGETS_KEY = 'otium-beam:recent-lan-targets';
+
+export function getRecentLanTargets(): SavedLanTarget[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(RECENT_LAN_TARGETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is SavedLanTarget => {
+        return (
+          item &&
+          typeof item === 'object' &&
+          typeof item.address === 'string' &&
+          typeof item.port === 'number' &&
+          typeof item.key === 'string' &&
+          typeof item.code === 'string'
+        );
+      })
+      .slice(0, 4);
+  } catch {
+    return [];
+  }
+}
+
+export function saveRecentLanTarget(target: LanTarget | string): void {
+  if (typeof localStorage === 'undefined') return;
+  const parsed = typeof target === 'string' ? parseLanTarget(target) : target;
+  if (!parsed) return;
+  const code = typeof target === 'string' && target.startsWith('OTIUM-LAN:') ? target : lanPairingCode(parsed);
+  try {
+    const existing = getRecentLanTargets().filter((t) => t.address !== parsed.address || t.port !== parsed.port);
+    const updated: SavedLanTarget[] = [
+      {
+        address: parsed.address,
+        port: parsed.port,
+        key: parsed.key,
+        code,
+        timestamp: Date.now(),
+      },
+      ...existing,
+    ].slice(0, 4);
+    localStorage.setItem(RECENT_LAN_TARGETS_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn('[BeamLan] Failed to save recent LAN target:', err);
+  }
+}
+
+export function clearRecentLanTargets(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(RECENT_LAN_TARGETS_KEY);
+  } catch (err) {
+    console.warn('[BeamLan] Failed to clear recent LAN targets:', err);
+  }
+}
+
 class NativeDirectChannel implements BeamDirectChannel {
   readyState: RTCDataChannelState = 'open';
   bufferedAmount = 0;

@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BeamService } from './beamService';
-import { lanPairingCode, lanRoomCode, parseLanTarget } from './beamLanTransport';
+import {
+  clearRecentLanTargets,
+  getRecentLanTargets,
+  lanPairingCode,
+  lanRoomCode,
+  parseLanTarget,
+  saveRecentLanTarget,
+} from './beamLanTransport';
 
 const native = vi.hoisted(() => {
   type Event = { type: string; message?: string };
@@ -102,5 +109,29 @@ describe('local-network Beam', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(eventSource).not.toHaveBeenCalled();
     expect(rtc).not.toHaveBeenCalled();
+  });
+
+  it('persists, deduplicates and clears recent LAN targets in localStorage', () => {
+    localStorage.clear();
+    expect(getRecentLanTargets()).toEqual([]);
+
+    const target1 = { address: '192.168.1.10', port: 51000, key: '11'.repeat(32) };
+    const target2 = { address: '192.168.1.20', port: 52000, key: '22'.repeat(32) };
+    saveRecentLanTarget(target1);
+    saveRecentLanTarget(lanPairingCode(target2));
+
+    const recents = getRecentLanTargets();
+    expect(recents).toHaveLength(2);
+    expect(recents[0]?.address).toBe('192.168.1.20');
+    expect(recents[1]?.address).toBe('192.168.1.10');
+
+    // Deduplicate same address and port by moving it to the top
+    saveRecentLanTarget(target1);
+    const updated = getRecentLanTargets();
+    expect(updated).toHaveLength(2);
+    expect(updated[0]?.address).toBe('192.168.1.10');
+
+    clearRecentLanTargets();
+    expect(getRecentLanTargets()).toEqual([]);
   });
 });

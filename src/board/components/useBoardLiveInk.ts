@@ -167,7 +167,7 @@ export function useBoardLiveInk({
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!ready || target !== 'board' || presentation || activeTool === 'hand') return;
     if (e.pointerType === 'pen') lastPen.current = Date.now();
-    if (e.pointerType === 'touch' && (e.width > 35 || e.height > 35 || Date.now() - lastPen.current < 800)) return;
+    if (e.pointerType === 'touch' && (!e.isPrimary || e.width > 35 || e.height > 35 || Date.now() - lastPen.current < 800)) return;
     if (pointer.current !== null) return;
     if (stylusOnly && e.pointerType === 'touch') return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;

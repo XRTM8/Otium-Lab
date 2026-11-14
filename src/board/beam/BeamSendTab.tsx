@@ -13,6 +13,7 @@ import type { Language } from '../../core/i18n/translations';
 import type { ReaderController } from '../../app/useReaderController';
 import type { BeamTransferState } from '../types';
 import { formatBeamBytes } from './beamUtils';
+import type { SavedLanTarget } from './beamLanTransport';
 
 export const BeamSendTab: React.FC<{
   lang: Language;
@@ -25,6 +26,8 @@ export const BeamSendTab: React.FC<{
   startCameraScanner: () => void;
   cameraError: string | null;
   recentRooms: string[];
+  recentLanTargets?: SavedLanTarget[];
+  onClearRecentLanTargets?: () => void;
   setTargetRoomCode: (code: string) => void;
   handleBeamDocument: (overrideCode?: string) => Promise<void>;
   handlePairAsRemote: (overrideCode?: string) => void;
@@ -47,6 +50,8 @@ export const BeamSendTab: React.FC<{
   startCameraScanner,
   cameraError,
   recentRooms,
+  recentLanTargets,
+  onClearRecentLanTargets,
   setTargetRoomCode,
   handleBeamDocument,
   handlePairAsRemote,
@@ -145,6 +150,49 @@ export const BeamSendTab: React.FC<{
 
     {cameraError && (
       <div className="text-[10px] text-amber-500 text-center font-medium">{cameraError}</div>
+    )}
+
+    {local && (recentLanTargets?.length ?? 0) > 0 && !isScanningCamera && (
+      <div className="space-y-1.5 text-start animate-in fade-in duration-150">
+        <div className="flex items-center justify-between text-[10px] text-ink-muted">
+          <div className="flex items-center gap-1">
+            <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
+            <span className="font-semibold text-ink">
+              {lang === 'ar' ? 'شاشات LAN السابقة:' : 'Recent LAN screens:'}
+            </span>
+          </div>
+          {onClearRecentLanTargets && (
+            <button
+              type="button"
+              onClick={onClearRecentLanTargets}
+              className="text-[9px] text-ink-muted hover:text-danger-ink transition-colors cursor-pointer"
+            >
+              {lang === 'ar' ? 'مسح السجل' : 'Clear'}
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          {recentLanTargets!.map((target) => (
+            <button
+              key={target.code}
+              type="button"
+              onClick={() => {
+                setTargetRoomCode(target.code);
+                void handleBeamDocument(target.code);
+              }}
+              className="w-full px-3 py-1.5 rounded-xl bg-hover border border-line text-xs font-mono font-semibold text-accent hover:bg-accent/15 hover:border-accent/40 active:scale-98 transition-all flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="truncate">{target.address}:{target.port}</span>
+              </span>
+              <span className="text-[10px] text-ink-muted font-sans font-normal shrink-0">
+                {lang === 'ar' ? 'إعادة ربط' : 'Reconnect'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
     )}
 
     {!local && recentRooms.length > 0 && !isScanningCamera && (
