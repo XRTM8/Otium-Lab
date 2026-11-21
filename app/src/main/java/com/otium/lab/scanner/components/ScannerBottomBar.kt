@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -24,6 +26,7 @@ fun ScannerBottomBar(
     onFinishBatch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -50,7 +53,10 @@ fun ScannerBottomBar(
 
         // Dual-Ring Optical Shutter Button
         Button(
-            onClick = onCapture,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onCapture()
+            },
             enabled = !isCapturing,
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),

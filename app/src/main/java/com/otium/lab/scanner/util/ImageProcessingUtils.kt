@@ -12,7 +12,11 @@ import android.graphics.Paint
 import android.net.Uri
 import android.util.Log
 import androidx.camera.core.ImageProxy
+import androidx.compose.ui.geometry.Offset
+import com.otium.lab.scanner.model.NormalizedQuad
 import com.otium.lab.scanner.model.ScanFilter
+import uniffi.otium_bridge.CornerPoints
+import uniffi.otium_bridge.bridgeWarpDocument
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
@@ -40,7 +44,6 @@ object ImageProcessingUtils {
                 stream.toByteArray()
             }
 
-            // Downsample and rotate safely
             val sampledBitmap = decodeSampledBitmap(rawBytes, targetMaxDim) ?: return null
             val finalBitmap = if (rotationDegrees != 0) {
                 val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
@@ -113,6 +116,136 @@ object ImageProcessingUtils {
         }
     }
 
+    fun detectDocumentCorners(bmp: Bitmap): NormalizedQuad {
+        return try {
+            val w = bmp.width
+            val h = bmp.height
+            if (w < 50 || h < 50) return NormalizedQuad()
+
+            val thumb = Bitmap.createScaledBitmap(bmp, 80, 80, false)
+            var topInset = 0.05f
+            var bottomInset = 0.95f
+            var leftInset = 0.05f
+            var rightInset = 0.95f
+
+            // Scan from top towards center
+            for (y in 0 until 28) {
+                var avgLuma = 0
+                for (x in 20 until 60) {
+                    val pixel = thumb.getPixel(x, y)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
+                }
+                avgLuma /= 40
+                if (avgLuma > 115) {
+                    topInset = (y / 80f).coerceIn(0.02f, 0.22f)
+                    break
+                }
+            }
+
+            // Scan from bottom towards center
+            for (y in 79 downTo 52) {
+                var avgLuma = 0
+                for (x in 20 until 60) {
+                    val pixel = thumb.getPixel(x, y)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
+                }
+                avgLuma /= 40
+                if (avgLuma > 115) {
+                    bottomInset = (y / 80f).coerceIn(0.78f, 0.98f)
+                    break
+                }
+            }
+
+            // Scan from left towards center
+            for (x in 0 until 28) {
+                var avgLuma = 0
+                for (y in 20 until 60) {
+                    val pixel = thumb.getPixel(x, y)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
+                }
+                avgLuma /= 40
+                if (avgLuma > 115) {
+                    leftInset = (x / 80f).coerceIn(0.02f, 0.22f)
+                    break
+                }
+            }
+
+            // Scan from right towards center
+            for (x in 79 downTo 52) {
+                var avgLuma = 0
+                for (y in 20 until 60) {
+                    val pixel = thumb.getPixel(x, y)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
+                }
+                avgLuma /= 40
+                if (avgLuma > 115) {
+                    rightInset = (x / 80f).coerceIn(0.78f, 0.98f)
+                    break
+                }
+            }
+            thumb.recycle()
+
+            NormalizedQuad(
+                topLeft = Offset(leftInset, topInset),
+                topRight = Offset(rightInset, topInset),
+                bottomRight = Offset(rightInset, bottomInset),
+                bottomLeft = Offset(leftInset, bottomInset)
+            )
+        } catch (_: Throwable) {
+            NormalizedQuad()
+        }
+    }
+
+    fun warpDocument(rawBytes: ByteArray, quad: NormalizedQuad, origW: Int, origH: Int): ByteArray {
+        return try {
+            val corners = CornerPoints(
+                topLeftX = quad.topLeft.x * origW,
+                topLeftY = quad.topLeft.y * origH,
+                topRightX = quad.topRight.x * origW,
+                topRightY = quad.topRight.y * origH,
+                bottomRightX = quad.bottomRight.x * origW,
+                bottomRightY = quad.bottomRight.y * origH,
+                bottomLeftX = quad.bottomLeft.x * origW,
+                bottomLeftY = quad.bottomLeft.y * origH
+            )
+            bridgeWarpDocument(rawBytes, corners, null, null)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Rust bridgeWarpDocument failed, applying fallback crop", t)
+            applyFallbackCrop(rawBytes, quad, origW, origH)
+        }
+    }
+
+    private fun applyFallbackCrop(rawBytes: ByteArray, quad: NormalizedQuad, origW: Int, origH: Int): ByteArray {
+        return try {
+            val bmp = decodeSampledBitmap(rawBytes, DEFAULT_MAX_DIM) ?: return rawBytes
+            val x = (minOf(quad.topLeft.x, quad.bottomLeft.x) * bmp.width).toInt().coerceIn(0, bmp.width - 10)
+            val y = (minOf(quad.topLeft.y, quad.topRight.y) * bmp.height).toInt().coerceIn(0, bmp.height - 10)
+            val w = ((maxOf(quad.topRight.x, quad.bottomRight.x) - minOf(quad.topLeft.x, quad.bottomLeft.x)) * bmp.width).toInt().coerceIn(10, bmp.width - x)
+            val h = ((maxOf(quad.bottomLeft.y, quad.bottomRight.y) - minOf(quad.topLeft.y, quad.topRight.y)) * bmp.height).toInt().coerceIn(10, bmp.height - y)
+
+            val cropped = Bitmap.createBitmap(bmp, x, y, w, h)
+            val out = ByteArrayOutputStream()
+            cropped.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+            cropped.recycle()
+            bmp.recycle()
+            out.toByteArray()
+        } catch (_: Throwable) {
+            rawBytes
+        }
+    }
+
     fun applyFallbackFilter(rawBytes: ByteArray, filter: ScanFilter): ByteArray {
         if (filter == ScanFilter.ORIGINAL) return rawBytes
         return try {
@@ -124,7 +257,6 @@ object ImageProcessingUtils {
             val colorMatrix = when (filter) {
                 ScanFilter.CLEAN_WHITE -> ColorMatrix().apply {
                     setSaturation(0f)
-                    // High-contrast clean white document
                     val scale = 1.35f
                     val translate = -35f
                     postConcat(ColorMatrix(floatArrayOf(
@@ -136,7 +268,6 @@ object ImageProcessingUtils {
                 }
                 ScanFilter.BLACK_WHITE -> ColorMatrix().apply {
                     setSaturation(0f)
-                    // Binary sharp black/white
                     val scale = 2.4f
                     val translate = -140f
                     postConcat(ColorMatrix(floatArrayOf(

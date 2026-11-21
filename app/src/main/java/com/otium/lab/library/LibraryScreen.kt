@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.otium.lab.library.components.ContinueReadingHero
 import com.otium.lab.library.components.DocumentCard
+import com.otium.lab.library.components.DocumentDeleteDialog
 import com.otium.lab.library.components.DocumentFilterChips
 import com.otium.lab.library.components.EmptyLibraryState
 import com.otium.lab.library.components.LibraryHeader
@@ -42,6 +43,7 @@ fun LibraryScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var documents by remember { mutableStateOf<List<StoredDocument>>(emptyList()) }
+    var documentToDelete by remember { mutableStateOf<StoredDocument?>(null) }
     var isInitialLoading by remember { mutableStateOf(true) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
 
@@ -164,17 +166,29 @@ fun LibraryScreen(
                             } catch (_: Exception) {}
                         },
                         onDelete = {
-                            scope.launch(Dispatchers.IO) {
-                                documentStore.deleteDocument(doc)
-                                val updated = documentStore.getDocuments()
-                                withContext(Dispatchers.Main) {
-                                    documents = updated
-                                }
-                            }
+                            documentToDelete = doc
                         }
                     )
                 }
             }
+        }
+
+        if (documentToDelete != null) {
+            DocumentDeleteDialog(
+                documentTitle = documentToDelete!!.title,
+                onConfirm = {
+                    val doc = documentToDelete!!
+                    documentToDelete = null
+                    scope.launch(Dispatchers.IO) {
+                        documentStore.deleteDocument(doc)
+                        val updated = documentStore.getDocuments()
+                        withContext(Dispatchers.Main) {
+                            documents = updated
+                        }
+                    }
+                },
+                onDismiss = { documentToDelete = null }
+            )
         }
     }
 }

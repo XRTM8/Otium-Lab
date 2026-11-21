@@ -77,6 +77,14 @@ fun DocumentCard(
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium
                     )
+                    if (doc.totalPages > 0) {
+                        Text(
+                            text = " · ${doc.totalPages} ص",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                     Text(
                         text = " · $dateStr",
                         fontSize = 11.sp,
