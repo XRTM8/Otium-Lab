@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <!-- Subtle Glow Behind Core -->
+    <path
+        android:fillColor="#1F080F"
+        android:pathData="M48,16 C65.67,16 80,30.33 80,48 C80,65.67 65.67,80 48,80 C30.33,80 16,65.67 16,48 C16,30.33 30.33,16 48,16 Z" />
+
+    <!-- Left Book Wing (Regal Burgundy) -->
+    <path
+        android:fillColor="#881337"
+        android:pathData="M46,28 C36,26 26,29 20,34 L20,68 C26,63 36,61 46,63 Z" />
+
+    <!-- Right Book Wing (Vibrant Ruby) -->
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M50,28 C60,26 70,29 76,34 L76,68 C70,63 60,61 50,63 Z" />
+
+    <!-- Spine / Center Pillar (Platinum White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46.5,26 L49.5,26 L49.5,65 L46.5,65 Z" />
+
+    <!-- Regal Crown Star Accent (Warm Gold) -->
+    <path
+        android:fillColor="#E2C799"
+        android:pathData="M48,18 L50.5,24 L56,24.5 L51.8,28.2 L53,33.5 L48,30.5 L43,33.5 L44.2,28.2 L40,24.5 L45.5,24 Z" />
+</vector>

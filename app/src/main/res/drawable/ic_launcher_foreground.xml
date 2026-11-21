@@ -3,13 +3,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Subtle Background Ambient Glow -->
     <path
-        android:fillColor="#38BDF8"
-        android:pathData="M34,28h28c6.63,0 12,5.37 12,12v40H34c-4.42,0 -8,-3.58 -8,-8V36c0,-4.42 3.58,-8 8,-8z" />
+        android:fillColor="#1F080F"
+        android:pathData="M54,20 C72.78,20 88,35.22 88,54 C88,72.78 72.78,88 54,88 C35.22,88 20,72.78 20,54 C20,35.22 35.22,20 54,20 Z" />
+
+    <!-- Left Book Wing (Regal Burgundy) -->
+    <path
+        android:fillColor="#881337"
+        android:pathData="M52,32 C41,30 30,33 24,39 L24,75 C30,69 41,67 52,69 Z" />
+
+    <!-- Right Book Wing (Vibrant Ruby) -->
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M56,32 C67,30 78,33 84,39 L84,75 C78,69 67,67 56,69 Z" />
+
+    <!-- Spine / Center Pillar (Platinum White) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M42,42h24v4H42zM42,52h24v4H42zM42,62h16v4H42z" />
+        android:pathData="M52.5,30 L55.5,30 L55.5,72 L52.5,72 Z" />
+
+    <!-- Regal Crown Star Accent (Warm Gold) -->
     <path
-        android:fillColor="#0284C7"
-        android:pathData="M26,72c0,-4.42 3.58,-8 8,-8h40v8H34c-4.42,0 -8,3.58 -8,8v-8z" />
+        android:fillColor="#E2C799"
+        android:pathData="M54,22 L56.8,28.5 L63,29 L58.3,33.2 L59.6,39 L54,35.7 L48.4,39 L49.7,33.2 L45,29 L51.2,28.5 Z" />
 </vector>

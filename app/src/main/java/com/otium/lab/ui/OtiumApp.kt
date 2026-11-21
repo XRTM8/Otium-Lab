@@ -1,8 +1,14 @@
 package com.otium.lab.ui
 
+import android.app.Activity
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +33,7 @@ import com.otium.lab.scanner.CropAndFilterScreen
 import com.otium.lab.scanner.PdfExporter
 import com.otium.lab.ui.theme.AppThemeMode
 import com.otium.lab.ui.theme.ThemePreferences
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class AppDestination(val labelAr: String, val icon: ImageVector) {
@@ -54,239 +61,290 @@ fun OtiumApp() {
     val accumulatedPages = remember { mutableStateListOf<Bitmap>() }
     var isExportingPdf by remember { mutableStateOf(false) }
 
+    // Luxury entry transition & Back navigation control
+    var isAppReady by remember { mutableStateOf(false) }
+    var lastBackPressedTime by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(Unit) {
+        delay(180)
+        isAppReady = true
+    }
+
+    // --- BackHandler Navigation Stack (Rock-Solid User Experience) ---
+
+    // 1. In PDF Viewer -> Close PDF and return to Library
+    BackHandler(enabled = activePdfUri != null) {
+        activePdfUri = null
+    }
+
+    // 2. In Crop & Filter Screen -> Cancel crop and return to Scanner
+    BackHandler(enabled = activePdfUri == null && capturedImageBytes != null) {
+        capturedImageBytes = null
+    }
+
+    // 3. In Camera Scanner -> Return to Library
+    BackHandler(enabled = activePdfUri == null && capturedImageBytes == null && currentDestination == AppDestination.SCANNER) {
+        accumulatedPages.clear()
+        currentDestination = AppDestination.LIBRARY
+    }
+
+    // 4. In Settings Tab -> Return to Library Tab
+    BackHandler(enabled = activePdfUri == null && capturedImageBytes == null && currentDestination == AppDestination.SETTINGS) {
+        currentDestination = AppDestination.LIBRARY
+    }
+
+    // 5. At Root of Library Screen -> Double-tap Back within 2 seconds to exit cleanly
+    BackHandler(enabled = activePdfUri == null && capturedImageBytes == null && currentDestination == AppDestination.LIBRARY) {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressedTime < 2000L) {
+            (context as? Activity)?.finish()
+        } else {
+            lastBackPressedTime = now
+            Toast.makeText(context, "اضغط مرة أخرى للخروج من التطبيق", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Theme container
     MaterialTheme(
         colorScheme = themePreferences.getColorScheme()
     ) {
-        // Fullscreen PDF Viewer takes precedence
-        if (activePdfUri != null) {
-            PdfViewerScreen(
-                uri = activePdfUri!!,
-                title = activePdfTitle,
-                themePreferences = themePreferences,
-                onClose = { activePdfUri = null }
-            )
-            return@MaterialTheme
-        }
-
-        // Fullscreen Crop & Filter takes precedence when an image was captured
-        if (capturedImageBytes != null) {
-            CropAndFilterScreen(
-                rawImageBytes = capturedImageBytes!!,
-                pageNumber = accumulatedPages.size + 1,
-                onAddMore = { bmp ->
-                    accumulatedPages.add(bmp)
-                    capturedImageBytes = null
-                },
-                onSavePdf = { bmp ->
-                    accumulatedPages.add(bmp)
-                    capturedImageBytes = null
-                    isExportingPdf = true
-                    scope.launch {
-                        try {
-                            val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
-                            val uri = Uri.fromFile(file)
-                            documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
-                            accumulatedPages.clear()
-                            activePdfUri = uri
-                            activePdfTitle = file.nameWithoutExtension
-                            currentDestination = AppDestination.LIBRARY
-                        } catch (_: Exception) {
-                        } finally {
-                            isExportingPdf = false
-                        }
-                    }
-                },
-                onCancel = {
-                    capturedImageBytes = null
+        AnimatedVisibility(
+            visible = isAppReady,
+            enter = fadeIn(animationSpec = tween(300)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                // Fullscreen PDF Viewer takes precedence
+                if (activePdfUri != null) {
+                    PdfViewerScreen(
+                        uri = activePdfUri!!,
+                        title = activePdfTitle,
+                        themePreferences = themePreferences,
+                        onClose = { activePdfUri = null }
+                    )
+                    return@Box
                 }
-            )
-            return@MaterialTheme
-        }
 
-        // Fullscreen CamScanner (Hides bottom bar completely for maximum immersive camera preview)
-        if (currentDestination == AppDestination.SCANNER) {
-            CameraScannerScreen(
-                pageCount = accumulatedPages.size,
-                onImageCaptured = { bytes ->
-                    capturedImageBytes = bytes
-                },
-                onFinishBatch = {
-                    if (accumulatedPages.isNotEmpty()) {
-                        isExportingPdf = true
-                        scope.launch {
-                            try {
-                                val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
-                                val uri = Uri.fromFile(file)
-                                documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
-                                accumulatedPages.clear()
-                                activePdfUri = uri
-                                activePdfTitle = file.nameWithoutExtension
-                                currentDestination = AppDestination.LIBRARY
-                            } catch (_: Exception) {
-                            } finally {
-                                isExportingPdf = false
+                // Fullscreen Crop & Filter takes precedence when an image was captured
+                if (capturedImageBytes != null) {
+                    CropAndFilterScreen(
+                        rawImageBytes = capturedImageBytes!!,
+                        pageNumber = accumulatedPages.size + 1,
+                        onAddMore = { bmp ->
+                            accumulatedPages.add(bmp)
+                            capturedImageBytes = null
+                        },
+                        onSavePdf = { bmp ->
+                            accumulatedPages.add(bmp)
+                            capturedImageBytes = null
+                            isExportingPdf = true
+                            scope.launch {
+                                try {
+                                    val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
+                                    val uri = Uri.fromFile(file)
+                                    documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
+                                    accumulatedPages.clear()
+                                    activePdfUri = uri
+                                    activePdfTitle = file.nameWithoutExtension
+                                    currentDestination = AppDestination.LIBRARY
+                                } catch (_: Exception) {
+                                } finally {
+                                    isExportingPdf = false
+                                }
+                            }
+                        },
+                        onCancel = {
+                            capturedImageBytes = null
+                        }
+                    )
+                    return@Box
+                }
+
+                // Fullscreen CamScanner (Hides bottom bar completely for maximum immersive camera preview)
+                if (currentDestination == AppDestination.SCANNER) {
+                    CameraScannerScreen(
+                        pageCount = accumulatedPages.size,
+                        onImageCaptured = { bytes ->
+                            capturedImageBytes = bytes
+                        },
+                        onFinishBatch = {
+                            if (accumulatedPages.isNotEmpty()) {
+                                isExportingPdf = true
+                                scope.launch {
+                                    try {
+                                        val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
+                                        val uri = Uri.fromFile(file)
+                                        documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
+                                        accumulatedPages.clear()
+                                        activePdfUri = uri
+                                        activePdfTitle = file.nameWithoutExtension
+                                        currentDestination = AppDestination.LIBRARY
+                                    } catch (_: Exception) {
+                                    } finally {
+                                        isExportingPdf = false
+                                    }
+                                }
+                            }
+                        },
+                        onClose = {
+                            accumulatedPages.clear()
+                            currentDestination = AppDestination.LIBRARY
+                        }
+                    )
+                    return@Box
+                }
+
+                val configuration = LocalConfiguration.current
+                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+                if (isLandscape) {
+                    // Adaptive Landscape: Sleek NavigationRail on side, freeing 100% vertical screen height
+                    Row(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                        NavigationRail(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            header = {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        ) {
+                            AppDestination.entries.forEach { destination ->
+                                val isSelected = currentDestination == destination
+                                NavigationRailItem(
+                                    selected = isSelected,
+                                    onClick = {
+                                        if (destination == AppDestination.SCANNER) {
+                                            accumulatedPages.clear()
+                                            capturedImageBytes = null
+                                        }
+                                        currentDestination = destination
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = destination.icon,
+                                            contentDescription = destination.labelAr,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            destination.labelAr,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 11.sp
+                                        )
+                                    },
+                                    colors = NavigationRailItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        ) {
+                            when (currentDestination) {
+                                AppDestination.LIBRARY -> {
+                                    LibraryScreen(
+                                        documentStore = documentStore,
+                                        onOpenPdf = { uri, title ->
+                                            activePdfUri = uri
+                                            activePdfTitle = title
+                                        },
+                                        onNavigateToScanner = {
+                                            accumulatedPages.clear()
+                                            capturedImageBytes = null
+                                            currentDestination = AppDestination.SCANNER
+                                        }
+                                    )
+                                }
+                                AppDestination.SCANNER -> {}
+                                AppDestination.SETTINGS -> {
+                                    SettingsScreen(
+                                        themePreferences = themePreferences,
+                                        documentStore = documentStore
+                                    )
+                                }
                             }
                         }
                     }
-                },
-                onClose = {
-                    accumulatedPages.clear()
-                    currentDestination = AppDestination.LIBRARY
-                }
-            )
-            return@MaterialTheme
-        }
-
-        val configuration = LocalConfiguration.current
-        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-        if (isLandscape) {
-            // Adaptive Landscape: Sleek NavigationRail on side, freeing 100% vertical screen height
-            Row(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                NavigationRail(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    header = {
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
-                ) {
-                    AppDestination.entries.forEach { destination ->
-                        val isSelected = currentDestination == destination
-                        NavigationRailItem(
-                            selected = isSelected,
-                            onClick = {
-                                if (destination == AppDestination.SCANNER) {
-                                    accumulatedPages.clear()
-                                    capturedImageBytes = null
-                                }
-                                currentDestination = destination
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = destination.icon,
-                                    contentDescription = destination.labelAr,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            },
-                            label = {
-                                Text(
-                                    destination.labelAr,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.sp
-                                )
-                            },
-                            colors = NavigationRailItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                ) {
-                    when (currentDestination) {
-                        AppDestination.LIBRARY -> {
-                            LibraryScreen(
-                                documentStore = documentStore,
-                                onOpenPdf = { uri, title ->
-                                    activePdfUri = uri
-                                    activePdfTitle = title
-                                },
-                                onNavigateToScanner = {
-                                    accumulatedPages.clear()
-                                    capturedImageBytes = null
-                                    currentDestination = AppDestination.SCANNER
-                                }
-                            )
-                        }
-                        AppDestination.SCANNER -> {}
-                        AppDestination.SETTINGS -> {
-                            SettingsScreen(
-                                themePreferences = themePreferences,
-                                documentStore = documentStore
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            // Standard Portrait Shell with Bottom NavigationBar
-            Scaffold(
-                bottomBar = {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 6.dp
-                    ) {
-                        AppDestination.entries.forEach { destination ->
-                            val isSelected = currentDestination == destination
-                            NavigationBarItem(
-                                selected = isSelected,
-                                onClick = {
-                                    if (destination == AppDestination.SCANNER) {
-                                        accumulatedPages.clear()
-                                        capturedImageBytes = null
-                                    }
-                                    currentDestination = destination
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = destination.icon,
-                                        contentDescription = destination.labelAr,
-                                        modifier = Modifier.size(24.dp)
+                } else {
+                    // Standard Portrait Shell with Bottom NavigationBar
+                    Scaffold(
+                        bottomBar = {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 6.dp
+                            ) {
+                                AppDestination.entries.forEach { destination ->
+                                    val isSelected = currentDestination == destination
+                                    NavigationBarItem(
+                                        selected = isSelected,
+                                        onClick = {
+                                            if (destination == AppDestination.SCANNER) {
+                                                accumulatedPages.clear()
+                                                capturedImageBytes = null
+                                            }
+                                            currentDestination = destination
+                                        },
+                                        icon = {
+                                            Icon(
+                                                imageVector = destination.icon,
+                                                contentDescription = destination.labelAr,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                destination.labelAr,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 12.sp
+                                            )
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     )
-                                },
-                                label = {
-                                    Text(
-                                        destination.labelAr,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        fontSize = 12.sp
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                        }
-                    }
-                }
-            ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
-                    when (currentDestination) {
-                        AppDestination.LIBRARY -> {
-                            LibraryScreen(
-                                documentStore = documentStore,
-                                onOpenPdf = { uri, title ->
-                                    activePdfUri = uri
-                                    activePdfTitle = title
-                                },
-                                onNavigateToScanner = {
-                                    accumulatedPages.clear()
-                                    capturedImageBytes = null
-                                    currentDestination = AppDestination.SCANNER
                                 }
-                            )
+                            }
                         }
-                        AppDestination.SCANNER -> {}
-                        AppDestination.SETTINGS -> {
-                            SettingsScreen(
-                                themePreferences = themePreferences,
-                                documentStore = documentStore
-                            )
+                    ) { paddingValues ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(paddingValues)
+                        ) {
+                            when (currentDestination) {
+                                AppDestination.LIBRARY -> {
+                                    LibraryScreen(
+                                        documentStore = documentStore,
+                                        onOpenPdf = { uri, title ->
+                                            activePdfUri = uri
+                                            activePdfTitle = title
+                                        },
+                                        onNavigateToScanner = {
+                                            accumulatedPages.clear()
+                                            capturedImageBytes = null
+                                            currentDestination = AppDestination.SCANNER
+                                        }
+                                    )
+                                }
+                                AppDestination.SCANNER -> {}
+                                AppDestination.SETTINGS -> {
+                                    SettingsScreen(
+                                        themePreferences = themePreferences,
+                                        documentStore = documentStore
+                                    )
+                                }
+                            }
                         }
                     }
                 }
