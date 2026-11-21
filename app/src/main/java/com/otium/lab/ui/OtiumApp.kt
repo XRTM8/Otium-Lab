@@ -1,6 +1,5 @@
-package com.otium.reader.ui
+package com.otium.lab.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.otium.lab.ui.components.UpdateBanner
 
 enum class AppDestination(val labelAr: String, val icon: ImageVector) {
     HOME("الرئيسية", Icons.Rounded.Book),
@@ -65,14 +65,13 @@ fun OtiumApp() {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center
+                    .background(MaterialTheme.colorScheme.background)
             ) {
                 when (currentDestination) {
                     AppDestination.HOME -> HomeScreen()
                     AppDestination.LIBRARY -> PlaceholderScreen(title = "مكتبة المستندات والكتب")
                     AppDestination.SCANNER -> PlaceholderScreen(title = "ماسح المستندات فائق السرعة (CameraX)")
-                    AppDestination.SETTINGS -> PlaceholderScreen(title = "إعدادات القراءة والسيادة")
+                    AppDestination.SETTINGS -> SettingsScreen()
                 }
             }
         }
@@ -84,15 +83,19 @@ fun HomeScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(top = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // In-App Update Notification Banner
+        UpdateBanner()
+
+        Spacer(modifier = Modifier.weight(1f))
+
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
         ) {
             Column(
                 modifier = Modifier.padding(28.dp),
@@ -123,6 +126,21 @@ fun HomeScreen() {
                 }
             }
         }
+
+        Spacer(modifier = Modifier.weight(1.2f))
+    }
+}
+
+@Composable
+fun SettingsScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        Text("الإعدادات والتحديثات", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        UpdateBanner()
     }
 }
 

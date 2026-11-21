@@ -4,6 +4,12 @@
 
 uniffi::setup_scaffolding!();
 
+#[derive(uniffi::Error, thiserror::Error, Debug)]
+pub enum BridgeError {
+    #[error("Vault error: {msg}")]
+    Vault { msg: String },
+}
+
 #[derive(uniffi::Record)]
 pub struct ArabicMatchRecord {
     pub start_offset: u32,
@@ -28,13 +34,15 @@ pub fn bridge_find_arabic_matches(text: String, query: String) -> Vec<ArabicMatc
 }
 
 #[uniffi::export]
-pub fn bridge_seal_bytes(data: Vec<u8>, pin: String) -> Result<Vec<u8>, String> {
-    otium_vault::VaultCrypto::seal_bytes(&pin, &data).map_err(|e| e.to_string())
+pub fn bridge_seal_bytes(data: Vec<u8>, pin: String) -> Result<Vec<u8>, BridgeError> {
+    otium_vault::VaultCrypto::seal_bytes(&pin, &data)
+        .map_err(|e| BridgeError::Vault { msg: e.to_string() })
 }
 
 #[uniffi::export]
-pub fn bridge_unseal_bytes(sealed: Vec<u8>, pin: String) -> Result<Vec<u8>, String> {
-    otium_vault::VaultCrypto::unseal_bytes(&pin, &sealed).map_err(|e| e.to_string())
+pub fn bridge_unseal_bytes(sealed: Vec<u8>, pin: String) -> Result<Vec<u8>, BridgeError> {
+    otium_vault::VaultCrypto::unseal_bytes(&pin, &sealed)
+        .map_err(|e| BridgeError::Vault { msg: e.to_string() })
 }
 
 #[cfg(test)]

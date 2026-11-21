@@ -1,19 +1,27 @@
+import com.android.build.api.variant.FilterConfiguration
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
+val versionMajor = 2
+val versionMinor = 1
+val versionPatch = 0
+val baseVersionCode = (versionMajor * 1_000_000) + (versionMinor * 10_000) + (versionPatch * 100)
+val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
+
 android {
-    namespace = "com.otium.reader"
+    namespace = "com.otium.lab"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.otium.reader"
+        applicationId = "com.otium.lab"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2011000
-        versionName = "2.1.0"
+        versionCode = baseVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -22,15 +30,41 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = file("signing/otium-lab.jks")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "otiumlab2026"
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "otium-lab"
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: "otiumlab2026"
+            } else {
+                val debugSigning = getByName("debug")
+                storeFile = debugSigning.storeFile
+                storePassword = debugSigning.storePassword
+                keyAlias = debugSigning.keyAlias
+                keyPassword = debugSigning.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = true
         }
     }
 
@@ -39,12 +73,29 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+// Monotonic versionCode per ABI to ensure arm64-v8a is preferred on 64-bit devices
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            val abi = output.filters.find { it.filterType == FilterConfiguration.FilterType.ABI }?.identifier
+            val abiOffset = when (abi) {
+                "arm64-v8a" -> 2
+                else -> 1 // Universal APK
+            }
+            output.versionCode.set(baseVersionCode + abiOffset)
+        }
     }
 }
 
@@ -69,10 +120,11 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // Pdfium Native Viewer
-    implementation(libs.pdfium.android)
+    // Native Bridge UniFFI (JNA)
+    implementation(libs.jna)
 
-    // Coroutines
+    // Network & In-App Updater
+    implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
 
     debugImplementation(libs.androidx.ui.tooling)

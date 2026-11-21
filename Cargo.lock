@@ -1260,11 +1260,10 @@ version = "2.1.0"
 dependencies = [
  "log",
  "otium-core",
- "otium-ink",
- "otium-scan-math",
  "otium-vault",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "uniffi",
 ]
 

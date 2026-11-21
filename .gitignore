@@ -1,5 +1,6 @@
 *.iml
 .gradle
+**/.gradle
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -8,14 +9,23 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
-/build
+build/
+**/build/
 /captures
 .externalNativeBuild
 .cxx
 *.apk
 *.aab
+dist/
+**/dist/
+.kotlin/
+**/.kotlin/
 
 # Rust & Cargo
 /target
+**/target/
 Cargo.lock.backup
 **/*.rs.bk
+
+# Preserve release keystore
+!app/signing/otium-lab.jks

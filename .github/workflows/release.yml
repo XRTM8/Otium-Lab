@@ -1,0 +1,117 @@
+name: Release Otium Mobile APKs
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v2.1.0)'
+        required: false
+        default: ''
+      release_notes:
+        description: 'Release Notes'
+        required: false
+        default: 'Otium Sovereign Native Mobile Release'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK & Build-Tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "ndk;26.1.10909125" "build-tools;35.0.0" "platforms;android-35"
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build Rust Native Bridge for ARM64-v8a
+        run: |
+          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
+          cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release -p otium-bridge
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Android Release APKs
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'otiumlab2026' }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'otium-lab' }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'otiumlab2026' }}
+
+      - name: Resolve Release Tag & Version
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v2.1.0"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Generate Release Manifest & SHA-256 Hashes
+        run: |
+          NOTES="${{ github.event.inputs.release_notes || 'Otium Sovereign Native Mobile Release' }}"
+          node scripts/generate-latest-json.mjs "${{ steps.vars.outputs.version }}" "$NOTES"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: Otium Mobile ${{ steps.vars.outputs.tag }}
+          body: |
+            ## Otium Mobile Native Release (${{ steps.vars.outputs.tag }})
+
+            ### Canonical Artifacts
+            - **ARM64-v8a APK** (Optimized for modern 64-bit Android devices)
+            - **Universal APK** (Compatible with all supported Android ABIs)
+            - **latest.json** (Static feed for in-app background auto-updater)
+
+            ### Integrity & Security
+            - Package ID: `com.otium.lab`
+            - Signed with sovereign 30-year release certificate (SHA-256: `d0f85c9fe93f8b9c94020b787966ffb1053c9706535ed72d5ac48b564d2234b4`)
+            - SHA-256 checksums verified before install
+          files: |
+            dist/Otium-Lab_${{ steps.vars.outputs.version }}_arm64-v8a.apk
+            dist/Otium-Lab_${{ steps.vars.outputs.version }}_arm64-v8a.apk.sha256
+            dist/Otium-Lab_${{ steps.vars.outputs.version }}_universal.apk
+            dist/Otium-Lab_${{ steps.vars.outputs.version }}_universal.apk.sha256
+            dist/latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
