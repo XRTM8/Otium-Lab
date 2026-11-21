@@ -719,6 +719,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -736,11 +740,15 @@ internal interface UniffiLib : Library {
 
     fun uniffi_otium_bridge_fn_func_bridge_arabic_stem(`word`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_otium_bridge_fn_func_bridge_clean_document(`imageBytes`: RustBuffer.ByValue,`contrastBoost`: Float,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_find_arabic_matches(`text`: RustBuffer.ByValue,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_seal_bytes(`data`: RustBuffer.ByValue,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_unseal_bytes(`sealed`: RustBuffer.ByValue,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_otium_bridge_fn_func_bridge_warp_document(`imageBytes`: RustBuffer.ByValue,`corners`: RustBuffer.ByValue,`targetWidth`: RustBuffer.ByValue,`targetHeight`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun ffi_otium_bridge_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -856,11 +864,15 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_otium_bridge_checksum_func_bridge_arabic_stem(
     ): Short
+    fun uniffi_otium_bridge_checksum_func_bridge_clean_document(
+    ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches(
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_seal_bytes(
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_unseal_bytes(
+    ): Short
+    fun uniffi_otium_bridge_checksum_func_bridge_warp_document(
     ): Short
     fun ffi_otium_bridge_uniffi_contract_version(
     ): Int
@@ -882,6 +894,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_otium_bridge_checksum_func_bridge_arabic_stem() != 24451.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_otium_bridge_checksum_func_bridge_clean_document() != 40791.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches() != 52324.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -889,6 +904,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_unseal_bytes() != 3987.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_otium_bridge_checksum_func_bridge_warp_document() != 35488.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -958,6 +976,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterFloat: FfiConverter<Float, Float> {
+    override fun lift(value: Float): Float {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Float {
+        return buf.getFloat()
+    }
+
+    override fun lower(value: Float): Float {
+        return value
+    }
+
+    override fun allocationSize(value: Float) = 4UL
+
+    override fun write(value: Float, buf: ByteBuffer) {
+        buf.putFloat(value)
     }
 }
 
@@ -1071,11 +1112,75 @@ public object FfiConverterTypeArabicMatchRecord: FfiConverterRustBuffer<ArabicMa
 
 
 
+data class CornerPoints (
+    var `topLeftX`: kotlin.Float, 
+    var `topLeftY`: kotlin.Float, 
+    var `topRightX`: kotlin.Float, 
+    var `topRightY`: kotlin.Float, 
+    var `bottomRightX`: kotlin.Float, 
+    var `bottomRightY`: kotlin.Float, 
+    var `bottomLeftX`: kotlin.Float, 
+    var `bottomLeftY`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCornerPoints: FfiConverterRustBuffer<CornerPoints> {
+    override fun read(buf: ByteBuffer): CornerPoints {
+        return CornerPoints(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CornerPoints) = (
+            FfiConverterFloat.allocationSize(value.`topLeftX`) +
+            FfiConverterFloat.allocationSize(value.`topLeftY`) +
+            FfiConverterFloat.allocationSize(value.`topRightX`) +
+            FfiConverterFloat.allocationSize(value.`topRightY`) +
+            FfiConverterFloat.allocationSize(value.`bottomRightX`) +
+            FfiConverterFloat.allocationSize(value.`bottomRightY`) +
+            FfiConverterFloat.allocationSize(value.`bottomLeftX`) +
+            FfiConverterFloat.allocationSize(value.`bottomLeftY`)
+    )
+
+    override fun write(value: CornerPoints, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`topLeftX`, buf)
+            FfiConverterFloat.write(value.`topLeftY`, buf)
+            FfiConverterFloat.write(value.`topRightX`, buf)
+            FfiConverterFloat.write(value.`topRightY`, buf)
+            FfiConverterFloat.write(value.`bottomRightX`, buf)
+            FfiConverterFloat.write(value.`bottomRightY`, buf)
+            FfiConverterFloat.write(value.`bottomLeftX`, buf)
+            FfiConverterFloat.write(value.`bottomLeftY`, buf)
+    }
+}
+
+
+
 
 
 sealed class BridgeException: kotlin.Exception() {
     
     class Vault(
+        
+        val `msg`: kotlin.String
+        ) : BridgeException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
+    class ImageProcessing(
         
         val `msg`: kotlin.String
         ) : BridgeException() {
@@ -1102,6 +1207,9 @@ public object FfiConverterTypeBridgeError : FfiConverterRustBuffer<BridgeExcepti
             1 -> BridgeException.Vault(
                 FfiConverterString.read(buf),
                 )
+            2 -> BridgeException.ImageProcessing(
+                FfiConverterString.read(buf),
+                )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1109,6 +1217,11 @@ public object FfiConverterTypeBridgeError : FfiConverterRustBuffer<BridgeExcepti
     override fun allocationSize(value: BridgeException): ULong {
         return when(value) {
             is BridgeException.Vault -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
+            is BridgeException.ImageProcessing -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`msg`)
@@ -1123,9 +1236,46 @@ public object FfiConverterTypeBridgeError : FfiConverterRustBuffer<BridgeExcepti
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
+            is BridgeException.ImageProcessing -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalUInt: FfiConverterRustBuffer<kotlin.UInt?> {
+    override fun read(buf: ByteBuffer): kotlin.UInt? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUInt.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UInt?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUInt.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UInt?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUInt.write(value, buf)
+        }
+    }
 }
 
 
@@ -1163,6 +1313,16 @@ public object FfiConverterSequenceTypeArabicMatchRecord: FfiConverterRustBuffer<
     )
     }
     
+
+    @Throws(BridgeException::class) fun `bridgeCleanDocument`(`imageBytes`: kotlin.ByteArray, `contrastBoost`: kotlin.Float): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BridgeException) { _status ->
+    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_clean_document(
+        FfiConverterByteArray.lower(`imageBytes`),FfiConverterFloat.lower(`contrastBoost`),_status)
+}
+    )
+    }
+    
  fun `bridgeFindArabicMatches`(`text`: kotlin.String, `query`: kotlin.String): List<ArabicMatchRecord> {
             return FfiConverterSequenceTypeArabicMatchRecord.lift(
     uniffiRustCall() { _status ->
@@ -1188,6 +1348,16 @@ public object FfiConverterSequenceTypeArabicMatchRecord: FfiConverterRustBuffer<
     uniffiRustCallWithError(BridgeException) { _status ->
     UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_unseal_bytes(
         FfiConverterByteArray.lower(`sealed`),FfiConverterString.lower(`pin`),_status)
+}
+    )
+    }
+    
+
+    @Throws(BridgeException::class) fun `bridgeWarpDocument`(`imageBytes`: kotlin.ByteArray, `corners`: CornerPoints, `targetWidth`: kotlin.UInt?, `targetHeight`: kotlin.UInt?): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BridgeException) { _status ->
+    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_warp_document(
+        FfiConverterByteArray.lower(`imageBytes`),FfiConverterTypeCornerPoints.lower(`corners`),FfiConverterOptionalUInt.lower(`targetWidth`),FfiConverterOptionalUInt.lower(`targetHeight`),_status)
 }
     )
     }
