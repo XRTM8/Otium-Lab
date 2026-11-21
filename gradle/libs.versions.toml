@@ -12,6 +12,7 @@ coroutines = "1.10.1"
 material3 = "1.3.1"
 jna = "5.14.0"
 okhttp = "4.12.0"
+profileinstaller = "1.4.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,6 +40,9 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 
 # Native Bridge UniFFI (JNA)
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+
+# Performance & Baseline Profile AOT Compilation
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

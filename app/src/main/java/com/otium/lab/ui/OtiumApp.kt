@@ -61,14 +61,8 @@ fun OtiumApp() {
     val accumulatedPages = remember { mutableStateListOf<Bitmap>() }
     var isExportingPdf by remember { mutableStateOf(false) }
 
-    // Luxury entry transition & Back navigation control
-    var isAppReady by remember { mutableStateOf(false) }
+    // Back navigation control
     var lastBackPressedTime by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(Unit) {
-        delay(180)
-        isAppReady = true
-    }
 
     // --- BackHandler Navigation Stack (Rock-Solid User Experience) ---
 
@@ -108,12 +102,7 @@ fun OtiumApp() {
     MaterialTheme(
         colorScheme = themePreferences.getColorScheme()
     ) {
-        AnimatedVisibility(
-            visible = isAppReady,
-            enter = fadeIn(animationSpec = tween(300)),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 // Fullscreen PDF Viewer takes precedence
                 if (activePdfUri != null) {
                     PdfViewerScreen(
@@ -351,4 +340,3 @@ fun OtiumApp() {
             }
         }
     }
-}

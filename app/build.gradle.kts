@@ -8,7 +8,7 @@ plugins {
 
 val versionMajor = 2
 val versionMinor = 2
-val versionPatch = 1
+val versionPatch = 2
 val baseVersionCode = (versionMajor * 1_000_000) + (versionMinor * 10_000) + (versionPatch * 100)
 val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
 
@@ -125,6 +125,9 @@ dependencies {
     // Network & In-App Updater
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+
+    // Performance & Ahead-of-Time (AOT) Baseline Profile Execution
+    implementation(libs.androidx.profileinstaller)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

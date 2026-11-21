@@ -25,6 +25,9 @@ import com.otium.lab.library.components.DocumentCard
 import com.otium.lab.library.components.DocumentFilterChips
 import com.otium.lab.library.components.EmptyLibraryState
 import com.otium.lab.library.components.LibraryHeader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
@@ -34,11 +37,22 @@ fun LibraryScreen(
     onNavigateToScanner: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    var documents by remember { mutableStateOf(documentStore.getDocuments()) }
+    var documents by remember { mutableStateOf<List<StoredDocument>>(emptyList()) }
+    var isInitialLoading by remember { mutableStateOf(true) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
+
+    // Instant async load on Dispatchers.IO to guarantee zero Main-Thread stalls
+    LaunchedEffect(Unit) {
+        val loaded = withContext(Dispatchers.IO) {
+            documentStore.getDocuments()
+        }
+        documents = loaded
+        isInitialLoading = false
+    }
 
     val openPdfLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -52,9 +66,14 @@ fun LibraryScreen(
             } catch (_: Exception) {}
 
             val resolvedTitle = DocumentStore.resolveDisplayName(context, uri)
-            documentStore.addOrUpdateDocument(uri, resolvedTitle, isScanned = false)
-            documents = documentStore.getDocuments()
-            onOpenPdf(uri, resolvedTitle)
+            scope.launch(Dispatchers.IO) {
+                documentStore.addOrUpdateDocument(uri, resolvedTitle, isScanned = false)
+                val updated = documentStore.getDocuments()
+                withContext(Dispatchers.Main) {
+                    documents = updated
+                    onOpenPdf(uri, resolvedTitle)
+                }
+            }
         }
     }
 
@@ -118,7 +137,9 @@ fun LibraryScreen(
             }
 
             // 4. Documents List or Empty State
-            if (filtered.isEmpty()) {
+            if (isInitialLoading) {
+                // Micro-frame while reading disk asynchronously in background: clean and quiet
+            } else if (filtered.isEmpty()) {
                 item {
                     EmptyLibraryState()
                 }
@@ -143,8 +164,13 @@ fun LibraryScreen(
                             } catch (_: Exception) {}
                         },
                         onDelete = {
-                            documentStore.deleteDocument(doc)
-                            documents = documentStore.getDocuments()
+                            scope.launch(Dispatchers.IO) {
+                                documentStore.deleteDocument(doc)
+                                val updated = documentStore.getDocuments()
+                                withContext(Dispatchers.Main) {
+                                    documents = updated
+                                }
+                            }
                         }
                     )
                 }
