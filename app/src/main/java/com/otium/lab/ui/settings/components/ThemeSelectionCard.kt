@@ -60,7 +60,7 @@ fun ThemeSelectionCard(
                     title = "أبيض ناصع",
                     previewBg = Color(0xFFFFFFFF),
                     previewBorder = Color(0xFFE2E8F0),
-                    previewText = Color(0xFF1D4ED8),
+                    previewText = Color(0xFF881337),
                     isSelected = currentTheme == AppThemeMode.LIGHT,
                     onSelect = { themePreferences.setTheme(AppThemeMode.LIGHT) },
                     modifier = Modifier.weight(1f)
@@ -68,9 +68,9 @@ fun ThemeSelectionCard(
 
                 ThemeOptionItem(
                     title = "كريمي ورقي",
-                    previewBg = Color(0xFFFAF6ED),
-                    previewBorder = Color(0xFFD8CCB5),
-                    previewText = Color(0xFF1E3A5F),
+                    previewBg = Color(0xFFFBF7EE),
+                    previewBorder = Color(0xFFDFD3BD),
+                    previewText = Color(0xFF881337),
                     isSelected = currentTheme == AppThemeMode.CREAM,
                     onSelect = { themePreferences.setTheme(AppThemeMode.CREAM) },
                     modifier = Modifier.weight(1f)
@@ -79,8 +79,8 @@ fun ThemeSelectionCard(
                 ThemeOptionItem(
                     title = "أموليـد أسود",
                     previewBg = Color(0xFF000000),
-                    previewBorder = Color(0xFF262F3D),
-                    previewText = Color(0xFF38BDF8),
+                    previewBorder = Color(0xFF27272E),
+                    previewText = Color(0xFFBE123C),
                     isSelected = currentTheme == AppThemeMode.AMOLED,
                     onSelect = { themePreferences.setTheme(AppThemeMode.AMOLED) },
                     modifier = Modifier.weight(1f)
