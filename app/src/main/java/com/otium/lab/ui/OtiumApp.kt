@@ -123,13 +123,13 @@ fun OtiumApp() {
                             accumulatedPages.add(bmp)
                             capturedImageBytes = null
                         },
-                        onSavePdf = { bmp ->
+                        onSavePdf = { bmp, title ->
                             accumulatedPages.add(bmp)
                             capturedImageBytes = null
                             isExportingPdf = true
                             scope.launch {
                                 try {
-                                    val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
+                                    val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList(), customTitle = title)
                                     val uri = Uri.fromFile(file)
                                     documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
                                     accumulatedPages.clear()

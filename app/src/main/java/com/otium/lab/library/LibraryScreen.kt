@@ -1,8 +1,10 @@
 package com.otium.lab.library
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -20,12 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.otium.lab.library.components.ContinueReadingHero
-import com.otium.lab.library.components.DocumentCard
-import com.otium.lab.library.components.DocumentDeleteDialog
-import com.otium.lab.library.components.DocumentFilterChips
-import com.otium.lab.library.components.EmptyLibraryState
-import com.otium.lab.library.components.LibraryHeader
+import com.otium.lab.library.components.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,20 +36,17 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var documents by remember { mutableStateOf<List<StoredDocument>>(emptyList()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var documentToRename by remember { mutableStateOf<StoredDocument?>(null) }
     var documentToDelete by remember { mutableStateOf<StoredDocument?>(null) }
     var isInitialLoading by remember { mutableStateOf(true) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
 
-    // Instant async load on Dispatchers.IO to guarantee zero Main-Thread stalls
     LaunchedEffect(Unit) {
-        val loaded = withContext(Dispatchers.IO) {
-            documentStore.getDocuments()
-        }
-        documents = loaded
+        documents = withContext(Dispatchers.IO) { documentStore.getDocuments() }
         isInitialLoading = false
     }
 
@@ -60,31 +54,35 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: Exception) {}
-
+            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             val resolvedTitle = DocumentStore.resolveDisplayName(context, uri)
             scope.launch(Dispatchers.IO) {
                 documentStore.addOrUpdateDocument(uri, resolvedTitle, isScanned = false)
                 val updated = documentStore.getDocuments()
-                withContext(Dispatchers.Main) {
-                    documents = updated
-                    onOpenPdf(uri, resolvedTitle)
-                }
+                withContext(Dispatchers.Main) { documents = updated; onOpenPdf(uri, resolvedTitle) }
             }
         }
     }
 
     val mostRecent = documents.firstOrNull()
+    val filtered = documents.filter { doc ->
+        val matchesCategory = when (selectedFilterIndex) { 1 -> doc.isScanned; 2 -> !doc.isScanned; else -> true }
+        val matchesSearch = if (searchQuery.isBlank()) true else doc.title.contains(searchQuery.trim(), ignoreCase = true)
+        matchesCategory && matchesSearch
+    }
 
-    val filtered = when (selectedFilterIndex) {
-        1 -> documents.filter { it.isScanned }
-        2 -> documents.filter { !it.isScanned }
-        else -> documents
+    fun shareDoc(doc: StoredDocument) {
+        try {
+            val shareUri = if (doc.uri.scheme == "file") {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(doc.uri.path ?: ""))
+            } else doc.uri
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, shareUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "مشاركة المستند"))
+        } catch (_: Exception) {}
     }
 
     Scaffold(
@@ -103,14 +101,10 @@ fun LibraryScreen(
         }
     ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = if (isLandscape) 32.dp else 20.dp),
+            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = if (isLandscape) 32.dp else 20.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = if (isLandscape) 24.dp else 90.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Library Header
             item {
                 LibraryHeader(
                     documentCount = documents.size,
@@ -118,18 +112,12 @@ fun LibraryScreen(
                     onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) }
                 )
             }
-
-            // 2. Continue Reading Hero Card
-            if (mostRecent != null) {
-                item {
-                    ContinueReadingHero(
-                        mostRecent = mostRecent,
-                        onOpenPdf = { doc -> onOpenPdf(doc.uri, doc.title) }
-                    )
-                }
+            if (documents.isNotEmpty()) {
+                item { DocumentSearchBar(query = searchQuery, onQueryChange = { searchQuery = it }) }
             }
-
-            // 3. Filter Chips
+            if (mostRecent != null && searchQuery.isBlank()) {
+                item { ContinueReadingHero(mostRecent = mostRecent, onOpenPdf = { doc -> onOpenPdf(doc.uri, doc.title) }) }
+            }
             item {
                 DocumentFilterChips(
                     selectedFilterIndex = selectedFilterIndex,
@@ -137,40 +125,45 @@ fun LibraryScreen(
                     onSelectFilter = { selectedFilterIndex = it }
                 )
             }
-
-            // 4. Documents List or Empty State
-            if (isInitialLoading) {
-                // Micro-frame while reading disk asynchronously in background: clean and quiet
-            } else if (filtered.isEmpty()) {
-                item {
-                    EmptyLibraryState()
-                }
-            } else {
-                items(filtered, key = { it.uriString }) { doc ->
-                    DocumentCard(
-                        doc = doc,
-                        onClick = { onOpenPdf(doc.uri, doc.title) },
-                        onShare = {
-                            try {
-                                val shareUri = if (doc.uri.scheme == "file") {
-                                    val f = File(doc.uri.path ?: "")
-                                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
-                                } else doc.uri
-
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/pdf"
-                                    putExtra(Intent.EXTRA_STREAM, shareUri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (!isInitialLoading) {
+                if (filtered.isEmpty()) {
+                    item { EmptyLibraryState() }
+                } else {
+                    items(filtered, key = { it.uriString }) { doc ->
+                        DocumentCard(
+                            doc = doc,
+                            onClick = { onOpenPdf(doc.uri, doc.title) },
+                            onShare = { shareDoc(doc) },
+                            onRename = { documentToRename = doc },
+                            onExport = {
+                                scope.launch(Dispatchers.IO) {
+                                    val ok = documentStore.exportToDownloads(doc)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, if (ok) "تم حفظ نسخة في التنزيلات" else "تعذر التصدير", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                                context.startActivity(Intent.createChooser(intent, "مشاركة المستند"))
-                            } catch (_: Exception) {}
-                        },
-                        onDelete = {
-                            documentToDelete = doc
-                        }
-                    )
+                            },
+                            onDelete = { documentToDelete = doc }
+                        )
+                    }
                 }
             }
+        }
+
+        if (documentToRename != null) {
+            DocumentRenameDialog(
+                initialTitle = documentToRename!!.title,
+                onConfirm = { newTitle ->
+                    val doc = documentToRename!!
+                    documentToRename = null
+                    scope.launch(Dispatchers.IO) {
+                        documentStore.renameDocument(doc, newTitle)
+                        val updated = documentStore.getDocuments()
+                        withContext(Dispatchers.Main) { documents = updated }
+                    }
+                },
+                onDismiss = { documentToRename = null }
+            )
         }
 
         if (documentToDelete != null) {
@@ -182,9 +175,7 @@ fun LibraryScreen(
                     scope.launch(Dispatchers.IO) {
                         documentStore.deleteDocument(doc)
                         val updated = documentStore.getDocuments()
-                        withContext(Dispatchers.Main) {
-                            documents = updated
-                        }
+                        withContext(Dispatchers.Main) { documents = updated }
                     }
                 },
                 onDismiss = { documentToDelete = null }

@@ -17,10 +17,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.otium.lab.scanner.components.CropBottomActionBar
-import com.otium.lab.scanner.components.CropFilterBottomBar
-import com.otium.lab.scanner.components.CropFilterTopBar
-import com.otium.lab.scanner.components.DocumentCropOverlay
+import com.otium.lab.scanner.components.*
 import com.otium.lab.scanner.model.NormalizedQuad
 import com.otium.lab.scanner.model.ScanFilter
 import com.otium.lab.scanner.util.ImageProcessingUtils
@@ -28,13 +25,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.otium_bridge.bridgeApplyScanFilter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun CropAndFilterScreen(
     rawImageBytes: ByteArray,
     pageNumber: Int = 1,
     onAddMore: (Bitmap) -> Unit,
-    onSavePdf: (Bitmap) -> Unit,
+    onSavePdf: (Bitmap, String) -> Unit,
     onCancel: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -42,14 +42,12 @@ fun CropAndFilterScreen(
     var activeBytes by remember { mutableStateOf(rawImageBytes) }
     var previewRawBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var cropQuad by remember { mutableStateOf(NormalizedQuad()) }
-
     var selectedFilter by remember { mutableStateOf(ScanFilter.MAGIC_COLOR) }
     var displayedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
-
+    var showSaveDialog by remember { mutableStateOf(false) }
     val filterCache = remember { mutableMapOf<ScanFilter, Bitmap>() }
 
-    // 1. Initial Setup: Decode raw preview & detect document corners
     LaunchedEffect(rawImageBytes) {
         withContext(Dispatchers.Default) {
             val bmp = ImageProcessingUtils.decodeSampledBitmap(rawImageBytes)
@@ -60,36 +58,29 @@ fun CropAndFilterScreen(
         }
     }
 
-    // 2. Filter application on the cropped active bytes
     LaunchedEffect(activeBytes, selectedFilter, isCropping) {
         if (isCropping) return@LaunchedEffect
         if (filterCache.containsKey(selectedFilter)) {
             displayedBitmap = filterCache[selectedFilter]
             return@LaunchedEffect
         }
-
         isProcessing = true
         withContext(Dispatchers.Default) {
             try {
-                val processedBytes = if (selectedFilter == ScanFilter.ORIGINAL) {
-                    activeBytes
-                } else {
-                    try {
-                        bridgeApplyScanFilter(activeBytes, selectedFilter.mode)
-                    } catch (_: Throwable) {
-                        ImageProcessingUtils.applyFallbackFilter(activeBytes, selectedFilter)
-                    }
+                val processed = if (selectedFilter == ScanFilter.ORIGINAL) activeBytes else {
+                    try { bridgeApplyScanFilter(activeBytes, selectedFilter.mode) }
+                    catch (_: Throwable) { ImageProcessingUtils.applyFallbackFilter(activeBytes, selectedFilter) }
                 }
-                val bmp = ImageProcessingUtils.decodeSampledBitmap(processedBytes)
+                val bmp = ImageProcessingUtils.decodeSampledBitmap(processed)
                 if (bmp != null) {
                     filterCache[selectedFilter] = bmp
                     displayedBitmap = bmp
                 }
             } catch (_: Throwable) {
-                val fallbackBmp = ImageProcessingUtils.decodeSampledBitmap(activeBytes)
-                if (fallbackBmp != null) {
-                    filterCache[selectedFilter] = fallbackBmp
-                    displayedBitmap = fallbackBmp
+                val fallback = ImageProcessingUtils.decodeSampledBitmap(activeBytes)
+                if (fallback != null) {
+                    filterCache[selectedFilter] = fallback
+                    displayedBitmap = fallback
                 }
             }
         }
@@ -111,10 +102,7 @@ fun CropAndFilterScreen(
                         filterCache[selectedFilter] = rotated
                     }
                 },
-                onToggleCropMode = {
-                    filterCache.clear()
-                    isCropping = true
-                }
+                onToggleCropMode = { filterCache.clear(); isCropping = true }
             )
         },
         bottomBar = {
@@ -145,34 +133,24 @@ fun CropAndFilterScreen(
                     hasBitmap = displayedBitmap != null,
                     onSelectFilter = { selectedFilter = it },
                     onAddMore = { displayedBitmap?.let { onAddMore(it) } },
-                    onSavePdf = { displayedBitmap?.let { onSavePdf(it) } }
+                    onSavePdf = { displayedBitmap?.let { showSaveDialog = true } }
                 )
             }
         }
     ) { paddingValues ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(Color(0xFF0F172A).copy(alpha = 0.95f))
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(paddingValues).background(Color(0xFF0F172A).copy(alpha = 0.95f)).padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             val bmpToShow = if (isCropping) previewRawBitmap else displayedBitmap
-
             if (bmpToShow != null) {
                 Box(contentAlignment = Alignment.Center) {
                     Image(
                         bitmap = bmpToShow.asImageBitmap(),
                         contentDescription = "معاينة المستند",
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .shadow(12.dp, RoundedCornerShape(8.dp))
-                            .clip(RoundedCornerShape(8.dp))
+                        modifier = Modifier.fillMaxSize().shadow(12.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))
                     )
-
-                    // 4-Point Draggable Crop Overlay in Cropping Mode
                     if (isCropping) {
                         DocumentCropOverlay(
                             quad = cropQuad,
@@ -184,12 +162,9 @@ fun CropAndFilterScreen(
                     }
                 }
             }
-
             if (isProcessing) {
                 Box(
-                    modifier = Modifier
-                        .size(110.dp)
-                        .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(16.dp)),
+                    modifier = Modifier.size(110.dp).background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -199,6 +174,20 @@ fun CropAndFilterScreen(
                     }
                 }
             }
+        }
+
+        if (showSaveDialog && displayedBitmap != null) {
+            val defaultName = remember {
+                "مستند_ممسوح_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}"
+            }
+            DocumentSaveNameDialog(
+                defaultTitle = defaultName,
+                onConfirm = { customName ->
+                    showSaveDialog = false
+                    onSavePdf(displayedBitmap!!, customName)
+                },
+                onDismiss = { showSaveDialog = false }
+            )
         }
     }
 }

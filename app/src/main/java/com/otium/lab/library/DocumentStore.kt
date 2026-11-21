@@ -1,8 +1,12 @@
 package com.otium.lab.library
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import org.json.JSONArray
 import org.json.JSONObject
@@ -216,6 +220,76 @@ class DocumentStore(private val context: Context) {
             return true
         } catch (_: Exception) {
             return false
+        }
+    }
+
+    fun renameDocument(doc: StoredDocument, newTitle: String): Boolean {
+        val cleanTitle = newTitle.trim()
+        if (cleanTitle.isBlank()) return false
+
+        val docs = getDocuments().toMutableList()
+        val index = docs.indexOfFirst { it.uriString == doc.uriString }
+        if (index == -1) return false
+
+        val newUri = if (doc.isScanned && doc.uri.scheme == "file") {
+            try {
+                val oldFile = File(doc.uri.path ?: "")
+                if (oldFile.exists()) {
+                    val safeName = "${cleanTitle.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")}.pdf"
+                    val newFile = File(oldFile.parentFile, safeName)
+                    if (oldFile.renameTo(newFile)) {
+                        Uri.fromFile(newFile)
+                    } else doc.uri
+                } else doc.uri
+            } catch (_: Exception) {
+                doc.uri
+            }
+        } else {
+            doc.uri
+        }
+
+        docs[index] = doc.copy(
+            title = cleanTitle,
+            uriString = newUri.toString()
+        )
+        saveDocuments(docs)
+        return true
+    }
+
+    fun exportToDownloads(doc: StoredDocument): Boolean {
+        return try {
+            val resolver = context.contentResolver
+            val inputStream = if (doc.uri.scheme == "file") {
+                File(doc.uri.path ?: "").inputStream()
+            } else {
+                resolver.openInputStream(doc.uri)
+            } ?: return false
+
+            val filename = "${doc.title.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")}.pdf"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val destUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+                resolver.openOutputStream(destUri)?.use { out ->
+                    inputStream.use { it.copyTo(out) }
+                }
+                true
+            } else {
+                @Suppress("DEPRECATION")
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val destFile = File(downloadsDir, filename)
+                destFile.outputStream().use { out ->
+                    inputStream.use { it.copyTo(out) }
+                }
+                true
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 }
