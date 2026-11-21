@@ -2,12 +2,17 @@ package com.otium.lab.pdf
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -18,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -26,28 +33,59 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.otium.lab.library.DocumentStore
+import com.otium.lab.ui.theme.AppThemeMode
 import kotlinx.coroutines.launch
 
-enum class ReaderTheme(val bg: Color, val surface: Color, val text: Color) {
-    LIGHT(Color(0xFFF3F4F6), Color.White, Color(0xFF111827)),
-    SEPIA(Color(0xFFFBF0D9), Color(0xFFF5E6C8), Color(0xFF4A3B2C)),
-    DARK(Color(0xFF121212), Color(0xFF1E1E1E), Color(0xFFE5E7EB))
+enum class PageColorMode(val labelAr: String) {
+    ORIGINAL("أبيض طبيعي"),
+    AMOLED_BLACK("أموليـد أسود"),
+    SEPIA("سيبيا ورقي")
 }
+
+val InvertColorMatrix = ColorMatrix(
+    floatArrayOf(
+        -1f,  0f,  0f,  0f, 255f,
+         0f, -1f,  0f,  0f, 255f,
+         0f,  0f, -1f,  0f, 255f,
+         0f,  0f,  0f,  1f,   0f
+    )
+)
+
+val SepiaColorMatrix = ColorMatrix(
+    floatArrayOf(
+        0.393f, 0.769f, 0.189f, 0f, 0f,
+        0.349f, 0.686f, 0.168f, 0f, 0f,
+        0.272f, 0.534f, 0.131f, 0f, 0f,
+        0f,     0f,     0f,     1f, 0f
+    )
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfViewerScreen(
     uri: Uri,
     title: String,
+    currentTheme: AppThemeMode,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val renderer = remember { NativePdfRenderer(context) }
+    val documentStore = remember { DocumentStore(context) }
 
     var isLoaded by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var readerTheme by remember { mutableStateOf(ReaderTheme.LIGHT) }
+    var showControls by remember { mutableStateOf(true) }
+
+    // Default to AMOLED page inversion if the user has chosen AMOLED theme!
+    var pageColorMode by remember {
+        mutableStateOf(
+            if (currentTheme == AppThemeMode.AMOLED) PageColorMode.AMOLED_BLACK
+            else if (currentTheme == AppThemeMode.CREAM) PageColorMode.SEPIA
+            else PageColorMode.ORIGINAL
+        )
+    }
 
     val listState = rememberLazyListState()
     var scale by remember { mutableFloatStateOf(1f) }
@@ -59,6 +97,18 @@ fun PdfViewerScreen(
             if (renderer.pageCount > 0) {
                 (listState.firstVisibleItemIndex + 1).coerceAtMost(renderer.pageCount)
             } else 1
+        }
+    }
+
+    // Save reading progress when page changes
+    LaunchedEffect(currentPage, renderer.pageCount) {
+        if (renderer.pageCount > 0) {
+            documentStore.addOrUpdateDocument(
+                uri = uri,
+                title = title,
+                page = currentPage,
+                total = renderer.pageCount
+            )
         }
     }
 
@@ -75,67 +125,95 @@ fun PdfViewerScreen(
         }
     }
 
+    val containerBg = when (pageColorMode) {
+        PageColorMode.AMOLED_BLACK -> Color.Black
+        PageColorMode.SEPIA -> Color(0xFFFBF7EE)
+        PageColorMode.ORIGINAL -> if (currentTheme == AppThemeMode.AMOLED) Color(0xFF0F0F0F) else Color(0xFFF1F5F9)
+    }
+
+    val barBg = when (pageColorMode) {
+        PageColorMode.AMOLED_BLACK -> Color(0xFF111111)
+        PageColorMode.SEPIA -> Color(0xFFF4EBD9)
+        PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.surface
+    }
+
+    val textColor = when (pageColorMode) {
+        PageColorMode.AMOLED_BLACK -> Color(0xFFF8FAFC)
+        PageColorMode.SEPIA -> Color(0xFF2C2416)
+        PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.onSurface
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = title,
-                            maxLines = 1,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = readerTheme.text
-                        )
-                        if (renderer.pageCount > 0) {
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                TopAppBar(
+                    title = {
+                        Column {
                             Text(
-                                text = "صفحة $currentPage من ${renderer.pageCount}",
-                                fontSize = 12.sp,
-                                color = readerTheme.text.copy(alpha = 0.7f)
+                                text = title,
+                                maxLines = 1,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            if (renderer.pageCount > 0) {
+                                Text(
+                                    text = "صفحة $currentPage من ${renderer.pageCount}",
+                                    fontSize = 12.sp,
+                                    color = textColor.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onClose) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "رجوع",
+                                tint = textColor
                             )
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "رجوع",
-                            tint = readerTheme.text
-                        )
-                    }
-                },
-                actions = {
-                    // Theme Switcher
-                    IconButton(onClick = {
-                        readerTheme = when (readerTheme) {
-                            ReaderTheme.LIGHT -> ReaderTheme.SEPIA
-                            ReaderTheme.SEPIA -> ReaderTheme.DARK
-                            ReaderTheme.DARK -> ReaderTheme.LIGHT
+                    },
+                    actions = {
+                        // Page color mode toggle (Original -> AMOLED Black -> Sepia)
+                        IconButton(onClick = {
+                            pageColorMode = when (pageColorMode) {
+                                PageColorMode.ORIGINAL -> PageColorMode.AMOLED_BLACK
+                                PageColorMode.AMOLED_BLACK -> PageColorMode.SEPIA
+                                PageColorMode.SEPIA -> PageColorMode.ORIGINAL
+                            }
+                        }) {
+                            Icon(
+                                imageVector = when (pageColorMode) {
+                                    PageColorMode.ORIGINAL -> Icons.Rounded.LightMode
+                                    PageColorMode.AMOLED_BLACK -> Icons.Rounded.DarkMode
+                                    PageColorMode.SEPIA -> Icons.Rounded.AutoStories
+                                },
+                                contentDescription = pageColorMode.labelAr,
+                                tint = if (pageColorMode == PageColorMode.AMOLED_BLACK) Color(0xFFE5B842) else textColor
+                            )
                         }
-                    }) {
-                        Icon(
-                            imageVector = when (readerTheme) {
-                                ReaderTheme.LIGHT -> Icons.Rounded.LightMode
-                                ReaderTheme.SEPIA -> Icons.Rounded.AutoStories
-                                ReaderTheme.DARK -> Icons.Rounded.DarkMode
-                            },
-                            contentDescription = "تغيير نمط القراءة",
-                            tint = readerTheme.text
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = readerTheme.surface
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = barBg
+                    )
                 )
-            )
+            }
         },
         bottomBar = {
-            if (renderer.pageCount > 1) {
+            AnimatedVisibility(
+                visible = showControls && renderer.pageCount > 1,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
                 Surface(
-                    color = readerTheme.surface,
-                    tonalElevation = 4.dp,
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                    color = barBg,
+                    tonalElevation = 6.dp,
+                    modifier = Modifier.fillMaxWidth().height(60.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -143,11 +221,11 @@ fun PdfViewerScreen(
                     ) {
                         Text(
                             text = "$currentPage",
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = readerTheme.text
+                            color = textColor
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Slider(
                             value = currentPage.toFloat(),
                             onValueChange = { targetPage ->
@@ -163,12 +241,12 @@ fun PdfViewerScreen(
                                 activeTrackColor = Color(0xFFC29B38)
                             )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = "${renderer.pageCount}",
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = readerTheme.text
+                            color = textColor
                         )
                     }
                 }
@@ -179,7 +257,19 @@ fun PdfViewerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(readerTheme.bg)
+                .background(containerBg)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            showControls = !showControls
+                        },
+                        onDoubleTap = {
+                            scale = if (scale > 1.2f) 1f else 2.5f
+                            offsetX = 0f
+                            offsetY = 0f
+                        }
+                    )
+                }
         ) {
             when {
                 errorMessage != null -> {
@@ -226,15 +316,15 @@ fun PdfViewerScreen(
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             items(renderer.pageCount) { index ->
                                 PdfPageItem(
                                     pageIndex = index,
                                     renderer = renderer,
-                                    readerTheme = readerTheme
+                                    pageColorMode = pageColorMode
                                 )
                             }
                         }
@@ -249,7 +339,7 @@ fun PdfViewerScreen(
 fun PdfPageItem(
     pageIndex: Int,
     renderer: NativePdfRenderer,
-    readerTheme: ReaderTheme
+    pageColorMode: PageColorMode
 ) {
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -262,33 +352,46 @@ fun PdfPageItem(
         isLoading = false
     }
 
+    val pageColorFilter = when (pageColorMode) {
+        PageColorMode.AMOLED_BLACK -> ColorFilter.colorMatrix(InvertColorMatrix)
+        PageColorMode.SEPIA -> ColorFilter.colorMatrix(SepiaColorMatrix)
+        PageColorMode.ORIGINAL -> null
+    }
+
+    val cardBg = when (pageColorMode) {
+        PageColorMode.AMOLED_BLACK -> Color.Black
+        PageColorMode.SEPIA -> Color(0xFFFBF7EE)
+        PageColorMode.ORIGINAL -> Color.White
+    }
+
     Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = readerTheme.surface,
-        shadowElevation = 2.dp,
+        shape = RoundedCornerShape(4.dp),
+        color = cardBg,
+        shadowElevation = if (pageColorMode == PageColorMode.AMOLED_BLACK) 0.dp else 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(4.dp))
     ) {
         if (bitmap != null) {
             Image(
                 bitmap = bitmap!!.asImageBitmap(),
                 contentDescription = "صفحة ${pageIndex + 1}",
                 contentScale = ContentScale.FillWidth,
+                colorFilter = pageColorFilter,
                 modifier = Modifier.fillMaxWidth()
             )
         } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(420.dp)
-                    .background(readerTheme.surface),
+                    .height(440.dp)
+                    .background(cardBg),
                 contentAlignment = Alignment.Center
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
                         color = Color(0xFFC29B38),
-                        modifier = Modifier.size(32.dp),
+                        modifier = Modifier.size(28.dp),
                         strokeWidth = 2.dp
                     )
                 } else {

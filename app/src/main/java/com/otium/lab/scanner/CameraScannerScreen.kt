@@ -3,7 +3,6 @@ package com.otium.lab.scanner
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,12 +16,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,13 +33,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.Executors
 
 @Composable
 fun CameraScannerScreen(
+    pageCount: Int = 0,
     onImageCaptured: (ByteArray) -> Unit,
+    onFinishBatch: () -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -75,7 +79,7 @@ fun CameraScannerScreen(
 
     if (!hasCameraPermission) {
         Box(
-            modifier = Modifier.fillMaxSize().background(Color(0xFF111827)).padding(24.dp),
+            modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -143,13 +147,35 @@ fun CameraScannerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Document Framing Guide Overlay
-        Box(
+        // Modern Document Corner Guides Overlay
+        Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 80.dp)
-                .border(2.dp, Color(0xFFC29B38).copy(alpha = 0.7f), RoundedCornerShape(16.dp))
-        )
+                .padding(horizontal = 28.dp, vertical = 95.dp)
+        ) {
+            val strokeWidth = 3.5.dp.toPx()
+            val cornerLength = 32.dp.toPx()
+            val color = Color(0xFFE5B842)
+
+            val w = size.width
+            val h = size.height
+
+            // Top-Left corner
+            drawLine(color, Offset(0f, 0f), Offset(cornerLength, 0f), strokeWidth)
+            drawLine(color, Offset(0f, 0f), Offset(0f, cornerLength), strokeWidth)
+
+            // Top-Right corner
+            drawLine(color, Offset(w, 0f), Offset(w - cornerLength, 0f), strokeWidth)
+            drawLine(color, Offset(w, 0f), Offset(w, cornerLength), strokeWidth)
+
+            // Bottom-Left corner
+            drawLine(color, Offset(0f, h), Offset(cornerLength, h), strokeWidth)
+            drawLine(color, Offset(0f, h), Offset(0f, h - cornerLength), strokeWidth)
+
+            // Bottom-Right corner
+            drawLine(color, Offset(w, h), Offset(w - cornerLength, h), strokeWidth)
+            drawLine(color, Offset(w, h), Offset(w, h - cornerLength), strokeWidth)
+        }
 
         // Top Controls Bar
         Row(
@@ -164,16 +190,16 @@ fun CameraScannerScreen(
                 onClick = onClose,
                 modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
             ) {
-                Icon(Icons.Rounded.Close, contentDescription = "إغلاق", tint = Color.White)
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع", tint = Color.White)
             }
 
             Text(
-                text = "ضع المستند داخل الإطار",
+                text = if (pageCount > 0) "تم التقاط $pageCount صفحة" else "وجه الكاميرا نحو المستند",
                 color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
 
@@ -190,7 +216,7 @@ fun CameraScannerScreen(
                 Icon(
                     imageVector = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
                     contentDescription = "الفلاش",
-                    tint = if (isFlashOn) Color(0xFFC29B38) else Color.White
+                    tint = if (isFlashOn) Color(0xFFE5B842) else Color.White
                 )
             }
         }
@@ -201,15 +227,15 @@ fun CameraScannerScreen(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 24.dp, start = 32.dp, end = 32.dp),
+                .padding(bottom = 24.dp, start = 28.dp, end = 28.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Import from Gallery Button
+            // Import from Gallery
             IconButton(
                 onClick = { galleryLauncher.launch("image/*") },
                 modifier = Modifier
-                    .size(50.dp)
+                    .size(52.dp)
                     .background(Color.White.copy(alpha = 0.2f), CircleShape)
             ) {
                 Icon(Icons.Rounded.PhotoLibrary, contentDescription = "معرض الصور", tint = Color.White)
@@ -237,13 +263,10 @@ fun CameraScannerScreen(
                             }
 
                             override fun onError(exception: ImageCaptureException) {
-                                imageProxyError(exception)
                                 ContextCompat.getMainExecutor(context).execute {
                                     isCapturing = false
                                 }
                             }
-
-                            private fun imageProxyError(e: Exception) {}
                         }
                     )
                 },
@@ -251,22 +274,33 @@ fun CameraScannerScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier
-                    .size(72.dp)
-                    .border(4.dp, Color(0xFFC29B38), CircleShape)
+                    .size(76.dp)
+                    .border(4.dp, Color(0xFFE5B842), CircleShape)
             ) {
                 if (isCapturing) {
-                    CircularProgressIndicator(color = Color(0xFFC29B38), modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
+                    CircularProgressIndicator(color = Color(0xFFE5B842), modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
                 } else {
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
-                            .background(Color(0xFFC29B38), CircleShape)
+                            .size(60.dp)
+                            .background(Color(0xFFE5B842), CircleShape)
                     )
                 }
             }
 
-            // Placeholder to keep shutter centered
-            Spacer(modifier = Modifier.size(50.dp))
+            // Finish Batch Button (if at least 1 page scanned)
+            if (pageCount > 0) {
+                IconButton(
+                    onClick = onFinishBatch,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(Color(0xFFE5B842), CircleShape)
+                ) {
+                    Icon(Icons.Rounded.Check, contentDescription = "إنهاء", tint = Color.Black)
+                }
+            } else {
+                Spacer(modifier = Modifier.size(52.dp))
+            }
         }
     }
 }

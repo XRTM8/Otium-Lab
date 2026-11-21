@@ -3,6 +3,7 @@ package com.otium.lab.library
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.provider.OpenableColumns
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,7 +12,9 @@ data class StoredDocument(
     val uriString: String,
     val title: String,
     val isScanned: Boolean,
-    val timestamp: Long
+    val timestamp: Long,
+    val lastPage: Int = 1,
+    val totalPages: Int = 0
 ) {
     val uri: Uri get() = Uri.parse(uriString)
 }
@@ -21,10 +24,40 @@ class DocumentStore(private val context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("otium_doc_store", Context.MODE_PRIVATE)
 
+    companion object {
+        fun resolveDisplayName(context: Context, uri: Uri): String {
+            if (uri.scheme == "file") {
+                return File(uri.path ?: "").nameWithoutExtension.ifBlank { "مستند PDF" }
+            }
+            if (uri.scheme == "content") {
+                try {
+                    context.contentResolver.query(
+                        uri,
+                        arrayOf(OpenableColumns.DISPLAY_NAME),
+                        null,
+                        null,
+                        null
+                    )?.use { cursor ->
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1 && cursor.moveToFirst()) {
+                            val name = cursor.getString(nameIndex)
+                            if (!name.isNullOrBlank()) {
+                                return name.substringBeforeLast('.')
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            val raw = uri.lastPathSegment ?: "مستند PDF"
+            val clean = raw.substringAfterLast('/').substringAfterLast(':')
+            return if (clean.matches(Regex("^\\d+$")) || clean.isBlank()) "مستند بدون عنوان" else clean.substringBeforeLast('.')
+        }
+    }
+
     fun getDocuments(): List<StoredDocument> {
         val list = mutableListOf<StoredDocument>()
 
-        // 1. First add all scanned files from scans/ directory
+        // 1. Scanned documents from scans directory
         val scansDir = File(context.filesDir, "scans")
         if (scansDir.exists() && scansDir.isDirectory) {
             val files = scansDir.listFiles { f -> f.extension.equals("pdf", ignoreCase = true) } ?: emptyArray()
@@ -40,21 +73,22 @@ class DocumentStore(private val context: Context) {
             }
         }
 
-        // 2. Add saved recents from SharedPreferences
+        // 2. Imported / Opened documents from preferences
         val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
         try {
             val arr = JSONArray(jsonStr)
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 val uriStr = obj.getString("uri")
-                // Avoid duplicates
                 if (list.none { it.uriString == uriStr }) {
                     list.add(
                         StoredDocument(
                             uriString = uriStr,
-                            title = obj.getString("title"),
+                            title = obj.optString("title", "مستند PDF"),
                             isScanned = obj.optBoolean("isScanned", false),
-                            timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                            timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                            lastPage = obj.optInt("lastPage", 1),
+                            totalPages = obj.optInt("totalPages", 0)
                         )
                     )
                 }
@@ -64,30 +98,41 @@ class DocumentStore(private val context: Context) {
         return list.sortedByDescending { it.timestamp }
     }
 
-    fun addRecentDocument(uri: Uri, title: String, isScanned: Boolean = false) {
+    fun addOrUpdateDocument(uri: Uri, title: String? = null, isScanned: Boolean = false, page: Int = 1, total: Int = 0) {
+        val resolvedTitle = if (!title.isNullOrBlank() && !title.startsWith("document:")) {
+            title
+        } else {
+            resolveDisplayName(context, uri)
+        }
+
         val docs = getDocuments().toMutableList()
-        // Remove if exists
-        docs.removeAll { it.uriString == uri.toString() }
-        // Prepend
-        docs.add(
-            0,
-            StoredDocument(
-                uriString = uri.toString(),
-                title = title,
-                isScanned = isScanned,
-                timestamp = System.currentTimeMillis()
-            )
+        val existingIndex = docs.indexOfFirst { it.uriString == uri.toString() }
+
+        val doc = StoredDocument(
+            uriString = uri.toString(),
+            title = resolvedTitle,
+            isScanned = isScanned,
+            timestamp = System.currentTimeMillis(),
+            lastPage = page,
+            totalPages = total
         )
 
-        // Save up to 50 recent documents
+        if (existingIndex != -1) {
+            docs[existingIndex] = doc
+        } else {
+            docs.add(0, doc)
+        }
+
         val limited = docs.take(50)
         val arr = JSONArray()
-        for (doc in limited) {
+        for (d in limited) {
             val obj = JSONObject().apply {
-                put("uri", doc.uriString)
-                put("title", doc.title)
-                put("isScanned", doc.isScanned)
-                put("timestamp", doc.timestamp)
+                put("uri", d.uriString)
+                put("title", d.title)
+                put("isScanned", d.isScanned)
+                put("timestamp", d.timestamp)
+                put("lastPage", d.lastPage)
+                put("totalPages", d.totalPages)
             }
             arr.put(obj)
         }
@@ -97,7 +142,7 @@ class DocumentStore(private val context: Context) {
     fun deleteDocument(doc: StoredDocument): Boolean {
         if (doc.isScanned && doc.uri.scheme == "file") {
             try {
-                val f = File(doc.uri.path!!)
+                val f = File(doc.uri.path ?: "")
                 if (f.exists()) f.delete()
             } catch (_: Exception) {}
         }

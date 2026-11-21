@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -31,92 +32,218 @@ import java.util.Locale
 @Composable
 fun LibraryScreen(
     documentStore: DocumentStore,
-    onOpenPdf: (Uri, String) -> Unit
+    onOpenPdf: (Uri, String) -> Unit,
+    onNavigateToScanner: () -> Unit
 ) {
     val context = LocalContext.current
     var documents by remember { mutableStateOf(documentStore.getDocuments()) }
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: All, 1: Scanned, 2: Imported
+    var selectedFilterIndex by remember { mutableIntStateOf(0) } // 0: All, 1: Scanned, 2: Imported
 
     val openPdfLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "مستند مستورد"
-            documentStore.addRecentDocument(uri, name, isScanned = false)
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+
+            val resolvedTitle = DocumentStore.resolveDisplayName(context, uri)
+            documentStore.addOrUpdateDocument(uri, resolvedTitle, isScanned = false)
             documents = documentStore.getDocuments()
-            onOpenPdf(uri, name)
+            onOpenPdf(uri, resolvedTitle)
         }
     }
 
-    val filtered = when (selectedTab) {
+    val mostRecent = documents.firstOrNull()
+
+    val filtered = when (selectedFilterIndex) {
         1 -> documents.filter { it.isScanned }
         2 -> documents.filter { !it.isScanned }
         else -> documents
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("مكتبة المستندات والكتب", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-
-            FilledTonalButton(
+    Scaffold(
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
                 onClick = { openPdfLauncher.launch(arrayOf("application/pdf")) },
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("استيراد PDF", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp),
+                icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                text = { Text("فتح ملف PDF", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+            )
         }
-
-        // Tabs
-        PrimaryTabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent,
-            contentColor = Color(0xFFC29B38),
-            divider = {}
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 20.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 90.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("الكل (${documents.size})") })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("الممسوحة ضوئياً") })
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("المستوردة") })
-        }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "مكتبة المستندات",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "${documents.size} مستند متوفر محلياً",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (filtered.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Rounded.FolderOpen,
-                        contentDescription = null,
-                        tint = Color.LightGray,
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("لا توجد مستندات بعد", color = Color.Gray, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("قم بمسح مستند بالكاميرا أو فتح ملف PDF للبدء", color = Color.LightGray, fontSize = 12.sp)
+                    // Quick Camera Button in Header
+                    FilledIconButton(
+                        onClick = onNavigateToScanner,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(Icons.Rounded.CameraAlt, contentDescription = "مسح بالكاميرا")
+                    }
                 }
             }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
+
+            // Continue Reading Hero Card (If there's a recent document)
+            if (mostRecent != null) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenPdf(mostRecent.uri, mostRecent.title) }
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Rounded.AutoStories,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "متابعة القراءة",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                if (mostRecent.totalPages > 0) {
+                                    Text(
+                                        text = "صفحة ${mostRecent.lastPage} من ${mostRecent.totalPages}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text(
+                                text = mostRecent.title,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                FilledTonalButton(
+                                    onClick = { onOpenPdf(mostRecent.uri, mostRecent.title) },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("متابعة", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(Icons.Rounded.ChevronLeft, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Filter Chips
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val tabs = listOf("الكل (${documents.size})", "الممسوحة ضوئياً", "ملفات PDF")
+                    tabs.forEachIndexed { index, title ->
+                        val isSelected = selectedFilterIndex == index
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedFilterIndex = index },
+                            label = {
+                                Text(
+                                    text = title,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Document List or Empty State
+            if (filtered.isEmpty()) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Rounded.FolderOpen,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(54.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("لا توجد مستندات بعد", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("اضغط على زر (فتح ملف PDF) أو افتح الكاميرا للمسح", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            } else {
                 items(filtered, key = { it.uriString }) { doc ->
                     DocumentCard(
                         doc = doc,
@@ -124,7 +251,7 @@ fun LibraryScreen(
                         onShare = {
                             try {
                                 val shareUri = if (doc.uri.scheme == "file") {
-                                    val f = File(doc.uri.path!!)
+                                    val f = File(doc.uri.path ?: "")
                                     FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
                                 } else doc.uri
 
@@ -171,9 +298,10 @@ fun DocumentCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .background(
-                        if (doc.isScanned) Color(0xFFC29B38).copy(alpha = 0.15f) else Color(0xFF3B82F6).copy(alpha = 0.15f),
+                        if (doc.isScanned) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else Color(0xFF3B82F6).copy(alpha = 0.15f),
                         RoundedCornerShape(12.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -181,7 +309,7 @@ fun DocumentCard(
                 Icon(
                     imageVector = if (doc.isScanned) Icons.Rounded.CameraAlt else Icons.Rounded.PictureAsPdf,
                     contentDescription = null,
-                    tint = if (doc.isScanned) Color(0xFFC29B38) else Color(0xFF3B82F6),
+                    tint = if (doc.isScanned) MaterialTheme.colorScheme.primary else Color(0xFF3B82F6),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -198,15 +326,15 @@ fun DocumentCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${if (doc.isScanned) "ممسوح ضوئياً" else "ملف PDF"} · $dateStr",
+                    text = "${if (doc.isScanned) "ممسوح بالكاميرا" else "ملف PDF"} · $dateStr",
                     fontSize = 11.sp,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Box {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Rounded.MoreVert, contentDescription = "خيارات", tint = Color.Gray)
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "خيارات", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 DropdownMenu(
