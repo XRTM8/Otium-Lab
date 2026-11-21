@@ -123,6 +123,39 @@ class DocumentStore(private val context: Context) {
             docs.add(0, doc)
         }
 
+        saveDocuments(docs)
+    }
+
+    fun getLastPage(uri: Uri): Int {
+        val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
+        try {
+            val arr = JSONArray(jsonStr)
+            val uriStr = uri.toString()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                if (obj.getString("uri") == uriStr) {
+                    return obj.optInt("lastPage", 1)
+                }
+            }
+        } catch (_: Exception) {}
+        return 1
+    }
+
+    fun updateProgress(uri: Uri, page: Int, total: Int) {
+        val docs = getDocuments().toMutableList()
+        val existingIndex = docs.indexOfFirst { it.uriString == uri.toString() }
+        if (existingIndex != -1) {
+            val existing = docs[existingIndex]
+            docs[existingIndex] = existing.copy(
+                lastPage = page,
+                totalPages = if (total > 0) total else existing.totalPages,
+                timestamp = System.currentTimeMillis()
+            )
+            saveDocuments(docs)
+        }
+    }
+
+    private fun saveDocuments(docs: List<StoredDocument>) {
         val limited = docs.take(50)
         val arr = JSONArray()
         for (d in limited) {

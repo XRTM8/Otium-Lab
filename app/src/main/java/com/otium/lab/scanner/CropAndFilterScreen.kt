@@ -92,6 +92,20 @@ fun CropAndFilterScreen(
                         Icon(Icons.Rounded.Close, contentDescription = "إلغاء وإعادة التقاط")
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            val bmp = displayedBitmap ?: return@IconButton
+                            val matrix = android.graphics.Matrix().apply { postRotate(90f) }
+                            val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                            displayedBitmap = rotated
+                            filterCache[selectedFilter] = rotated
+                        }
+                    ) {
+                        @Suppress("DEPRECATION")
+                        Icon(Icons.Rounded.RotateRight, contentDescription = "تدوير 90°")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )

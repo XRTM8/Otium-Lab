@@ -19,8 +19,8 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
     private var renderer: PdfRenderer? = null
     private val renderDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
-    // Cache up to 25 rendered pages in memory to ensure 60fps scrolling
-    private val pageCache = object : LruCache<Int, Bitmap>(25) {
+    // Cache up to 35 rendered pages in memory to ensure 120fps butter-smooth scrolling
+    private val pageCache = object : LruCache<Int, Bitmap>(35) {
         override fun entryRemoved(evicted: Boolean, key: Int?, oldValue: Bitmap?, newValue: Bitmap?) {
             // Let GC collect recycled bitmaps
         }

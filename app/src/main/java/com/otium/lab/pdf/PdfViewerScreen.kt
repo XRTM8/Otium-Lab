@@ -7,13 +7,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
@@ -31,6 +34,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.otium.lab.library.DocumentStore
@@ -41,6 +45,11 @@ enum class PageColorMode(val labelAr: String) {
     ORIGINAL("أبيض طبيعي"),
     AMOLED_BLACK("أموليـد أسود"),
     SEPIA("سيبيا ورقي")
+}
+
+enum class ReadingLayout(val labelAr: String) {
+    VERTICAL("تمرير عمودي"),
+    HORIZONTAL("تقليب أفقي")
 }
 
 val InvertColorMatrix = ColorMatrix(
@@ -78,6 +87,10 @@ fun PdfViewerScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showControls by remember { mutableStateOf(true) }
 
+    var readingLayout by remember { mutableStateOf(ReadingLayout.VERTICAL) }
+    var showJumpDialog by remember { mutableStateOf(false) }
+    var jumpInputText by remember { mutableStateOf("") }
+
     // Default to AMOLED page inversion if the user has chosen AMOLED theme!
     var pageColorMode by remember {
         mutableStateOf(
@@ -100,12 +113,21 @@ fun PdfViewerScreen(
         }
     }
 
+    // Smart Reading Resume: scroll to saved page on open
+    LaunchedEffect(isLoaded) {
+        if (isLoaded && renderer.pageCount > 0) {
+            val savedPage = documentStore.getLastPage(uri)
+            if (savedPage > 1 && savedPage <= renderer.pageCount) {
+                listState.scrollToItem((savedPage - 1).coerceAtLeast(0))
+            }
+        }
+    }
+
     // Save reading progress when page changes
     LaunchedEffect(currentPage, renderer.pageCount) {
         if (renderer.pageCount > 0) {
-            documentStore.addOrUpdateDocument(
+            documentStore.updateProgress(
                 uri = uri,
-                title = title,
                 page = currentPage,
                 total = renderer.pageCount
             )
@@ -179,6 +201,21 @@ fun PdfViewerScreen(
                         }
                     },
                     actions = {
+                        // Reading Layout Toggle (Vertical <-> Horizontal)
+                        IconButton(onClick = {
+                            readingLayout = if (readingLayout == ReadingLayout.VERTICAL) {
+                                ReadingLayout.HORIZONTAL
+                            } else {
+                                ReadingLayout.VERTICAL
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (readingLayout == ReadingLayout.VERTICAL) Icons.Rounded.AutoStories else Icons.Rounded.ViewDay,
+                                contentDescription = readingLayout.labelAr,
+                                tint = textColor
+                            )
+                        }
+
                         // Page color mode toggle (Original -> AMOLED Black -> Sepia)
                         IconButton(onClick = {
                             pageColorMode = when (pageColorMode) {
@@ -219,13 +256,34 @@ fun PdfViewerScreen(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "$currentPage",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        // Quick Jump Trigger
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    jumpInputText = "$currentPage"
+                                    showJumpDialog = true
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$currentPage / ${renderer.pageCount}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                Icons.Rounded.UnfoldMore,
+                                contentDescription = "انتقال سريع",
+                                tint = textColor.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         Slider(
                             value = currentPage.toFloat(),
                             onValueChange = { targetPage ->
@@ -240,13 +298,6 @@ fun PdfViewerScreen(
                                 thumbColor = MaterialTheme.colorScheme.primary,
                                 activeTrackColor = MaterialTheme.colorScheme.primary
                             )
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "${renderer.pageCount}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
                         )
                     }
                 }
@@ -291,40 +342,61 @@ fun PdfViewerScreen(
                 }
 
                 else -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(1f, 4f)
-                                    if (scale == 1f) {
-                                        offsetX = 0f
-                                        offsetY = 0f
-                                    } else {
-                                        offsetX += pan.x
-                                        offsetY += pan.y
-                                    }
-                                }
-                            }
-                            .graphicsLayer(
-                                scaleX = scale,
-                                scaleY = scale,
-                                translationX = offsetX,
-                                translationY = offsetY
-                            )
-                    ) {
+                    val cardBg = when (pageColorMode) {
+                        PageColorMode.AMOLED_BLACK -> Color.Black
+                        PageColorMode.SEPIA -> Color(0xFFFBF7EE)
+                        PageColorMode.ORIGINAL -> Color.White
+                    }
+
+                    if (readingLayout == ReadingLayout.VERTICAL) {
                         LazyColumn(
                             state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(
+                                    scaleX = scale,
+                                    scaleY = scale,
+                                    translationX = offsetX,
+                                    translationY = offsetY
+                                ),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            contentPadding = PaddingValues(vertical = 12.dp)
                         ) {
-                            items(renderer.pageCount) { index ->
+                            items(renderer.pageCount, key = { it }) { pageIndex ->
                                 PdfPageItem(
-                                    pageIndex = index,
                                     renderer = renderer,
-                                    pageColorMode = pageColorMode
+                                    pageIndex = pageIndex,
+                                    pageColorMode = pageColorMode,
+                                    cardBg = cardBg
+                                )
+                            }
+                        }
+                    } else {
+                        val pagerState = rememberPagerState(
+                            initialPage = (currentPage - 1).coerceAtLeast(0),
+                            pageCount = { renderer.pageCount }
+                        )
+
+                        LaunchedEffect(pagerState.currentPage) {
+                            documentStore.updateProgress(uri, pagerState.currentPage + 1, renderer.pageCount)
+                        }
+
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(scaleX = scale, scaleY = scale),
+                            pageSpacing = 16.dp
+                        ) { pageIndex ->
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                PdfPageItem(
+                                    renderer = renderer,
+                                    pageIndex = pageIndex,
+                                    pageColorMode = pageColorMode,
+                                    cardBg = cardBg
                                 )
                             }
                         }
@@ -332,52 +404,105 @@ fun PdfViewerScreen(
                 }
             }
         }
+
+        // Fast Page Jump Dialog
+        if (showJumpDialog) {
+            AlertDialog(
+                onDismissRequest = { showJumpDialog = false },
+                title = { Text("انتقال سريع إلى صفحة", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                text = {
+                    Column {
+                        Text("أدخل رقم الصفحة (1 - ${renderer.pageCount}):", fontSize = 12.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = jumpInputText,
+                            onValueChange = { jumpInputText = it.filter { char -> char.isDigit() } },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { jumpInputText = "1" },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("الأولى", fontSize = 12.sp) }
+                            OutlinedButton(
+                                onClick = { jumpInputText = "${renderer.pageCount / 2}" },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("المنتصف", fontSize = 12.sp) }
+                            OutlinedButton(
+                                onClick = { jumpInputText = "${renderer.pageCount}" },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("الأخيرة", fontSize = 12.sp) }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val target = jumpInputText.toIntOrNull()
+                            if (target != null && target in 1..renderer.pageCount) {
+                                scope.launch {
+                                    listState.scrollToItem(target - 1)
+                                }
+                                showJumpDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("انتقال", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showJumpDialog = false }) {
+                        Text("إلغاء")
+                    }
+                }
+            )
+        }
     }
 }
 
 @Composable
 fun PdfPageItem(
-    pageIndex: Int,
     renderer: NativePdfRenderer,
-    pageColorMode: PageColorMode
+    pageIndex: Int,
+    pageColorMode: PageColorMode,
+    cardBg: Color
 ) {
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var pageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(pageIndex) {
         isLoading = true
         try {
-            bitmap = renderer.renderPage(pageIndex)
+            pageBitmap = renderer.renderPage(pageIndex)
         } catch (_: Exception) {}
         isLoading = false
     }
 
-    val pageColorFilter = when (pageColorMode) {
+    val colorFilter = when (pageColorMode) {
         PageColorMode.AMOLED_BLACK -> ColorFilter.colorMatrix(InvertColorMatrix)
         PageColorMode.SEPIA -> ColorFilter.colorMatrix(SepiaColorMatrix)
         PageColorMode.ORIGINAL -> null
     }
 
-    val cardBg = when (pageColorMode) {
-        PageColorMode.AMOLED_BLACK -> Color.Black
-        PageColorMode.SEPIA -> Color(0xFFFBF7EE)
-        PageColorMode.ORIGINAL -> Color.White
-    }
-
-    Surface(
-        shape = RoundedCornerShape(4.dp),
-        color = cardBg,
-        shadowElevation = if (pageColorMode == PageColorMode.AMOLED_BLACK) 0.dp else 2.dp,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(cardBg),
+        contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
+        val bmp = pageBitmap
+        if (bmp != null) {
             Image(
-                bitmap = bitmap!!.asImageBitmap(),
+                bitmap = bmp.asImageBitmap(),
                 contentDescription = "صفحة ${pageIndex + 1}",
+                colorFilter = colorFilter,
                 contentScale = ContentScale.FillWidth,
-                colorFilter = pageColorFilter,
                 modifier = Modifier.fillMaxWidth()
             )
         } else {
