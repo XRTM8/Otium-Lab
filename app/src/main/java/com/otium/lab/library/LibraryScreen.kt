@@ -1,6 +1,7 @@
 package com.otium.lab.library
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,12 +13,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +40,9 @@ fun LibraryScreen(
     onNavigateToScanner: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     var documents by remember { mutableStateOf(documentStore.getDocuments()) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) } // 0: All, 1: Scanned, 2: Imported
 
@@ -67,41 +74,60 @@ fun LibraryScreen(
 
     Scaffold(
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { openPdfLauncher.launch(arrayOf("application/pdf")) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(16.dp),
-                icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                text = { Text("فتح ملف PDF", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
-            )
+            if (!isLandscape) {
+                ExtendedFloatingActionButton(
+                    onClick = { openPdfLauncher.launch(arrayOf("application/pdf")) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(16.dp),
+                    icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                    text = { Text("فتح ملف PDF", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                    modifier = Modifier.height(48.dp)
+                )
+            }
         }
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 90.dp),
+                .padding(horizontal = if (isLandscape) 32.dp else 20.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = if (isLandscape) 24.dp else 90.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp)
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "مكتبة المستندات",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "${documents.size} مستند متوفر محلياً",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column {
+                        Text(
+                            text = "مكتبة المستندات",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "${documents.size} مستند متوفر محلياً",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (isLandscape) {
+                        Button(
+                            onClick = { openPdfLauncher.launch(arrayOf("application/pdf")) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("فتح ملف PDF", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
 
@@ -140,7 +166,7 @@ fun LibraryScreen(
 
                                 if (mostRecent.totalPages > 0) {
                                     Text(
-                                        text = "صفحة ${mostRecent.lastPage} من ${mostRecent.totalPages}",
+                                        text = "\u200Eصفحة ${mostRecent.lastPage} من ${mostRecent.totalPages}\u200E",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -157,19 +183,48 @@ fun LibraryScreen(
                                 maxLines = 1
                             )
 
+                            if (mostRecent.totalPages > 0) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val progress = (mostRecent.lastPage.toFloat() / mostRecent.totalPages.toFloat()).coerceIn(0f, 1f)
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                )
+                            }
+
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                FilledTonalButton(
+                                if (mostRecent.totalPages > 0) {
+                                    val percent = ((mostRecent.lastPage.toFloat() / mostRecent.totalPages.toFloat()) * 100).toInt()
+                                    Text(
+                                        text = "تمت قراءة $percent%",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.width(1.dp))
+                                }
+
+                                Button(
                                     onClick = { onOpenPdf(mostRecent.uri, mostRecent.title) },
-                                    shape = RoundedCornerShape(12.dp)
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                                 ) {
-                                    Text("متابعة", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("متابعة القراءة", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(Icons.Rounded.ChevronLeft, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, modifier = Modifier.size(14.dp))
                                 }
                             }
                         }

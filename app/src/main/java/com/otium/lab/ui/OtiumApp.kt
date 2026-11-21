@@ -1,5 +1,6 @@
 package com.otium.lab.ui
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -13,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,7 +63,7 @@ fun OtiumApp() {
             PdfViewerScreen(
                 uri = activePdfUri!!,
                 title = activePdfTitle,
-                currentTheme = currentTheme,
+                themePreferences = themePreferences,
                 onClose = { activePdfUri = null }
             )
             return@MaterialTheme
@@ -136,16 +138,21 @@ fun OtiumApp() {
             return@MaterialTheme
         }
 
-        // Standard App Shell with 2 primary tabs: Library and Settings
-        Scaffold(
-            bottomBar = {
-                NavigationBar(
+        val configuration = LocalConfiguration.current
+        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        if (isLandscape) {
+            // Adaptive Landscape: Sleek NavigationRail on side, freeing 100% vertical screen height
+            Row(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                NavigationRail(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                    header = {
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                 ) {
                     AppDestination.entries.forEach { destination ->
                         val isSelected = currentDestination == destination
-                        NavigationBarItem(
+                        NavigationRailItem(
                             selected = isSelected,
                             onClick = {
                                 if (destination == AppDestination.SCANNER) {
@@ -158,17 +165,17 @@ fun OtiumApp() {
                                 Icon(
                                     imageVector = destination.icon,
                                     contentDescription = destination.labelAr,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             },
                             label = {
                                 Text(
                                     destination.labelAr,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp
+                                    fontSize = 11.sp
                                 )
                             },
-                            colors = NavigationBarItemDefaults.colors(
+                            colors = NavigationRailItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
                                 selectedTextColor = MaterialTheme.colorScheme.primary,
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
@@ -178,37 +185,109 @@ fun OtiumApp() {
                         )
                     }
                 }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    when (currentDestination) {
+                        AppDestination.LIBRARY -> {
+                            LibraryScreen(
+                                documentStore = documentStore,
+                                onOpenPdf = { uri, title ->
+                                    activePdfUri = uri
+                                    activePdfTitle = title
+                                },
+                                onNavigateToScanner = {
+                                    accumulatedPages.clear()
+                                    capturedImageBytes = null
+                                    currentDestination = AppDestination.SCANNER
+                                }
+                            )
+                        }
+                        AppDestination.SCANNER -> {}
+                        AppDestination.SETTINGS -> {
+                            SettingsScreen(
+                                themePreferences = themePreferences,
+                                documentStore = documentStore
+                            )
+                        }
+                    }
+                }
             }
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                when (currentDestination) {
-                    AppDestination.LIBRARY -> {
-                        LibraryScreen(
-                            documentStore = documentStore,
-                            onOpenPdf = { uri, title ->
-                                activePdfUri = uri
-                                activePdfTitle = title
-                            },
-                            onNavigateToScanner = {
-                                accumulatedPages.clear()
-                                capturedImageBytes = null
-                                currentDestination = AppDestination.SCANNER
-                            }
-                        )
+        } else {
+            // Standard Portrait Shell with Bottom NavigationBar
+            Scaffold(
+                bottomBar = {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 6.dp
+                    ) {
+                        AppDestination.entries.forEach { destination ->
+                            val isSelected = currentDestination == destination
+                            NavigationBarItem(
+                                selected = isSelected,
+                                onClick = {
+                                    if (destination == AppDestination.SCANNER) {
+                                        accumulatedPages.clear()
+                                        capturedImageBytes = null
+                                    }
+                                    currentDestination = destination
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = destination.icon,
+                                        contentDescription = destination.labelAr,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        destination.labelAr,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            )
+                        }
                     }
-
-                    AppDestination.SCANNER -> {
-                        // Handled above in fullscreen mode
-                    }
-
-                    AppDestination.SETTINGS -> {
-                        SettingsScreen(
-                            themePreferences = themePreferences
-                        )
+                }
+            ) { paddingValues ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    when (currentDestination) {
+                        AppDestination.LIBRARY -> {
+                            LibraryScreen(
+                                documentStore = documentStore,
+                                onOpenPdf = { uri, title ->
+                                    activePdfUri = uri
+                                    activePdfTitle = title
+                                },
+                                onNavigateToScanner = {
+                                    accumulatedPages.clear()
+                                    capturedImageBytes = null
+                                    currentDestination = AppDestination.SCANNER
+                                }
+                            )
+                        }
+                        AppDestination.SCANNER -> {}
+                        AppDestination.SETTINGS -> {
+                            SettingsScreen(
+                                themePreferences = themePreferences,
+                                documentStore = documentStore
+                            )
+                        }
                     }
                 }
             }

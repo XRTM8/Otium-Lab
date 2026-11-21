@@ -78,6 +78,15 @@ class ThemePreferences(context: Context) {
     var currentTheme = mutableStateOf(loadTheme())
         private set
 
+    var keepScreenOn = mutableStateOf(prefs.getBoolean("keep_screen_on", true))
+        private set
+
+    var defaultHorizontalLayout = mutableStateOf(prefs.getBoolean("default_horizontal_layout", false))
+        private set
+
+    var volumeKeysPageTurn = mutableStateOf(prefs.getBoolean("volume_keys_page_turn", false))
+        private set
+
     private fun loadTheme(): AppThemeMode {
         val name = prefs.getString("theme_mode", AppThemeMode.LIGHT.name)
         return try {
@@ -90,6 +99,21 @@ class ThemePreferences(context: Context) {
     fun setTheme(theme: AppThemeMode) {
         currentTheme.value = theme
         prefs.edit().putString("theme_mode", theme.name).apply()
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        keepScreenOn.value = enabled
+        prefs.edit().putBoolean("keep_screen_on", enabled).apply()
+    }
+
+    fun setDefaultHorizontalLayout(enabled: Boolean) {
+        defaultHorizontalLayout.value = enabled
+        prefs.edit().putBoolean("default_horizontal_layout", enabled).apply()
+    }
+
+    fun setVolumeKeysPageTurn(enabled: Boolean) {
+        volumeKeysPageTurn.value = enabled
+        prefs.edit().putBoolean("volume_keys_page_turn", enabled).apply()
     }
 
     fun getColorScheme(): ColorScheme {

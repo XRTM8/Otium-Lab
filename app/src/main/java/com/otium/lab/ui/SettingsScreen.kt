@@ -1,11 +1,14 @@
 package com.otium.lab.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -14,22 +17,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.otium.lab.library.DocumentStore
 import com.otium.lab.ui.components.UpdateBanner
 import com.otium.lab.ui.theme.AppThemeMode
 import com.otium.lab.ui.theme.ThemePreferences
 
 @Composable
 fun SettingsScreen(
-    themePreferences: ThemePreferences
+    themePreferences: ThemePreferences,
+    documentStore: DocumentStore
 ) {
+    val context = LocalContext.current
     val currentTheme by themePreferences.currentTheme
+    val keepScreenOn by themePreferences.keepScreenOn
+    val defaultHorizontal by themePreferences.defaultHorizontalLayout
+    val volumeKeysPageTurn by themePreferences.volumeKeysPageTurn
+
+    var storageBytes by remember { mutableLongStateOf(documentStore.getStorageUsageBytes()) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -43,7 +56,7 @@ fun SettingsScreen(
         // Updates Card
         UpdateBanner()
 
-        // Theme Selection Card
+        // 1. Theme Selection Card
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -106,7 +119,147 @@ fun SettingsScreen(
             }
         }
 
-        // About Otium Card
+        // 2. Reading Preferences Card
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.AutoStories,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "تفضيلات القراءة",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Keep Screen On
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("إبقاء الشاشة مضاءة", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("منع قفل الشاشة أثناء قراءة المستندات", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = keepScreenOn,
+                        onCheckedChange = { themePreferences.setKeepScreenOn(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                // Default Layout Horizontal vs Vertical
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("تقليب أفقي افتراضياً", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("فتح المستندات بنمط تقليب الصفحات بدلاً من التمرير", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = defaultHorizontal,
+                        onCheckedChange = { themePreferences.setDefaultHorizontalLayout(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                // Volume Keys Navigation
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("التقليب بأزرار الصوت", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("الانتقال بين الصفحات بالضغط على أزرار رفع وخفض الصوت", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = volumeKeysPageTurn,
+                        onCheckedChange = { themePreferences.setVolumeKeysPageTurn(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+        }
+
+        // 3. Storage & Cache Management Card
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.Storage,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "التخزين والذاكرة المؤقتة",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("البيانات والذاكرة المخزنة", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val formattedSize = if (storageBytes > 1024 * 1024) {
+                            String.format("%.1f ميغابايت", storageBytes / (1024.0 * 1024.0))
+                        } else {
+                            String.format("%.1f كيلوبايت", storageBytes / 1024.0)
+                        }
+                        Text(formattedSize, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            documentStore.clearTemporaryCache()
+                            storageBytes = documentStore.getStorageUsageBytes()
+                            Toast.makeText(context, "تم تفريغ الذاكرة المؤقتة بنجاح", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("تفريغ المؤقت", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // 4. About Otium Card
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -160,6 +313,8 @@ fun SettingsScreen(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(40.dp))
     }
 }
 

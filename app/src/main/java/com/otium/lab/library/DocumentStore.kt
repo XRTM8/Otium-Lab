@@ -54,6 +54,28 @@ class DocumentStore(private val context: Context) {
         }
     }
 
+    fun getStorageUsageBytes(): Long {
+        var total = 0L
+        try {
+            val scansDir = File(context.filesDir, "scans")
+            if (scansDir.exists()) {
+                scansDir.listFiles()?.forEach { total += it.length() }
+            }
+            val cacheDir = context.cacheDir
+            if (cacheDir.exists()) {
+                cacheDir.walkTopDown().forEach { total += it.length() }
+            }
+        } catch (_: Exception) {}
+        return total
+    }
+
+    fun clearTemporaryCache() {
+        try {
+            context.cacheDir.deleteRecursively()
+            context.cacheDir.mkdirs()
+        } catch (_: Exception) {}
+    }
+
     fun getDocuments(): List<StoredDocument> {
         val list = mutableListOf<StoredDocument>()
 

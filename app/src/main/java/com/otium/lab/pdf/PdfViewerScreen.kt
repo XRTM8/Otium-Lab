@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -46,6 +48,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.otium.lab.library.DocumentStore
 import com.otium.lab.ui.theme.AppThemeMode
+import com.otium.lab.ui.theme.ThemePreferences
 import kotlinx.coroutines.launch
 
 enum class PageColorMode(val labelAr: String) {
@@ -91,7 +94,7 @@ private fun Context.findActivity(): Activity? {
 fun PdfViewerScreen(
     uri: Uri,
     title: String,
-    currentTheme: AppThemeMode,
+    themePreferences: ThemePreferences,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -99,11 +102,20 @@ fun PdfViewerScreen(
     val renderer = remember { NativePdfRenderer(context) }
     val documentStore = remember { DocumentStore(context) }
 
+    val currentTheme by themePreferences.currentTheme
+    val keepScreenOn by themePreferences.keepScreenOn
+
     var isLoaded by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showControls by remember { mutableStateOf(true) }
 
-    var readingLayout by remember { mutableStateOf(ReadingLayout.VERTICAL) }
+    var readingLayout by remember {
+        mutableStateOf(
+            if (themePreferences.defaultHorizontalLayout.value) ReadingLayout.HORIZONTAL
+            else ReadingLayout.VERTICAL
+        )
+    }
+
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpInputText by remember { mutableStateOf("") }
 
@@ -150,6 +162,19 @@ fun PdfViewerScreen(
     LaunchedEffect(currentPage, isDraggingSlider) {
         if (!isDraggingSlider) {
             sliderValue = currentPage.toFloat()
+        }
+    }
+
+    // Prevent Screen Sleep while reading (Respect user preference)
+    DisposableEffect(keepScreenOn) {
+        val window = context.findActivity()?.window
+        if (keepScreenOn) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -208,7 +233,7 @@ fun PdfViewerScreen(
     }
 
     val barBg = when (pageColorMode) {
-        PageColorMode.AMOLED_BLACK -> Color(0xFF141414)
+        PageColorMode.AMOLED_BLACK -> Color(0xFF111114)
         PageColorMode.SEPIA -> Color(0xFFF4EBD9)
         PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.surface
     }
@@ -330,20 +355,28 @@ fun PdfViewerScreen(
             }
         }
 
-        // 2. Floating Top Bar Overlay (Smooth fade, zero document layout shift)
+        // 2. Floating Top Bar Overlay with Soft Gradient Scrim
         AnimatedVisibility(
             visible = showControls,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(150)),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(160)),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            Surface(
-                color = barBg.copy(alpha = 0.96f),
-                tonalElevation = 4.dp,
-                modifier = Modifier.fillMaxWidth()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                barBg.copy(alpha = 0.98f),
+                                barBg.copy(alpha = 0.88f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+                    .statusBarsPadding()
             ) {
                 TopAppBar(
-                    modifier = Modifier.statusBarsPadding(),
                     title = {
                         Column {
                             Text(
@@ -417,24 +450,53 @@ fun PdfViewerScreen(
             }
         }
 
-        // 3. Floating Bottom Bar Overlay (Smooth fade, zero document layout shift)
+        // 3. Floating Bottom Bar Overlay with Soft Gradient Scrim & Silk Scrubber
         AnimatedVisibility(
             visible = showControls && renderer.pageCount > 1,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(150)),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(160)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            Surface(
-                color = barBg.copy(alpha = 0.96f),
-                tonalElevation = 6.dp,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                barBg.copy(alpha = 0.88f),
+                                barBg.copy(alpha = 0.98f)
+                            )
+                        )
+                    )
                     .navigationBarsPadding()
             ) {
+                // Floating Dynamic Scrubber Bubble
+                AnimatedVisibility(
+                    visible = isDraggingSlider,
+                    enter = fadeIn(tween(100)),
+                    exit = fadeOut(tween(100)),
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        shadowElevation = 8.dp
+                    ) {
+                        Text(
+                            text = "\u200Eصفحة ${sliderValue.toInt()} من ${renderer.pageCount}\u200E",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(60.dp)
+                        .height(64.dp)
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -467,6 +529,7 @@ fun PdfViewerScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
+                    // Silk Scrubber (Continuous smooth line with 0 tick dots)
                     Slider(
                         value = sliderValue,
                         onValueChange = { newVal ->
@@ -485,11 +548,12 @@ fun PdfViewerScreen(
                             }
                         },
                         valueRange = 1f..renderer.pageCount.toFloat().coerceAtLeast(1f),
-                        steps = (renderer.pageCount - 2).coerceAtLeast(0),
+                        steps = 0,
                         modifier = Modifier.weight(1f),
                         colors = SliderDefaults.colors(
                             thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
                         )
                     )
                 }

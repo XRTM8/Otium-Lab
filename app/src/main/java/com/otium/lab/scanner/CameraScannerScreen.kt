@@ -16,7 +16,7 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -162,6 +162,17 @@ fun CameraScannerScreen(
         }
     }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "viewfinder")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // High-Speed 60 FPS Camera Preview with Auto-Focus
         AndroidView(
@@ -233,7 +244,7 @@ fun CameraScannerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Document Corner Guides
+        // Document Corner Guides with Horizon Crosshair
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -241,7 +252,7 @@ fun CameraScannerScreen(
         ) {
             val strokeWidth = 3.5.dp.toPx()
             val cornerLength = 32.dp.toPx()
-            val color = primaryColor
+            val color = primaryColor.copy(alpha = pulseAlpha)
 
             val w = size.width
             val h = size.height
@@ -261,6 +272,13 @@ fun CameraScannerScreen(
             // Bottom-Right
             drawLine(color, Offset(w, h), Offset(w - cornerLength, h), strokeWidth)
             drawLine(color, Offset(w, h), Offset(w, h - cornerLength), strokeWidth)
+
+            // Horizon Alignment Crosshair
+            val crossColor = Color.White.copy(alpha = 0.22f)
+            val cx = w / 2f
+            val cy = h / 2f
+            drawLine(crossColor, Offset(cx - 16f, cy), Offset(cx + 16f, cy), 1.5.dp.toPx())
+            drawLine(crossColor, Offset(cx, cy - 16f), Offset(cx, cy + 16f), 1.5.dp.toPx())
         }
 
         // Shutter Flash Animation Effect
@@ -435,16 +453,16 @@ fun CameraScannerScreen(
                 },
                 enabled = !isCapturing,
                 shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier
-                    .size(78.dp)
-                    .border(4.dp, primaryColor, CircleShape)
+                    .size(80.dp)
+                    .border(4.dp, Color.White, CircleShape)
             ) {
                 if (isCapturing) {
                     CircularProgressIndicator(
                         color = primaryColor,
-                        modifier = Modifier.size(34.dp),
+                        modifier = Modifier.size(36.dp),
                         strokeWidth = 3.5.dp
                     )
                 } else {
