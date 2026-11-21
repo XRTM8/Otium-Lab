@@ -22,13 +22,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import uniffi.otium_bridge.bridgeCleanDocument
+import uniffi.otium_bridge.bridgeApplyScanFilter
 import java.io.ByteArrayOutputStream
 
-enum class ScanFilter(val labelAr: String) {
-    ORIGINAL("الأصل"),
-    CLEAN_WHITE("ورقة ناصعة"),
-    BLACK_WHITE("أبيض وأسود")
+enum class ScanFilter(val labelAr: String, val mode: String) {
+    MAGIC_COLOR("لون سحري", "magic_color"),
+    CLEAN_WHITE("ورقة بيضاء", "clean_white"),
+    BLACK_WHITE("أبيض وأسود", "bw"),
+    ORIGINAL("الأصل", "original")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,24 +41,19 @@ fun CropAndFilterScreen(
 ) {
     val scope = rememberCoroutineScope()
 
-    var selectedFilter by remember { mutableStateOf(ScanFilter.CLEAN_WHITE) }
+    var selectedFilter by remember { mutableStateOf(ScanFilter.MAGIC_COLOR) }
     var displayedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
 
-    // Initial decode
+    // Filter processing
     LaunchedEffect(rawImageBytes, selectedFilter) {
         isProcessing = true
         withContext(Dispatchers.Default) {
             try {
-                val processedBytes = when (selectedFilter) {
-                    ScanFilter.ORIGINAL -> rawImageBytes
-                    ScanFilter.CLEAN_WHITE -> bridgeCleanDocument(rawImageBytes, 1.2f)
-                    ScanFilter.BLACK_WHITE -> bridgeCleanDocument(rawImageBytes, 2.2f)
-                }
+                val processedBytes = bridgeApplyScanFilter(rawImageBytes, selectedFilter.mode)
                 val bmp = BitmapFactory.decodeByteArray(processedBytes, 0, processedBytes.size)
                 displayedBitmap = bmp
             } catch (_: Exception) {
-                // Fallback to raw decode if native filter throws
                 displayedBitmap = BitmapFactory.decodeByteArray(rawImageBytes, 0, rawImageBytes.size)
             }
         }

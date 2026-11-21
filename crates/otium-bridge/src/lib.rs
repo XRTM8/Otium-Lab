@@ -1,6 +1,7 @@
 //! Native Android FFI bridge for Otium Mobile.
-//! Exposes cryptographic vault, Arabic stemming & search, and document scanning
-//! (perspective warp & clean binarization) to Kotlin / Jetpack Compose via UniFFI.
+//! Dedicated solely to:
+//! 1. High-speed document scanning (perspective warp & image filters)
+//! 2. Arabic text root normalization & fast in-page search
 
 use std::io::Cursor;
 use image::ImageFormat;
@@ -9,8 +10,6 @@ uniffi::setup_scaffolding!();
 
 #[derive(uniffi::Error, thiserror::Error, Debug)]
 pub enum BridgeError {
-    #[error("Vault error: {msg}")]
-    Vault { msg: String },
     #[error("Image processing error: {msg}")]
     ImageProcessing { msg: String },
 }
@@ -51,18 +50,6 @@ pub fn bridge_find_arabic_matches(text: String, query: String) -> Vec<ArabicMatc
 }
 
 #[uniffi::export]
-pub fn bridge_seal_bytes(data: Vec<u8>, pin: String) -> Result<Vec<u8>, BridgeError> {
-    otium_vault::VaultCrypto::seal_bytes(&pin, &data)
-        .map_err(|e| BridgeError::Vault { msg: e.to_string() })
-}
-
-#[uniffi::export]
-pub fn bridge_unseal_bytes(sealed: Vec<u8>, pin: String) -> Result<Vec<u8>, BridgeError> {
-    otium_vault::VaultCrypto::unseal_bytes(&pin, &sealed)
-        .map_err(|e| BridgeError::Vault { msg: e.to_string() })
-}
-
-#[uniffi::export]
 pub fn bridge_warp_document(
     image_bytes: Vec<u8>,
     corners: CornerPoints,
@@ -96,19 +83,41 @@ pub fn bridge_warp_document(
 }
 
 #[uniffi::export]
-pub fn bridge_clean_document(
+pub fn bridge_apply_scan_filter(
     image_bytes: Vec<u8>,
-    contrast_boost: f32,
+    filter_mode: String,
 ) -> Result<Vec<u8>, BridgeError> {
     let dyn_img = image::load_from_memory(&image_bytes)
         .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
     let rgba = dyn_img.to_rgba8();
-    let cleaned_gray = otium_scanner::processor::DocumentScanner::clean_document_filter(&rgba, contrast_boost);
 
     let mut output_bytes = Cursor::new(Vec::new());
-    image::DynamicImage::ImageLuma8(cleaned_gray)
-        .write_to(&mut output_bytes, ImageFormat::Jpeg)
-        .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+
+    match filter_mode.as_str() {
+        "magic_color" => {
+            let filtered = otium_scanner::processor::DocumentScanner::magic_color_filter(&rgba);
+            image::DynamicImage::ImageRgba8(filtered)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+        "clean_white" => {
+            let cleaned_gray = otium_scanner::processor::DocumentScanner::clean_document_filter(&rgba, 1.2);
+            image::DynamicImage::ImageLuma8(cleaned_gray)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+        "bw" => {
+            let cleaned_gray = otium_scanner::processor::DocumentScanner::clean_document_filter(&rgba, 2.2);
+            image::DynamicImage::ImageLuma8(cleaned_gray)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+        _ => {
+            dyn_img
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+    }
 
     Ok(output_bytes.into_inner())
 }
@@ -131,37 +140,19 @@ mod tests {
     }
 
     #[test]
-    fn test_bridge_vault_roundtrip() {
-        let secret = b"Otium Sovereign Native Mobile Vault".to_vec();
-        let pin = "987654".to_string();
-        let sealed = bridge_seal_bytes(secret.clone(), pin.clone()).expect("seal");
-        let unsealed = bridge_unseal_bytes(sealed, pin).expect("unseal");
-        assert_eq!(unsealed, secret);
-    }
-
-    #[test]
-    fn test_bridge_warp_and_clean_pipeline() {
-        // Create a small 100x100 test image in memory
-        let img = image::RgbaImage::from_pixel(100, 100, image::Rgba([200, 150, 100, 255]));
+    fn test_bridge_scan_filters_pipeline() {
+        let img = image::RgbaImage::from_pixel(100, 100, image::Rgba([220, 180, 120, 255]));
         let mut raw_bytes = Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(img).write_to(&mut raw_bytes, ImageFormat::Png).unwrap();
         let input_bytes = raw_bytes.into_inner();
 
-        let corners = CornerPoints {
-            top_left_x: 5.0,
-            top_left_y: 5.0,
-            top_right_x: 95.0,
-            top_right_y: 10.0,
-            bottom_right_x: 90.0,
-            bottom_right_y: 95.0,
-            bottom_left_x: 10.0,
-            bottom_left_y: 90.0,
-        };
+        let magic = bridge_apply_scan_filter(input_bytes.clone(), "magic_color".to_string()).expect("magic_color");
+        assert!(!magic.is_empty());
 
-        let warped = bridge_warp_document(input_bytes.clone(), corners, Some(80), Some(80)).expect("warp");
-        assert!(!warped.is_empty());
+        let clean = bridge_apply_scan_filter(input_bytes.clone(), "clean_white".to_string()).expect("clean_white");
+        assert!(!clean.is_empty());
 
-        let cleaned = bridge_clean_document(warped, 1.2).expect("clean");
-        assert!(!cleaned.is_empty());
+        let bw = bridge_apply_scan_filter(input_bytes, "bw".to_string()).expect("bw");
+        assert!(!bw.is_empty());
     }
 }

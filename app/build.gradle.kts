@@ -8,7 +8,7 @@ plugins {
 
 val versionMajor = 2
 val versionMinor = 1
-val versionPatch = 1
+val versionPatch = 2
 val baseVersionCode = (versionMajor * 1_000_000) + (versionMinor * 10_000) + (versionPatch * 100)
 val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
 
@@ -112,7 +112,6 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.biometric)
 
     // CameraX
     implementation(libs.androidx.camera.core)

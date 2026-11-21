@@ -159,6 +159,48 @@ impl DocumentScanner {
             .unwrap_or_else(|| GrayImage::new(width, height))
     }
 
+    /// Professional Magic Color filter: whitens paper background while preserving and boosting color vibrance
+    pub fn magic_color_filter(image: &RgbaImage) -> RgbaImage {
+        let (width, height) = image.dimensions();
+        let total_pixels = (width as usize) * (height as usize);
+        if total_pixels == 0 {
+            return RgbaImage::new(0, 0);
+        }
+
+        let raw = image.as_raw();
+        let mut out_buffer = Vec::with_capacity(total_pixels * 4);
+
+        for i in (0..raw.len()).step_by(4) {
+            let r = raw[i] as f32;
+            let g = raw[i + 1] as f32;
+            let b = raw[i + 2] as f32;
+            let a = raw[i + 3];
+
+            // Integer BT.601 luminance
+            let luma = 0.299 * r + 0.587 * g + 0.114 * b;
+
+            let whitened_luma = if luma > 135.0 {
+                let factor = ((luma - 135.0) / 120.0).clamp(0.0, 1.0);
+                luma + (255.0 - luma) * factor.powf(0.75)
+            } else {
+                luma * 0.88
+            };
+
+            let diff = whitened_luma - luma;
+            let nr = ((r + diff) * 1.05).clamp(0.0, 255.0) as u8;
+            let ng = ((g + diff) * 1.05).clamp(0.0, 255.0) as u8;
+            let nb = ((b + diff) * 1.05).clamp(0.0, 255.0) as u8;
+
+            out_buffer.push(nr);
+            out_buffer.push(ng);
+            out_buffer.push(nb);
+            out_buffer.push(a);
+        }
+
+        RgbaImage::from_raw(width, height, out_buffer)
+            .unwrap_or_else(|| image.clone())
+    }
+
     /// Combine front and back sides of an ID card onto a clean standard A4 page layout (2480 x 3508 at 300 DPI)
     /// Accelerated with linear fixed-point SIMD-friendly resampling.
     pub fn stitch_id_card_a4(front: &RgbaImage, back: &RgbaImage) -> RgbaImage {

@@ -719,10 +719,6 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
-
-
-
-
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -738,15 +734,11 @@ internal interface UniffiLib : Library {
         
     }
 
+    fun uniffi_otium_bridge_fn_func_bridge_apply_scan_filter(`imageBytes`: RustBuffer.ByValue,`filterMode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_arabic_stem(`word`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_otium_bridge_fn_func_bridge_clean_document(`imageBytes`: RustBuffer.ByValue,`contrastBoost`: Float,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_find_arabic_matches(`text`: RustBuffer.ByValue,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_otium_bridge_fn_func_bridge_seal_bytes(`data`: RustBuffer.ByValue,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_otium_bridge_fn_func_bridge_unseal_bytes(`sealed`: RustBuffer.ByValue,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_warp_document(`imageBytes`: RustBuffer.ByValue,`corners`: RustBuffer.ByValue,`targetWidth`: RustBuffer.ByValue,`targetHeight`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -862,15 +854,11 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_otium_bridge_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    fun uniffi_otium_bridge_checksum_func_bridge_apply_scan_filter(
+    ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_arabic_stem(
     ): Short
-    fun uniffi_otium_bridge_checksum_func_bridge_clean_document(
-    ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches(
-    ): Short
-    fun uniffi_otium_bridge_checksum_func_bridge_seal_bytes(
-    ): Short
-    fun uniffi_otium_bridge_checksum_func_bridge_unseal_bytes(
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_warp_document(
     ): Short
@@ -891,19 +879,13 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
+    if (lib.uniffi_otium_bridge_checksum_func_bridge_apply_scan_filter() != 3112.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_arabic_stem() != 24451.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_otium_bridge_checksum_func_bridge_clean_document() != 40791.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches() != 52324.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_otium_bridge_checksum_func_bridge_seal_bytes() != 63064.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_otium_bridge_checksum_func_bridge_unseal_bytes() != 3987.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_warp_document() != 35488.toShort()) {
@@ -1172,14 +1154,6 @@ public object FfiConverterTypeCornerPoints: FfiConverterRustBuffer<CornerPoints>
 
 sealed class BridgeException: kotlin.Exception() {
     
-    class Vault(
-        
-        val `msg`: kotlin.String
-        ) : BridgeException() {
-        override val message
-            get() = "msg=${ `msg` }"
-    }
-    
     class ImageProcessing(
         
         val `msg`: kotlin.String
@@ -1204,10 +1178,7 @@ public object FfiConverterTypeBridgeError : FfiConverterRustBuffer<BridgeExcepti
         
 
         return when(buf.getInt()) {
-            1 -> BridgeException.Vault(
-                FfiConverterString.read(buf),
-                )
-            2 -> BridgeException.ImageProcessing(
+            1 -> BridgeException.ImageProcessing(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -1216,11 +1187,6 @@ public object FfiConverterTypeBridgeError : FfiConverterRustBuffer<BridgeExcepti
 
     override fun allocationSize(value: BridgeException): ULong {
         return when(value) {
-            is BridgeException.Vault -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                4UL
-                + FfiConverterString.allocationSize(value.`msg`)
-            )
             is BridgeException.ImageProcessing -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
@@ -1231,13 +1197,8 @@ public object FfiConverterTypeBridgeError : FfiConverterRustBuffer<BridgeExcepti
 
     override fun write(value: BridgeException, buf: ByteBuffer) {
         when(value) {
-            is BridgeException.Vault -> {
-                buf.putInt(1)
-                FfiConverterString.write(value.`msg`, buf)
-                Unit
-            }
             is BridgeException.ImageProcessing -> {
-                buf.putInt(2)
+                buf.putInt(1)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
@@ -1304,21 +1265,21 @@ public object FfiConverterSequenceTypeArabicMatchRecord: FfiConverterRustBuffer<
             FfiConverterTypeArabicMatchRecord.write(it, buf)
         }
     }
-} fun `bridgeArabicStem`(`word`: kotlin.String): kotlin.String {
-            return FfiConverterString.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_arabic_stem(
-        FfiConverterString.lower(`word`),_status)
+}
+    @Throws(BridgeException::class) fun `bridgeApplyScanFilter`(`imageBytes`: kotlin.ByteArray, `filterMode`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BridgeException) { _status ->
+    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_apply_scan_filter(
+        FfiConverterByteArray.lower(`imageBytes`),FfiConverterString.lower(`filterMode`),_status)
 }
     )
     }
     
-
-    @Throws(BridgeException::class) fun `bridgeCleanDocument`(`imageBytes`: kotlin.ByteArray, `contrastBoost`: kotlin.Float): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    uniffiRustCallWithError(BridgeException) { _status ->
-    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_clean_document(
-        FfiConverterByteArray.lower(`imageBytes`),FfiConverterFloat.lower(`contrastBoost`),_status)
+ fun `bridgeArabicStem`(`word`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_arabic_stem(
+        FfiConverterString.lower(`word`),_status)
 }
     )
     }
@@ -1328,26 +1289,6 @@ public object FfiConverterSequenceTypeArabicMatchRecord: FfiConverterRustBuffer<
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_find_arabic_matches(
         FfiConverterString.lower(`text`),FfiConverterString.lower(`query`),_status)
-}
-    )
-    }
-    
-
-    @Throws(BridgeException::class) fun `bridgeSealBytes`(`data`: kotlin.ByteArray, `pin`: kotlin.String): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    uniffiRustCallWithError(BridgeException) { _status ->
-    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_seal_bytes(
-        FfiConverterByteArray.lower(`data`),FfiConverterString.lower(`pin`),_status)
-}
-    )
-    }
-    
-
-    @Throws(BridgeException::class) fun `bridgeUnsealBytes`(`sealed`: kotlin.ByteArray, `pin`: kotlin.String): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    uniffiRustCallWithError(BridgeException) { _status ->
-    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_unseal_bytes(
-        FfiConverterByteArray.lower(`sealed`),FfiConverterString.lower(`pin`),_status)
 }
     )
     }
