@@ -1,13 +1,10 @@
 package com.otium.lab.scanner
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,21 +14,16 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.otium.lab.scanner.components.CropFilterBottomBar
+import com.otium.lab.scanner.components.CropFilterTopBar
+import com.otium.lab.scanner.model.ScanFilter
+import com.otium.lab.scanner.util.ImageProcessingUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import uniffi.otium_bridge.bridgeApplyScanFilter
 
-enum class ScanFilter(val labelAr: String, val mode: String) {
-    MAGIC_COLOR("لون سحري", "magic_color"),
-    CLEAN_WHITE("ورقة بيضاء", "clean_white"),
-    BLACK_WHITE("أبيض وأسود", "bw"),
-    ORIGINAL("الأصل", "original")
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CropAndFilterScreen(
     rawImageBytes: ByteArray,
@@ -44,10 +36,10 @@ fun CropAndFilterScreen(
     var displayedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
 
-    // Fast memory cache for processed filter bitmaps to avoid redundant recalculation
+    // Memory cache for processed filter bitmaps to avoid redundant recalculation
     val filterCache = remember { mutableMapOf<ScanFilter, Bitmap>() }
 
-    // Instant filter switching with memory caching & Rust LUT engine
+    // Instant filter switching with Rust LUT engine + safety fallback
     LaunchedEffect(rawImageBytes, selectedFilter) {
         if (filterCache.containsKey(selectedFilter)) {
             displayedBitmap = filterCache[selectedFilter]
@@ -60,15 +52,19 @@ fun CropAndFilterScreen(
                 val processedBytes = if (selectedFilter == ScanFilter.ORIGINAL) {
                     rawImageBytes
                 } else {
-                    bridgeApplyScanFilter(rawImageBytes, selectedFilter.mode)
+                    try {
+                        bridgeApplyScanFilter(rawImageBytes, selectedFilter.mode)
+                    } catch (t: Throwable) {
+                        ImageProcessingUtils.applyFallbackFilter(rawImageBytes, selectedFilter)
+                    }
                 }
-                val bmp = BitmapFactory.decodeByteArray(processedBytes, 0, processedBytes.size)
+                val bmp = ImageProcessingUtils.decodeSampledBitmap(processedBytes)
                 if (bmp != null) {
                     filterCache[selectedFilter] = bmp
                     displayedBitmap = bmp
                 }
-            } catch (_: Exception) {
-                val fallbackBmp = BitmapFactory.decodeByteArray(rawImageBytes, 0, rawImageBytes.size)
+            } catch (t: Throwable) {
+                val fallbackBmp = ImageProcessingUtils.decodeSampledBitmap(rawImageBytes)
                 if (fallbackBmp != null) {
                     filterCache[selectedFilter] = fallbackBmp
                     displayedBitmap = fallbackBmp
@@ -80,120 +76,27 @@ fun CropAndFilterScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("معالجة المستند الممسوح", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("الصفحة $pageNumber", fontSize = 12.sp, color = Color.Gray)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onCancel) {
-                        Icon(Icons.Rounded.Close, contentDescription = "إلغاء وإعادة التقاط")
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            val bmp = displayedBitmap ?: return@IconButton
-                            val matrix = android.graphics.Matrix().apply { postRotate(90f) }
-                            val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
-                            displayedBitmap = rotated
-                            filterCache[selectedFilter] = rotated
-                        }
-                    ) {
-                        @Suppress("DEPRECATION")
-                        Icon(Icons.Rounded.RotateRight, contentDescription = "تدوير 90°")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+            CropFilterTopBar(
+                pageNumber = pageNumber,
+                onCancel = onCancel,
+                onRotate = {
+                    val bmp = displayedBitmap ?: return@CropFilterTopBar
+                    val matrix = android.graphics.Matrix().apply { postRotate(90f) }
+                    val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                    displayedBitmap = rotated
+                    filterCache[selectedFilter] = rotated
+                }
             )
         },
         bottomBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        "اختر نمط تحسين الورقة:",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Filter Selection Chips
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ScanFilter.entries.forEach { filter ->
-                            val isSelected = filter == selectedFilter
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedFilter = filter },
-                                label = {
-                                    Text(
-                                        filter.labelAr,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 12.sp
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Action Buttons (Add More vs Save PDF)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                displayedBitmap?.let { onAddMore(it) }
-                            },
-                            enabled = displayedBitmap != null && !isProcessing,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("+ صفحة أخرى", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-
-                        Button(
-                            onClick = {
-                                displayedBitmap?.let { onSavePdf(it) }
-                            },
-                            enabled = displayedBitmap != null && !isProcessing,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1.3f)
-                        ) {
-                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("حفظ المستند PDF", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
+            CropFilterBottomBar(
+                selectedFilter = selectedFilter,
+                isProcessing = isProcessing,
+                hasBitmap = displayedBitmap != null,
+                onSelectFilter = { selectedFilter = it },
+                onAddMore = { displayedBitmap?.let { onAddMore(it) } },
+                onSavePdf = { displayedBitmap?.let { onSavePdf(it) } }
+            )
         }
     ) { paddingValues ->
         Box(
