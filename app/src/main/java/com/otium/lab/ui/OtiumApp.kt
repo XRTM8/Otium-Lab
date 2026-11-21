@@ -71,9 +71,29 @@ fun OtiumApp() {
         if (capturedImageBytes != null) {
             CropAndFilterScreen(
                 rawImageBytes = capturedImageBytes!!,
-                onPageConfirmed = { bitmap ->
-                    accumulatedPages.add(bitmap)
+                pageNumber = accumulatedPages.size + 1,
+                onAddMore = { bmp ->
+                    accumulatedPages.add(bmp)
                     capturedImageBytes = null
+                },
+                onSavePdf = { bmp ->
+                    accumulatedPages.add(bmp)
+                    capturedImageBytes = null
+                    isExportingPdf = true
+                    scope.launch {
+                        try {
+                            val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
+                            val uri = Uri.fromFile(file)
+                            documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
+                            accumulatedPages.clear()
+                            activePdfUri = uri
+                            activePdfTitle = file.nameWithoutExtension
+                            currentDestination = AppDestination.LIBRARY
+                        } catch (_: Exception) {
+                        } finally {
+                            isExportingPdf = false
+                        }
+                    }
                 },
                 onCancel = {
                     capturedImageBytes = null
@@ -84,18 +104,17 @@ fun OtiumApp() {
 
         // Fullscreen CamScanner (Hides bottom bar completely for maximum immersive camera preview)
         if (currentDestination == AppDestination.SCANNER) {
-            if (accumulatedPages.isNotEmpty()) {
-                ScannedPagesReview(
-                    pages = accumulatedPages,
-                    isExporting = isExportingPdf,
-                    onAddMore = {
-                        // Will show camera again to add pages
-                    },
-                    onExportPdf = {
+            CameraScannerScreen(
+                pageCount = accumulatedPages.size,
+                onImageCaptured = { bytes ->
+                    capturedImageBytes = bytes
+                },
+                onFinishBatch = {
+                    if (accumulatedPages.isNotEmpty()) {
                         isExportingPdf = true
                         scope.launch {
                             try {
-                                val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages)
+                                val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
                                 val uri = Uri.fromFile(file)
                                 documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
                                 accumulatedPages.clear()
@@ -107,26 +126,13 @@ fun OtiumApp() {
                                 isExportingPdf = false
                             }
                         }
-                    },
-                    onCancel = {
-                        accumulatedPages.clear()
-                        currentDestination = AppDestination.LIBRARY
                     }
-                )
-            } else {
-                CameraScannerScreen(
-                    pageCount = accumulatedPages.size,
-                    onImageCaptured = { bytes ->
-                        capturedImageBytes = bytes
-                    },
-                    onFinishBatch = {
-                        // Export accumulated batch
-                    },
-                    onClose = {
-                        currentDestination = AppDestination.LIBRARY
-                    }
-                )
-            }
+                },
+                onClose = {
+                    accumulatedPages.clear()
+                    currentDestination = AppDestination.LIBRARY
+                }
+            )
             return@MaterialTheme
         }
 
@@ -135,19 +141,37 @@ fun OtiumApp() {
             bottomBar = {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp
+                    tonalElevation = 6.dp
                 ) {
-                    AppDestination.entries.forEach { dest ->
-                        val isSelected = currentDestination == dest
+                    AppDestination.entries.forEach { destination ->
+                        val isSelected = currentDestination == destination
                         NavigationBarItem(
                             selected = isSelected,
-                            onClick = { currentDestination = dest },
-                            icon = { Icon(dest.icon, contentDescription = dest.labelAr) },
-                            label = { Text(dest.labelAr, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                            onClick = {
+                                if (destination == AppDestination.SCANNER) {
+                                    accumulatedPages.clear()
+                                    capturedImageBytes = null
+                                }
+                                currentDestination = destination
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = destination.icon,
+                                    contentDescription = destination.labelAr,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    destination.labelAr,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp
+                                )
+                            },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                selectedIconColor = Color(0xFFC29B38),
+                                selectedTextColor = Color(0xFFC29B38),
+                                indicatorColor = Color(0xFFC29B38).copy(alpha = 0.15f)
                             )
                         )
                     }
@@ -158,107 +182,33 @@ fun OtiumApp() {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .background(MaterialTheme.colorScheme.background)
             ) {
                 when (currentDestination) {
-                    AppDestination.LIBRARY -> LibraryScreen(
-                        documentStore = documentStore,
-                        onOpenPdf = { uri, title ->
-                            activePdfUri = uri
-                            activePdfTitle = title
-                        },
-                        onNavigateToScanner = {
-                            currentDestination = AppDestination.SCANNER
-                        }
-                    )
-
-                    AppDestination.SETTINGS -> SettingsScreen(
-                        themePreferences = themePreferences
-                    )
+                    AppDestination.LIBRARY -> {
+                        LibraryScreen(
+                            documentStore = documentStore,
+                            onOpenPdf = { uri, title ->
+                                activePdfUri = uri
+                                activePdfTitle = title
+                            },
+                            onNavigateToScanner = {
+                                accumulatedPages.clear()
+                                capturedImageBytes = null
+                                currentDestination = AppDestination.SCANNER
+                            }
+                        )
+                    }
 
                     AppDestination.SCANNER -> {
-                        // Handled above in immersive mode
+                        // Handled above in fullscreen mode
+                    }
+
+                    AppDestination.SETTINGS -> {
+                        SettingsScreen(
+                            themePreferences = themePreferences
+                        )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun ScannedPagesReview(
-    pages: List<Bitmap>,
-    isExporting: Boolean,
-    onAddMore: () -> Unit,
-    onExportPdf: () -> Unit,
-    onCancel: () -> Unit
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(24.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Rounded.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(44.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "تم مسح ${pages.size} صفحة بنجاح",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "الصفحات جاهزة للتصدير كملف PDF معياري عالي الوضوح A4",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(36.dp))
-
-            Button(
-                onClick = onExportPdf,
-                enabled = !isExporting,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth().height(52.dp)
-            ) {
-                if (isExporting) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
-                } else {
-                    Icon(Icons.Rounded.PictureAsPdf, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("تصدير الآن كملف PDF", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedButton(
-                onClick = onCancel,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text("إلغاء وبدء من جديد", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

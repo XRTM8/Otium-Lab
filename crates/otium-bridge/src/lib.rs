@@ -87,11 +87,15 @@ pub fn bridge_apply_scan_filter(
     image_bytes: Vec<u8>,
     filter_mode: String,
 ) -> Result<Vec<u8>, BridgeError> {
+    if filter_mode == "original" {
+        return Ok(image_bytes);
+    }
+
     let dyn_img = image::load_from_memory(&image_bytes)
         .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
     let rgba = dyn_img.to_rgba8();
 
-    let mut output_bytes = Cursor::new(Vec::new());
+    let mut output_bytes = Cursor::new(Vec::with_capacity(image_bytes.len()));
 
     match filter_mode.as_str() {
         "magic_color" => {
@@ -112,11 +116,7 @@ pub fn bridge_apply_scan_filter(
                 .write_to(&mut output_bytes, ImageFormat::Jpeg)
                 .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
         }
-        _ => {
-            dyn_img
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
-        }
+        _ => return Ok(image_bytes),
     }
 
     Ok(output_bytes.into_inner())
