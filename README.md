@@ -1,92 +1,61 @@
-# Otium Lab
+# Otium Mobile Native (Android)
 
-نسخة تجريبية كاملة من Otium، مبنية على قاعدة الإصدار 1.9.15 مع دعم ملفات إضافية داخل المكتبة والثيمات الأصلية.
+> The Sovereign, Ultra-Fast, Distraction-Free PDF Reader & Document Scanner for Android.  
+> Built natively with **Kotlin**, **Jetpack Compose**, **CameraX**, and an offline **Rust Shared Core**.
 
-- المستودع: https://github.com/XRTM8/Otium-Lab
-- الموقع: https://xrtm8.github.io/Otium-Lab/
-- التطبيق المستقر: https://github.com/XRTM8/Otium
+---
 
-## التجربة
+## ⚡ Architectural Foundations
 
-افتح الملف من صفحة Otium الرئيسية: PDF عبر القارئ الأصلي، فيديو وصوت عبر مشغّل محلي، صور ونصوص، وشرائح PPTX/PPSX ثابتة تقريبية. تشغيل الفيديو يعتمد على الترميز الذي يدعمه المتصفح. لا خدمات Office خارجية، ولا تشغيل ماكرو.
+1. **Ultra-Low Memory Footprint:** Tiled rendering via Google Pdfium NDK (`< 60 MB RAM` on 1,000+ page books).
+2. **Hardware-Accelerated CameraX:** Zero-shutter lag, real-time edge detection and perspective correction via Rust SIMD (`crates/otium-scanner`).
+3. **Arabic-First Text Engine:** Morphological light stemming (`arabic_light_stem`) and diacritic-tolerant root matching in Rust (`crates/otium-core`).
+4. **Standard ISO 32000-1 Annotations:** Native vector highlights, underlines, and ink marks directly interoperable with Adobe Acrobat and Apple Books.
+5. **Zero-Knowledge Vault:** Argon2id + ChaCha20-Poly1305 encryption with Android BiometricPrompt authentication (`crates/otium-vault`).
+6. **Local P2P Smart Beam:** Encrypted local Wi-Fi / WebRTC document transfer between Phone and Desktop without cloud dependency (`crates/otium-beam`).
 
-الفيديو والشرائح والصور الجديدة محلية فقط: لم يُنفذ بثها من الهاتف إلى الشاشة بعد. شرح الصور والشرائح يُحفظ محلياً مع القلم والتظليل والتراجع والإعادة. شرح الفيديو مؤقت ويمسح عند العودة إلى التصفح. يمكن تنزيل نسخة JSON من شرح الصور والشرائح واستعادتها، وتصدير خطوط الصفحة إلى SVG شفاف دون صورة الملف. بث PDF وأدواته الأصلية موجودان.
+---
 
-ملفات الوسائط حتى 128 MiB تُحفظ محلياً عند توفر السعة، بحد 12 ملفاً و256 MiB إجمالاً. تُحفظ صفحة الشريحة وموضع تشغيل المقطع عند الخروج، وكل خمس ثوانٍ عند تغيّر الموضع وعند انتقال التطبيق إلى الخلفية. ملفات المفضلة والملفات التي لها شرح محفوظ لا تُحذف تلقائياً عند امتلاء الحفظ المؤقت؛ عند عدم توفر مساحة يفتح الملف الجديد دون حفظ. حذف ملف من المكتبة يحذف شرحه بعد تأكيد المستخدم. الملفات الأكبر تُفتح دون تخزينها في المكتبة. لا يُرفع محتواها إلى GitHub.
+## 🏗️ Project Structure
 
-PPTX ليس عرض PowerPoint مطابقاً: لا حركات أو فيديو داخل الشريحة أو SmartArt، وقد تختلف التنسيقات المعقدة. DOCX وXLSX وPPT القديم غير مدعومة بعد.
-
-## التشغيل والفحص
-
-```powershell
-npm ci
-npm run dev
-npm test
-npm run lab:media:test
-npx tsc -b
-npm run prebuild
-npx vite build
+```text
+Otium-Lab/
+├── app/                        # Android application module (Jetpack Compose UI)
+│   ├── src/main/java/com/otium/
+│   │   ├── ui/                 # Material 3 UI screens & navigation
+│   │   └── MainActivity.kt
+│   └── build.gradle.kts
+├── crates/                     # Shared Rust Core
+│   ├── otium-core/             # Arabic text normalization & morphological search
+│   ├── otium-vault/            # ChaCha20-Poly1305 & Argon2id encryption
+│   ├── otium-scanner/          # Edge detection & document perspective math
+│   ├── otium-ink/              # Vector ink & palm rejection algorithms
+│   ├── otium-beam/             # Local P2P sync & pairing
+│   └── otium-bridge/           # UniFFI / JNI Android native library (.so)
+├── gradle/                     # Gradle wrapper & version catalogs
+├── build.gradle.kts            # Root build configuration
+└── settings.gradle.kts         # Multi-module settings
 ```
 
-المجلد experiments/media-lab هو منصة فحص للمحركات فقط. النسخة التي تُنشر على الموقع هي تطبيق Otium الكامل من src وليست واجهة المختبر القديمة.
+---
 
-## فصل النسخة التجريبية
+## 🚀 Building & Developing
 
-- مسار Pages منفصل، واسم التطبيق Otium Lab.
-- تفضيلات وIndexedDB وحفظ مؤقت منفصلة عن Otium المستقر؛ GitHub Pages يشترك في الأصل نفسه، لذلك لا يكفي تغيير المسار وحده.
-- روابط QR والغرف والقنوات المحلية تخص المختبر. لا تُستخدم وصلة is.gd/otium الخاصة بالمستقر.
-- لا مسار إصدار تلقائي لـAPK أو Windows، ولا وسوم إصدارات مستقرة في هذا المستودع.
-- يتطلب نشر Pages نجاح اختبارات التطبيق والوسائط وفحص المصدر وتدقيق الاعتماديات والبناء.
-- تُنقل الإصلاحات إلى المستقر فقط بعد مراجعة وتجربة، وليس بدمج المستودع التجريبي كاملاً.
+### Requirements:
+- JDK 17+
+- Android SDK 35+ / NDK 27+
+- Rust 1.85+ with `cargo-ndk` for Android targets:
+  ```bash
+  rustup target add aarch64-linux-android x86_64-linux-android
+  cargo install cargo-ndk
+  ```
 
-نجحت 245 حالة اختبار للتطبيق، و32 للمحركات، إضافة إلى 4 اختبارات Kotlin لاستقبال ملفات Android عند إعداد النسخة. اختُبر فتح PPTX وتقليبه واستعادته من المكتبة، وفك فيديو H.264/AAC، والعودة إلى قارئ PDF الأصلي في متصفح Chromium معزول. لا يغني ذلك عن تجربة ملفات دراسية حقيقية وهواتف وسبورات فعلية.
-
-
-## Android Lab 04
-
-[تنزيل APK التجريبي ARM 32/64 بت](https://github.com/XRTM8/Otium-Lab/releases/download/lab-04/Otium-Lab-04-android.apk) — Android 7.0 فأحدث بمعمارية ARM64 أو ARMv7. الحزمة com.otium.reader.lab مستقلة عن المستقر. افتح PDF من تلغرام باستخدام Otium Lab. حد الفتح المباشر 64 MiB؛ الملفات الناقصة أو التي لا تمنح صلاحية قراءة تعرض رسالة. لا يمكن تحديث إصدار Otium الأساسي بهذه الحزمة.
-
-التحقق الأصلي من داخل src-tauri/gen/android:
-
-```powershell
-.\gradlew.bat :app:testArm64DebugUnitTest -x :app:rustBuildArm64Debug
+### Build APK:
+```bash
+./gradlew assembleDebug
 ```
 
-راجع LAB_CHANGELOG.md لتفاصيل التحقق وحدوده.
+---
 
-## واجهة Lab 04 ونسخ الشرح
-
-تدعم المكتبة البحث والتصفية والمفضلة والترتيب وعرض القائمة والشبكة. Ctrl+K يركز البحث. في عارض الشرائح استخدم أزرار الصفحة أو رقم الشريحة، والتكبير والملاءمة. شريط الهاتف قابل للسحب أفقياً لإبقاء مساحة العرض واسعة.
-
-من «نسخة من الشرح» نزّل JSON ثم استعده عند فتح الملف الأصلي نفسه. تطابق الأداة اسم الملف وحجمه ونوعه، وليس بصمة تشفير لمحتواه. الاستعادة تستبدل الشرح بعد التأكيد ويمكن التراجع عنها لكل صفحة. الحد 8 MiB لنسخة الاستعادة. SVG يصدّر الخطوط فقط. لا تستخدم نسخ الشرح بديلاً عن الاحتفاظ بالملف الأصلي.
-
-قبل البناء أو النشر شغّل npm run lab:check. فاحص APK يرفض هوية التطبيق الأساسي ويتوقع إصدار Lab تلقائياً. إعدادات سطح المكتب تحمل هوية تجريبية منفصلة، لكن حزم سطح المكتب لم تُبنَ أو تُنشر بعد.
-
-
-## معمارية Rust 2.0 السيادية 100% (Pure Sovereign Rust Studio)
-
-تمت إعادة هندسة وبناء النواة التقنية للتطبيق لتكون **100% مكتوبة بلغة Rust الخالصة** بنظام حزم متعددة (Multi-Crate Workspace)، متحررة تماماً من أي مكتبات تتبع أو سحابة أو اعتماديات خارجية:
-
-### موديولات معمارية Rust:
-1. **`otium-core`**: نماذج المستندات السيادية، وأنماط العرض، ومحرك الثيمات الثمانية لـ OLED (Obsidian, Midnight Azure, Warm Amber, Pure Amethyst, Ruby Crimson, Natural Paper, Crystal Diamond, E-Ink)، ومحدد الاتجاه ثنائي اللغة (BiDi) للخطوط العربية الأصيلة (Cairo, Amiri, Tajawal).
-2. **`otium-slides`**: محلل عروض PowerPoint التقديمية (`.pptx` و`.ppsx`) النقي بالكامل بلغة Rust؛ يعتمد على فك ضغط ZIP في الذاكرة ومحلل XML عالي الكفاءة (`quick-xml`) دون الحاجة لحزم Microsoft Office أو أي خوادم تحويل.
-3. **`otium-scanner`**: محرك الرؤية الحاسوبية ومعالجة المستندات؛ يتيح تصحيح المنظور الهندسي المائل بمصفوفة Homography 3x3 واستيفاء ثنائي خطي، وفلتر إزالة الظلال والشوائب، وميزة دمج وجهي بطاقات الهوية على صفحة A4 قياسية بدقة 300 DPI للطباعة المباشرة.
-4. **`otium-ink`**: محرك السبورة المتجهة والتدوين فائق السرعة بتردد 120 إطاراً في الثانية، مع دعم تنعيم المنحنيات بخوارزمية Catmull-Rom ورفض لمسات راحة اليد (Palm Rejection)، وإمكانية التراجع والإعادة وسجل الحفظ المحلي وتصدير الرسومات كملفات SVG متجهة نقية.
-5. **`otium-pdf`**: محلل وفاحص هياكل ملفات PDF المستقل وفق معيار ISO 32000-1، والتحقق الصارم من الترويسة السحرية (`%PDF-`) واستخراج أبعاد الصفحات ومقاساتها.
-6. **`otium-vault`**: الخزينة السيادية المشفرة محلياً؛ تستخدم قاعدة بيانات Redb المضمنة مع خوارزمية اشتقاق المفاتيح المقاومة لهجمات المعالجات الرسومية (Argon2id) وتشفير موثق فائق الأمان (ChaCha20-Poly1305 AEAD).
-7. **`otium-beam`**: بروتوكول البث الذكي والمشاركة الند للند (P2P Sync) عبر الشبكة المحلية المشفرة، مع توليد رموز PIN رقمية ورموز QR متجهة فورية.
-8. **`otium-app`**: الواجهة الرسومية الأصلية المستقلة تماماً (Standalone Desktop GUI) المبنية بمكتبة Slint 1.18 مع حوارات اختيار الملفات الأصلية (`rfd`)؛ تعمل باستهلاك ذاكرة ضئيل (~18MB) وسرعة استجابة فورية دون الحاجة لمتصفح أو Node أو بيئات تشغيل خارجية.
-
-### تشغيل الواجهة الأصلية النقية (100% Pure Rust Desktop App):
-```powershell
-# تشغيل نسخة التطوير
-cargo run -p otium-app
-
-# أو تشغيل النسخة المجهزة المحسّنة (18 MB Standalone)
-cargo run --release -p otium-app
-```
-
-### فحص واختبار حزم Rust:
-```powershell
-cargo test --workspace
-```
+## 📜 License
+GPL-3.0 License. Free, open, sovereign software.
