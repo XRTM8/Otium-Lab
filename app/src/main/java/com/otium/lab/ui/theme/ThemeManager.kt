@@ -14,61 +14,64 @@ enum class AppThemeMode(val labelAr: String) {
     AMOLED("أموليـد أسود")
 }
 
-// 1. Light Theme: Pure Studio White + Imperial Deep Burgundy
+// 1. Light Theme: Nordic Sapphire & Midnight Blue (أزرق حبري نورديك مريح وهادئ)
 val LightPalette = lightColorScheme(
-    primary = Color(0xFF881337),             // Deep Regal Burgundy (عنابي ملكي عميق)
+    primary = Color(0xFF1D4ED8),             // Royal Sapphire / Deep Cobalt Ink
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFE4E6),    // Soft Rose Velvet Tint
-    onPrimaryContainer = Color(0xFF4C0519),
-    secondary = Color(0xFF9F1239),
+    primaryContainer = Color(0xFFDBEAFE),    // Soft Ice Blue Tint
+    onPrimaryContainer = Color(0xFF1E3A8A),
+    secondary = Color(0xFF2563EB),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFF1F2),
-    onSecondaryContainer = Color(0xFF4C0519),
+    secondaryContainer = Color(0xFFEFF6FF),
+    onSecondaryContainer = Color(0xFF1E40AF),
     background = Color(0xFFFFFFFF),          // Pure Clean White
-    onBackground = Color(0xFF0F172A),        // Carbon Black (16.5:1 contrast)
+    onBackground = Color(0xFF0F172A),        // Deep Slate Charcoal
     surface = Color(0xFFF8FAFC),            // Slate Studio Surface
     onSurface = Color(0xFF0F172A),
     surfaceVariant = Color(0xFFF1F5F9),
     onSurfaceVariant = Color(0xFF475569),
-    outline = Color(0xFFE2E8F0)
+    outline = Color(0xFFE2E8F0),
+    outlineVariant = Color(0xFFCBD5E1)
 )
 
-// 2. Cream Theme: Warm Japanese Book Paper + Deep Cherry Wine
+// 2. Cream Theme: Warm Natural Book Paper + Vintage Ink Navy (دفء ورقي وانسجام مكتبي)
 val CreamPalette = lightColorScheme(
-    primary = Color(0xFF9F1239),             // Warm Cherry Wine (كرزي خمري دافئ)
+    primary = Color(0xFF1E3A5F),             // Vintage Ink Navy (كحلي عتيق دافئ متناسق مع الورق)
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFCE7ED),    // Soft Warm Blossom Tint
-    onPrimaryContainer = Color(0xFF4C0519),
-    secondary = Color(0xFF881337),
+    primaryContainer = Color(0xFFE2DAC8),    // Natural Warm Parchment Container
+    onPrimaryContainer = Color(0xFF152942),
+    secondary = Color(0xFF2D4B73),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF5EBE1),
-    onSecondaryContainer = Color(0xFF381E19),
-    background = Color(0xFFFBF7EE),          // Warm Natural Book Paper (ورق طبيعي مريح جداً)
-    onBackground = Color(0xFF231815),        // Deep Espresso (14.8:1 contrast, zero eye fatigue)
-    surface = Color(0xFFF3ECE0),            // Warm Paper Surface Card
+    secondaryContainer = Color(0xFFEDE5D6),
+    onSecondaryContainer = Color(0xFF1E3A5F),
+    background = Color(0xFFFAF6ED),          // Warm Natural Book Paper (ورق طبيعي مريح جداً)
+    onBackground = Color(0xFF231815),        // Deep Espresso (zero eye fatigue)
+    surface = Color(0xFFF1EAD9),            // Warm Paper Surface Card
     onSurface = Color(0xFF231815),
-    surfaceVariant = Color(0xFFEBE2D2),
+    surfaceVariant = Color(0xFFE7DEC9),
     onSurfaceVariant = Color(0xFF6B5B49),
-    outline = Color(0xFFDFD3BD)
+    outline = Color(0xFFD8CCB5),
+    outlineVariant = Color(0xFFC7B89E)
 )
 
-// 3. AMOLED Theme: 100% Pure Pitch Black + Glowing Ruby Cherry
+// 3. AMOLED Theme: 100% Pitch Black + Eye-Soothing Sky Blue (سواد تام وأزرق سماوي غير متوهج)
 val AmoledPalette = darkColorScheme(
-    primary = Color(0xFFF43F5E),             // Vibrant Ruby Cherry (كرزي ياقوتي متوهج على السواد)
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF4C0519),    // Rich Velvet Wine Pill Indicator
-    onPrimaryContainer = Color(0xFFFECDD3),
-    secondary = Color(0xFFE11D48),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF3B0715),
-    onSecondaryContainer = Color(0xFFFDA4AF),
+    primary = Color(0xFF38BDF8),             // Calm Sky Blue (non-glaring, eye-soothing in dark)
+    onPrimary = Color(0xFF082F49),          // Deep Navy on Sky Blue for high legibility
+    primaryContainer = Color(0xFF0C4A6E),    // Deep Night Blue Pill Indicator
+    onPrimaryContainer = Color(0xFFE0F2FE),
+    secondary = Color(0xFF0EA5E9),
+    onSecondary = Color(0xFF082F49),
+    secondaryContainer = Color(0xFF07273C),
+    onSecondaryContainer = Color(0xFFBAE6FD),
     background = Color(0xFF000000),          // 100% True Pitch Black (Pixels OFF)
-    onBackground = Color(0xFFF8FAFC),        // Platinum White (20:1 contrast)
-    surface = Color(0xFF0D0D10),            // Ultra Dark Glass
+    onBackground = Color(0xFFF8FAFC),        // Platinum White
+    surface = Color(0xFF0F1318),            // Ultra Dark Charcoal Navy
     onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = Color(0xFF16161B),
+    surfaceVariant = Color(0xFF161B22),
     onSurfaceVariant = Color(0xFF94A3B8),
-    outline = Color(0xFF27272E)
+    outline = Color(0xFF262F3D),
+    outlineVariant = Color(0xFF1E2633)
 )
 
 class ThemePreferences(context: Context) {

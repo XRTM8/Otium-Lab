@@ -122,87 +122,83 @@ object ImageProcessingUtils {
             val h = bmp.height
             if (w < 50 || h < 50) return NormalizedQuad()
 
-            val thumb = Bitmap.createScaledBitmap(bmp, 80, 80, false)
-            var topInset = 0.05f
-            var bottomInset = 0.95f
-            var leftInset = 0.05f
-            var rightInset = 0.95f
-
-            // Scan from top towards center
-            for (y in 0 until 28) {
-                var avgLuma = 0
-                for (x in 20 until 60) {
-                    val pixel = thumb.getPixel(x, y)
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
-                    val b = pixel and 0xFF
-                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
-                }
-                avgLuma /= 40
-                if (avgLuma > 115) {
-                    topInset = (y / 80f).coerceIn(0.02f, 0.22f)
-                    break
-                }
-            }
-
-            // Scan from bottom towards center
-            for (y in 79 downTo 52) {
-                var avgLuma = 0
-                for (x in 20 until 60) {
-                    val pixel = thumb.getPixel(x, y)
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
-                    val b = pixel and 0xFF
-                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
-                }
-                avgLuma /= 40
-                if (avgLuma > 115) {
-                    bottomInset = (y / 80f).coerceIn(0.78f, 0.98f)
-                    break
-                }
-            }
-
-            // Scan from left towards center
-            for (x in 0 until 28) {
-                var avgLuma = 0
-                for (y in 20 until 60) {
-                    val pixel = thumb.getPixel(x, y)
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
-                    val b = pixel and 0xFF
-                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
-                }
-                avgLuma /= 40
-                if (avgLuma > 115) {
-                    leftInset = (x / 80f).coerceIn(0.02f, 0.22f)
-                    break
-                }
-            }
-
-            // Scan from right towards center
-            for (x in 79 downTo 52) {
-                var avgLuma = 0
-                for (y in 20 until 60) {
-                    val pixel = thumb.getPixel(x, y)
-                    val r = (pixel shr 16) and 0xFF
-                    val g = (pixel shr 8) and 0xFF
-                    val b = pixel and 0xFF
-                    avgLuma += (r * 299 + g * 587 + b * 114) / 1000
-                }
-                avgLuma /= 40
-                if (avgLuma > 115) {
-                    rightInset = (x / 80f).coerceIn(0.78f, 0.98f)
-                    break
-                }
-            }
+            // 1. Downscale to a clean 200x200 analysis grid for instant 2ms execution
+            val gridDim = 200
+            val thumb = Bitmap.createScaledBitmap(bmp, gridDim, gridDim, true)
+            val pixels = IntArray(gridDim * gridDim)
+            thumb.getPixels(pixels, 0, gridDim, 0, 0, gridDim, gridDim)
             thumb.recycle()
 
-            NormalizedQuad(
-                topLeft = Offset(leftInset, topInset),
-                topRight = Offset(rightInset, topInset),
-                bottomRight = Offset(rightInset, bottomInset),
-                bottomLeft = Offset(leftInset, bottomInset)
-            )
+            // 2. Grayscale luminance calculation
+            val luma = IntArray(gridDim * gridDim)
+            for (i in pixels.indices) {
+                val p = pixels[i]
+                val r = (p shr 16) and 0xFF
+                val g = (p shr 8) and 0xFF
+                val b = p and 0xFF
+                luma[i] = (r * 77 + g * 150 + b * 29) shr 8
+            }
+
+            // 3. Fast Sobel gradient magnitude calculation
+            val grad = IntArray(gridDim * gridDim)
+            for (y in 1 until gridDim - 1) {
+                val rowOffset = y * gridDim
+                for (x in 1 until gridDim - 1) {
+                    val gx = (luma[rowOffset - gridDim + x + 1] + 2 * luma[rowOffset + x + 1] + luma[rowOffset + gridDim + x + 1]) -
+                             (luma[rowOffset - gridDim + x - 1] + 2 * luma[rowOffset + x - 1] + luma[rowOffset + gridDim + x - 1])
+                    val gy = (luma[rowOffset + gridDim + x - 1] + 2 * luma[rowOffset + gridDim + x] + luma[rowOffset + gridDim + x + 1]) -
+                             (luma[rowOffset - gridDim + x - 1] + 2 * luma[rowOffset - gridDim + x] + luma[rowOffset - gridDim + x + 1])
+                    grad[rowOffset + x] = kotlin.math.abs(gx) + kotlin.math.abs(gy)
+                }
+            }
+
+            // 4. Center of image space
+            val cx = gridDim / 2f
+            val cy = gridDim / 2f
+
+            // 5. Ray search outward from center towards corner quadrants
+            fun findCorner(targetX: Float, targetY: Float): Offset {
+                val dx = targetX - cx
+                val dy = targetY - cy
+                val steps = 80
+                var bestGrad = 0
+                var bestPt = Offset(targetX / gridDim, targetY / gridDim)
+
+                for (s in 15..steps) {
+                    val t = s.toFloat() / steps.toFloat()
+                    val px = (cx + dx * t).toInt().coerceIn(1, gridDim - 2)
+                    val py = (cy + dy * t).toInt().coerceIn(1, gridDim - 2)
+                    val gVal = grad[py * gridDim + px]
+                    if (gVal > bestGrad && gVal > 55) {
+                        bestGrad = gVal
+                        bestPt = Offset(px.toFloat() / gridDim, py.toFloat() / gridDim)
+                    }
+                }
+                return bestPt
+            }
+
+            val tl = findCorner(gridDim * 0.04f, gridDim * 0.04f)
+            val tr = findCorner(gridDim * 0.96f, gridDim * 0.04f)
+            val br = findCorner(gridDim * 0.96f, gridDim * 0.96f)
+            val bl = findCorner(gridDim * 0.04f, gridDim * 0.96f)
+
+            // Validate that quadrilateral is topologically sound (TL left of TR, BL left of BR, TL above BL, TR above BR)
+            val isValid = (tl.x < tr.x) && (bl.x < br.x) && (tl.y < bl.y) && (tr.y < br.y)
+            if (isValid) {
+                NormalizedQuad(
+                    topLeft = Offset(tl.x.coerceIn(0.01f, 0.45f), tl.y.coerceIn(0.01f, 0.45f)),
+                    topRight = Offset(tr.x.coerceIn(0.55f, 0.99f), tr.y.coerceIn(0.01f, 0.45f)),
+                    bottomRight = Offset(br.x.coerceIn(0.55f, 0.99f), br.y.coerceIn(0.55f, 0.99f)),
+                    bottomLeft = Offset(bl.x.coerceIn(0.01f, 0.45f), bl.y.coerceIn(0.55f, 0.99f))
+                )
+            } else {
+                NormalizedQuad(
+                    topLeft = Offset(0.05f, 0.05f),
+                    topRight = Offset(0.95f, 0.05f),
+                    bottomRight = Offset(0.95f, 0.95f),
+                    bottomLeft = Offset(0.05f, 0.95f)
+                )
+            }
         } catch (_: Throwable) {
             NormalizedQuad()
         }

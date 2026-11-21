@@ -109,6 +109,9 @@ fun CropAndFilterScreen(
             if (isCropping) {
                 CropBottomActionBar(
                     isProcessing = isProcessing,
+                    onAutoDetect = {
+                        previewRawBitmap?.let { bmp -> cropQuad = ImageProcessingUtils.detectDocumentCorners(bmp) }
+                    },
                     onResetFull = {
                         cropQuad = NormalizedQuad(Offset(0.01f, 0.01f), Offset(0.99f, 0.01f), Offset(0.99f, 0.99f), Offset(0.01f, 0.99f))
                     },
@@ -139,7 +142,7 @@ fun CropAndFilterScreen(
         }
     ) { paddingValues ->
         Box(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).background(Color(0xFF0F172A).copy(alpha = 0.95f)).padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(paddingValues).background(Color(0xFF0B111E)).padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             val bmpToShow = if (isCropping) previewRawBitmap else displayedBitmap
@@ -157,7 +160,8 @@ fun CropAndFilterScreen(
                             imageWidth = bmpToShow.width,
                             imageHeight = bmpToShow.height,
                             primaryColor = MaterialTheme.colorScheme.primary,
-                            onQuadChange = { cropQuad = it }
+                            onQuadChange = { cropQuad = it },
+                            previewBitmap = bmpToShow
                         )
                     }
                 }
@@ -177,9 +181,7 @@ fun CropAndFilterScreen(
         }
 
         if (showSaveDialog && displayedBitmap != null) {
-            val defaultName = remember {
-                "مستند_ممسوح_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}"
-            }
+            val defaultName = remember { "مستند_ممسوح_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}" }
             DocumentSaveNameDialog(
                 defaultTitle = defaultName,
                 onConfirm = { customName ->
