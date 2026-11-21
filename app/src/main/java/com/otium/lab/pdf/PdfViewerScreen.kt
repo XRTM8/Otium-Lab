@@ -194,7 +194,7 @@ fun PdfViewerScreen(
                                     PageColorMode.SEPIA -> Icons.Rounded.AutoStories
                                 },
                                 contentDescription = pageColorMode.labelAr,
-                                tint = if (pageColorMode == PageColorMode.AMOLED_BLACK) Color(0xFFE5B842) else textColor
+                                tint = if (pageColorMode == PageColorMode.AMOLED_BLACK) MaterialTheme.colorScheme.primary else textColor
                             )
                         }
                     },
@@ -237,8 +237,8 @@ fun PdfViewerScreen(
                             steps = (renderer.pageCount - 2).coerceAtLeast(0),
                             modifier = Modifier.weight(1f),
                             colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFFC29B38),
-                                activeTrackColor = Color(0xFFC29B38)
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary
                             )
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -286,7 +286,7 @@ fun PdfViewerScreen(
 
                 !isLoaded -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFFC29B38))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
                 }
 
@@ -390,7 +390,7 @@ fun PdfPageItem(
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
-                        color = Color(0xFFC29B38),
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(28.dp),
                         strokeWidth = 2.dp
                     )

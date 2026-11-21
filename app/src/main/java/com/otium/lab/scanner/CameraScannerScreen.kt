@@ -57,6 +57,7 @@ fun CameraScannerScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -116,7 +117,7 @@ fun CameraScannerScreen(
                 Icon(
                     Icons.Rounded.CameraAlt,
                     contentDescription = null,
-                    tint = Color(0xFFE5B842),
+                    tint = primaryColor,
                     modifier = Modifier.size(64.dp)
                 )
                 Spacer(modifier = Modifier.height(18.dp))
@@ -136,10 +137,10 @@ fun CameraScannerScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE5B842)),
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("منح إذن الكاميرا", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("منح إذن الكاميرا", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -240,7 +241,7 @@ fun CameraScannerScreen(
         ) {
             val strokeWidth = 3.5.dp.toPx()
             val cornerLength = 32.dp.toPx()
-            val color = Color(0xFFE5B842)
+            val color = primaryColor
 
             val w = size.width
             val h = size.height
@@ -302,7 +303,7 @@ fun CameraScannerScreen(
             ) {
                 Text(
                     text = if (pageCount > 0) "تم التقاط $pageCount صفحة" else "وجه الكاميرا نحو المستند واضغط للتركيز",
-                    color = if (pageCount > 0) Color(0xFFE5B842) else Color.White,
+                    color = if (pageCount > 0) primaryColor else Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
@@ -325,7 +326,7 @@ fun CameraScannerScreen(
                 Icon(
                     imageVector = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
                     contentDescription = "الفلاش",
-                    tint = if (isFlashOn) Color(0xFFE5B842) else Color.White
+                    tint = if (isFlashOn) primaryColor else Color.White
                 )
             }
         }
@@ -438,11 +439,11 @@ fun CameraScannerScreen(
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier
                     .size(78.dp)
-                    .border(4.dp, Color(0xFFE5B842), CircleShape)
+                    .border(4.dp, primaryColor, CircleShape)
             ) {
                 if (isCapturing) {
                     CircularProgressIndicator(
-                        color = Color(0xFFE5B842),
+                        color = primaryColor,
                         modifier = Modifier.size(34.dp),
                         strokeWidth = 3.5.dp
                     )
@@ -450,7 +451,7 @@ fun CameraScannerScreen(
                     Box(
                         modifier = Modifier
                             .size(62.dp)
-                            .background(Color(0xFFE5B842), CircleShape)
+                            .background(primaryColor, CircleShape)
                     )
                 }
             }
@@ -460,7 +461,7 @@ fun CameraScannerScreen(
                 Button(
                     onClick = onFinishBatch,
                     shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE5B842)),
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier
                         .size(54.dp)
@@ -469,7 +470,7 @@ fun CameraScannerScreen(
                     Icon(
                         Icons.Rounded.Check,
                         contentDescription = "إنهاء وحفظ",
-                        tint = Color.Black,
+                        tint = Color.White,
                         modifier = Modifier.size(28.dp)
                     )
                 }

@@ -137,8 +137,8 @@ fun CropAndFilterScreen(
                                 },
                                 modifier = Modifier.weight(1f),
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFFE5B842).copy(alpha = 0.2f),
-                                    selectedLabelColor = Color(0xFFC29B38)
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             )
                         }
@@ -169,13 +169,13 @@ fun CropAndFilterScreen(
                                 displayedBitmap?.let { onSavePdf(it) }
                             },
                             enabled = displayedBitmap != null && !isProcessing,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE5B842)),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1.3f)
                         ) {
-                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("حفظ المستند PDF", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("حفظ المستند PDF", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -212,7 +212,7 @@ fun CropAndFilterScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(
-                            color = Color(0xFFE5B842),
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 3.dp,
                             modifier = Modifier.size(36.dp)
                         )

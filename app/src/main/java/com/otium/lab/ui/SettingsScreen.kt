@@ -75,9 +75,9 @@ fun SettingsScreen(
                 ) {
                     ThemeOption(
                         title = "أبيض ناصع",
-                        previewBg = Color(0xFFF8FAFC),
+                        previewBg = Color(0xFFFFFFFF),
                         previewBorder = Color(0xFFE2E8F0),
-                        previewText = Color(0xFF0F172A),
+                        previewText = Color(0xFF881337),
                         isSelected = currentTheme == AppThemeMode.LIGHT,
                         onSelect = { themePreferences.setTheme(AppThemeMode.LIGHT) },
                         modifier = Modifier.weight(1f)
@@ -86,8 +86,8 @@ fun SettingsScreen(
                     ThemeOption(
                         title = "كريمي ورقي",
                         previewBg = Color(0xFFFBF7EE),
-                        previewBorder = Color(0xFFE5D9C3),
-                        previewText = Color(0xFF2C2416),
+                        previewBorder = Color(0xFFDFD3BD),
+                        previewText = Color(0xFF9F1239),
                         isSelected = currentTheme == AppThemeMode.CREAM,
                         onSelect = { themePreferences.setTheme(AppThemeMode.CREAM) },
                         modifier = Modifier.weight(1f)
@@ -96,8 +96,8 @@ fun SettingsScreen(
                     ThemeOption(
                         title = "أموليـد أسود",
                         previewBg = Color(0xFF000000),
-                        previewBorder = Color(0xFF333333),
-                        previewText = Color(0xFFF8FAFC),
+                        previewBorder = Color(0xFF27272E),
+                        previewText = Color(0xFFF43F5E),
                         isSelected = currentTheme == AppThemeMode.AMOLED,
                         onSelect = { themePreferences.setTheme(AppThemeMode.AMOLED) },
                         modifier = Modifier.weight(1f)

@@ -300,8 +300,7 @@ fun DocumentCard(
                 modifier = Modifier
                     .size(46.dp)
                     .background(
-                        if (doc.isScanned) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        else Color(0xFF3B82F6).copy(alpha = 0.15f),
+                        MaterialTheme.colorScheme.primaryContainer,
                         RoundedCornerShape(12.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -309,7 +308,7 @@ fun DocumentCard(
                 Icon(
                     imageVector = if (doc.isScanned) Icons.Rounded.CameraAlt else Icons.Rounded.PictureAsPdf,
                     contentDescription = null,
-                    tint = if (doc.isScanned) MaterialTheme.colorScheme.primary else Color(0xFF3B82F6),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
             }

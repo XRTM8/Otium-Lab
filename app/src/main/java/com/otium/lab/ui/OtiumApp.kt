@@ -169,9 +169,11 @@ fun OtiumApp() {
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFFC29B38),
-                                selectedTextColor = Color(0xFFC29B38),
-                                indicatorColor = Color(0xFFC29B38).copy(alpha = 0.15f)
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         )
                     }

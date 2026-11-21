@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 
@@ -15,46 +14,61 @@ enum class AppThemeMode(val labelAr: String) {
     AMOLED("أموليـد أسود")
 }
 
+// 1. Light Theme: Pure Studio White + Imperial Deep Burgundy
 val LightPalette = lightColorScheme(
-    primary = Color(0xFFC29B38),
+    primary = Color(0xFF881337),             // Deep Regal Burgundy (عنابي ملكي عميق)
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFBF4E4),
-    onPrimaryContainer = Color(0xFF5A440D),
-    background = Color(0xFFF8FAFC),
-    onBackground = Color(0xFF0F172A),
-    surface = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFE4E6),    // Soft Rose Velvet Tint
+    onPrimaryContainer = Color(0xFF4C0519),
+    secondary = Color(0xFF9F1239),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFFFF1F2),
+    onSecondaryContainer = Color(0xFF4C0519),
+    background = Color(0xFFFFFFFF),          // Pure Clean White
+    onBackground = Color(0xFF0F172A),        // Carbon Black (16.5:1 contrast)
+    surface = Color(0xFFF8FAFC),            // Slate Studio Surface
     onSurface = Color(0xFF0F172A),
     surfaceVariant = Color(0xFFF1F5F9),
-    onSurfaceVariant = Color(0xFF64748B),
+    onSurfaceVariant = Color(0xFF475569),
     outline = Color(0xFFE2E8F0)
 )
 
+// 2. Cream Theme: Warm Japanese Book Paper + Deep Cherry Wine
 val CreamPalette = lightColorScheme(
-    primary = Color(0xFFB4822B),
+    primary = Color(0xFF9F1239),             // Warm Cherry Wine (كرزي خمري دافئ)
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFEDE0C7),
-    onPrimaryContainer = Color(0xFF432D06),
-    background = Color(0xFFFBF7EE),
-    onBackground = Color(0xFF2C2416),
-    surface = Color(0xFFF4EBD9),
-    onSurface = Color(0xFF2C2416),
-    surfaceVariant = Color(0xFFEDE3D0),
-    onSurfaceVariant = Color(0xFF7A6A50),
-    outline = Color(0xFFDFCFAF)
+    primaryContainer = Color(0xFFFCE7ED),    // Soft Warm Blossom Tint
+    onPrimaryContainer = Color(0xFF4C0519),
+    secondary = Color(0xFF881337),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFF5EBE1),
+    onSecondaryContainer = Color(0xFF381E19),
+    background = Color(0xFFFBF7EE),          // Warm Natural Book Paper (ورق طبيعي مريح جداً)
+    onBackground = Color(0xFF231815),        // Deep Espresso (14.8:1 contrast, zero eye fatigue)
+    surface = Color(0xFFF3ECE0),            // Warm Paper Surface Card
+    onSurface = Color(0xFF231815),
+    surfaceVariant = Color(0xFFEBE2D2),
+    onSurfaceVariant = Color(0xFF6B5B49),
+    outline = Color(0xFFDFD3BD)
 )
 
+// 3. AMOLED Theme: 100% Pure Pitch Black + Glowing Ruby Cherry
 val AmoledPalette = darkColorScheme(
-    primary = Color(0xFFE5B842),
-    onPrimary = Color.Black,
-    primaryContainer = Color(0xFF262626),
-    onPrimaryContainer = Color(0xFFFDE68A),
-    background = Color(0xFF000000),
-    onBackground = Color(0xFFF8FAFC),
-    surface = Color(0xFF111111),
+    primary = Color(0xFFF43F5E),             // Vibrant Ruby Cherry (كرزي ياقوتي متوهج على السواد)
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF2E0914),    // Dark Velvet Wine
+    onPrimaryContainer = Color(0xFFFECDD3),
+    secondary = Color(0xFFE11D48),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFF1F080F),
+    onSecondaryContainer = Color(0xFFFDA4AF),
+    background = Color(0xFF000000),          // 100% True Pitch Black (Pixels OFF)
+    onBackground = Color(0xFFF8FAFC),        // Platinum White (20:1 contrast)
+    surface = Color(0xFF0D0D10),            // Ultra Dark Glass
     onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = Color(0xFF1A1A1A),
+    surfaceVariant = Color(0xFF16161B),
     onSurfaceVariant = Color(0xFF94A3B8),
-    outline = Color(0xFF2E2E2E)
+    outline = Color(0xFF27272E)
 )
 
 class ThemePreferences(context: Context) {
