@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, Sparkles, X, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Download, X, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useUpdateChecker } from '../core/updates/useUpdateChecker';
 import { getUpdateAdapter } from '../platform/updates';
 
@@ -25,6 +25,7 @@ export const AutoUpdateBanner: React.FC = () => {
 
   const version = snapshot.phase === 'available' ? (snapshot.latestVersion ?? '') : '';
   const progressPercent = snapshot.progress?.percent ?? 0;
+  const message = snapshot.phase === 'ready' || snapshot.phase === 'error' ? snapshot.message : null;
 
   const handleAction = () => {
     setUserInitiatedInstall(true);
@@ -52,27 +53,21 @@ export const AutoUpdateBanner: React.FC = () => {
             ) : snapshot.phase === 'downloading' ? (
               <RefreshCw className="w-4 h-4 animate-spin text-accent" />
             ) : (
-              <Sparkles className="w-4 h-4 text-accent" />
+              <Download className="w-4 h-4 text-accent" />
             )}
           </div>
 
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-bold truncate">
               {snapshot.phase === 'ready'
-                ? 'اكتمل التحميل — جاهز للتثبيت!'
+                ? 'التحديث جاهز للتثبيت'
                 : snapshot.phase === 'downloading'
                   ? `جارٍ تحميل التحديث (${progressPercent}%)...`
                   : snapshot.phase === 'error'
                     ? 'تعذر إكمال التحديث'
                     : `تحديث متوفر: ${version}`}
             </span>
-            <span className="text-[10px] text-ink-muted truncate">
-              {snapshot.phase === 'downloading'
-                ? 'يرجى الانتظار، سيتم فتح مثبت الحزم تلقائياً'
-                : snapshot.phase === 'available'
-                  ? 'نسخة أسرع وأكثر استقراراً متاحة الآن'
-                  : snapshot.message || ''}
-            </span>
+            {message && <span className="text-[10px] text-ink-muted">{message}</span>}
           </div>
         </div>
 

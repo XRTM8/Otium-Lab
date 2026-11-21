@@ -61,7 +61,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const [libraryLoadFailed, setLibraryLoadFailed] = useState(false);
   const [deleting, setDeleting] = useState<LibraryItem | 'all' | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
-  const [isMobileDevice, setIsMobileDevice] = useState(false);
 
   const t = getTranslations(currentLang);
 
@@ -89,20 +88,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const checkMobile = () => {
-      const isTouch =
-        window.matchMedia('(max-width: 768px)').matches ||
-        window.matchMedia('(pointer: coarse)').matches ||
-        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      setIsMobileDevice(isTouch);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -136,10 +121,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       dir={currentLang === 'ar' ? 'rtl' : 'ltr'}
       className="relative min-h-screen w-full flex flex-col items-center justify-start p-5 pt-16 sm:pt-16 pb-16 bg-[var(--app-bg)] text-ink select-none overflow-y-auto overflow-x-hidden transition-colors duration-500"
     >
-      {/* Subtle Optical Atmosphere (Frosted Glass Vignette - Clean, No Neon Blobs) */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,var(--surface-hover-strong),transparent_75%)] pointer-events-none opacity-80" />
-
-      {/* Top Floating Glass Island with interactive press & elevation */}
       <div
         dir="ltr"
         style={{
@@ -187,22 +168,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       {/* Main Content Stage */}
       <div className="relative max-w-xl w-full flex flex-col items-center text-center space-y-5 z-10 pt-2 sm:pt-4">
 
-        {/* Brand Header: Sovereign Otium Emblem */}
-        <div className="flex flex-col items-center space-y-3">
-          <div className="p-4 rounded-3xl bg-surface/80 border border-line/50 shadow-xl backdrop-blur-xs transition-all duration-300 hover:scale-105 pointer-events-none select-none">
-            <OtiumLogo theme={currentTheme} size={46} />
-          </div>
-
-          <div className="space-y-1">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-ink font-sans transition-all duration-300">
-              Otium
-            </h1>
-            <p className="text-xs sm:text-sm font-medium text-ink-muted">
-              {currentLang === 'ar'
-                ? 'قارئ هادئ ومستقل للوسائط والمستندات'
-                : 'A calm sovereign reader and media workspace'}
-            </p>
-          </div>
+        <div className="flex flex-col items-center gap-2">
+          <OtiumLogo theme={currentTheme} size={46} />
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Otium</h1>
         </div>
 
         {/* Quick Resume Hero: Frosted Glass Banner with interactive elevation */}
@@ -213,35 +181,25 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           onOpenRecent={onOpenRecent}
         />
 
-        {/* Master Frosted Translucent Glass Dropzone with Magnetic Hover & Rotation */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => {
-            triggerHaptic('light');
-            fileInputRef.current?.click();
-          }}
-          className={`w-full p-8 sm:p-10 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col items-center justify-center gap-3.5 backdrop-blur-xs shadow-xl group relative overflow-hidden ${
-            isDragging
-              ? 'border-accent bg-surface/75 scale-[1.01] shadow-2xl'
-              : 'border-line/40 bg-surface/65 hover:bg-surface/85 hover:border-accent/60 hover:-translate-y-1 hover:shadow-2xl'
-          }`}
+          className="w-full"
         >
-          <div className="w-14 h-14 rounded-2xl bg-surface/80 border border-line flex items-center justify-center text-accent shadow-md backdrop-blur-xs group-hover:scale-110 group-hover:rotate-[-6deg] group-hover:border-accent/50 transition-all duration-300">
-            <Upload className="w-6 h-6 group-hover:translate-y-[-2px] transition-transform" />
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-sm sm:text-base font-bold text-ink group-hover:text-accent transition-colors">
-              {currentLang === 'ar' ? 'فتح أو سحب مستند' : 'Open or drop a document'}
-            </div>
-            <div className="text-xs text-ink-muted">
-              {currentLang === 'ar'
-                ? `${isMobileDevice ? 'اختر' : 'اسحب أو اختر'} PDF أو PPTX أو صورة أو فيديو أو صوت`
-                : `${isMobileDevice ? 'Choose' : 'Drop or choose'} PDF, PPTX, image, video or audio`}
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              fileInputRef.current?.click();
+            }}
+            className={`w-full rounded-2xl border px-4 py-7 font-semibold transition-colors cursor-pointer flex flex-col items-center gap-2 focus-visible:outline-2 focus-visible:outline-accent ${
+              isDragging ? 'border-accent bg-accent/10' : 'border-line bg-surface hover:border-accent'
+            }`}
+          >
+            <Upload className="w-5 h-5 text-accent" aria-hidden="true" />
+            {currentLang === 'ar' ? 'فتح ملف' : 'Open file'}
+          </button>
 
           <input
             ref={fileInputRef}

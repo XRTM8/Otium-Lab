@@ -5,7 +5,6 @@ import {
   LayoutTemplate,
   Moon,
   Palette,
-  Sparkles,
   Sun,
 } from 'lucide-react';
 import { DeviceUsageSetting } from '../DeviceUsageSetting';
@@ -167,7 +166,6 @@ export const ReadingTabPanel: React.FC<{
         >
           <BookOpen className="w-5 h-5" />
           <span className="font-medium">{ar ? 'صفحتين متجاورة' : 'Two pages'}</span>
-          <span className="text-[10px] text-ink-faint">{ar ? 'كتاب مفتوح هادئ' : 'Open-book spread'}</span>
         </button>
 
         <button
@@ -325,8 +323,8 @@ export const ReadingTabPanel: React.FC<{
           title={ar ? 'إبقاء الشاشة مضاءة أثناء القراءة' : 'Keep Screen Awake While Reading'}
           description={
             ar
-              ? 'يمنع انطفاء الشاشة أو بهتان إضاءتها أثناء القراءة بهدوء، ويحرر القفل تلقائياً عند إغلاق الكتاب.'
-              : 'Prevents display sleep or dimming while reading, releasing automatically when closed.'
+              ? 'تبقى الشاشة مضاءة حتى تغلق الكتاب.'
+              : 'Keeps the screen on until you close the book.'
           }
           onToggle={() => onKeepScreenAwakeChange(!keepScreenAwake)}
           pointerCursor
@@ -339,8 +337,8 @@ export const ReadingTabPanel: React.FC<{
           title={ar ? 'تذكر بيئة القراءة لكل كتاب' : 'Remember Theme Per Book'}
           description={
             ar
-              ? 'يحفظ الثيم المختار لكل كتاب بمفرده، فتعود لكل رواية أو بحث بنفس مظهر القراءة المفضل له.'
-              : 'Remembers your chosen theme for each book independently, so each document reopens with its preferred atmosphere.'
+              ? 'يفتح كل كتاب بالثيم الذي اخترته له.'
+              : 'Reopens each book with its saved theme.'
           }
           onToggle={() => onRememberDocThemeChange(!rememberDocTheme)}
           pointerCursor
@@ -348,13 +346,5 @@ export const ReadingTabPanel: React.FC<{
       )}
     </div>
 
-    <div className="p-3 rounded-2xl bg-hover-subtle border border-line-subtle flex items-start gap-2.5 text-xs text-ink-muted">
-      <Sparkles className="w-4 h-4 text-highlight shrink-0 mt-0.5" />
-      <p className="leading-relaxed text-[11px] text-ink-muted">
-        {ar
-          ? 'تم تصميم قارئ Otium ليكون هادئاً بدون تشتيت، ويُطبَّق نوع الخط المختار فوراً على كافة واجهات القراءة.'
-          : 'Otium is designed to stay quiet and distraction-free. Your selected font is applied instantly across the app.'}
-      </p>
-    </div>
   </div>
 );

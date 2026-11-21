@@ -78,16 +78,6 @@ export const BeamSendTab: React.FC<{
         </span>}
       </div>
     ) : (
-      <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2 text-start">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-          <Radio className="w-3.5 h-3.5 animate-pulse text-amber-500" />
-          <span>{lang === 'ar' ? 'لا يوجد ملف مفتوح حالياً على الهاتف' : 'No document open on phone'}</span>
-        </div>
-        <p className="text-[11px] text-ink-muted leading-tight">
-          {lang === 'ar'
-            ? 'اختر PDF أو صورة أو فيديو أو عرض PowerPoint، أو اربط الهاتف للتحكم بملف مفتوح على الشاشة.'
-            : 'Choose a PDF, image, video, or PowerPoint presentation, or pair to control a file already on screen.'}
-        </p>
         <button
           type="button"
           onClick={() => beamFileInputRef.current?.click()}
@@ -96,31 +86,15 @@ export const BeamSendTab: React.FC<{
           <FileUp className="w-3.5 h-3.5" />
           <span>{lang === 'ar' ? 'اختيار ملف للبث' : 'Choose file to beam'}</span>
         </button>
-      </div>
     )}
 
-    <div className="grid grid-cols-2 gap-2 text-start p-2.5 rounded-2xl bg-hover-subtle/80 border border-line-subtle text-[11px]">
-      <div className="flex items-start gap-1.5">
-        <span className="w-4 h-4 rounded-full bg-accent/20 text-accent font-mono font-bold flex items-center justify-center shrink-0 text-[10px]">
-          ١
-        </span>
-        <span className="text-ink-muted leading-tight">
-          {local ? (lang === 'ar' ? 'على الشاشة افتح Otium المثبّت واختر «استقبال» ثم «شبكة محلية».' :
-            'On the screen, open installed Otium and choose Receiver, then Local network.') : <>
-            {lang === 'ar' ? 'على السبورة افتح الرابط ' : 'On the board, open '}
-            <strong className="text-accent font-mono font-bold">xrtm8.github.io/Otium-Lab/</strong>
-          </>}
-        </span>
-      </div>
-      <div className="flex items-start gap-1.5">
-        <span className="w-4 h-4 rounded-full bg-accent/20 text-accent font-mono font-bold flex items-center justify-center shrink-0 text-[10px]">
-          ٢
-        </span>
-        <span className="text-ink-muted leading-tight">
-          {lang === 'ar' ? 'امسح الـ QR أو اكتب الكود' : 'Scan QR or enter Code'}
-        </span>
-      </div>
-    </div>
+    <p className="text-start text-xs text-ink-muted">
+      {local ? (lang === 'ar' ? 'على الشاشة المثبّت عليها Otium، اختَر «استقبال» ثم «شبكة محلية».' :
+        'On the screen running Otium, choose Receiver, then Local network.') : <>
+        {lang === 'ar' ? 'على الشاشة، افتح ' : 'On the screen, open '}
+        <bdi className="text-accent font-mono">xrtm8.github.io/Otium-Lab/</bdi>
+      </>}
+    </p>
 
     {isScanningCamera ? (
       <div className="relative w-full h-48 rounded-2xl bg-black overflow-hidden border-2 border-accent flex flex-col items-center justify-center shadow-inner">
@@ -144,7 +118,7 @@ export const BeamSendTab: React.FC<{
         className="w-full py-2.5 px-4 rounded-2xl bg-accent/15 border border-accent/30 text-accent font-bold text-xs flex items-center justify-center gap-2 hover:bg-accent/25 active:scale-98 transition-all cursor-pointer shadow-xs"
       >
         <Camera className="w-4 h-4" />
-        <span>{lang === 'ar' ? 'مسح رمز السبورة بالكاميرا فوراً' : 'Scan Smartboard QR with Camera'}</span>
+        <span>{lang === 'ar' ? 'مسح رمز QR' : 'Scan QR code'}</span>
       </button>
     )}
 

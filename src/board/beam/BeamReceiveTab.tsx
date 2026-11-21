@@ -71,11 +71,11 @@ export const BeamReceiveTab: React.FC<{
         <p className="text-xs text-ink leading-relaxed">
           {reader.doc
             ? lang === 'ar'
-              ? 'الملزمة جاهزة ومعروضة على السبورة، يمكنك تقليبها فوراً من هاتفك!'
-              : 'Document is open; turn pages using your phone clicker!'
+              ? 'قلّب الصفحات من الهاتف.'
+              : 'Turn pages from your phone.'
             : lang === 'ar'
               ? 'الشاشة متصلة بالهاتف وتنتظر الملف.'
-              : 'Ready and paired! Waiting for document stream from phone, or open it directly here:'}
+              : 'Waiting for a file from the phone.'}
         </p>
         {reader.doc ? (
           <button
@@ -95,7 +95,7 @@ export const BeamReceiveTab: React.FC<{
             className="w-full py-2.5 px-3 rounded-xl bg-accent text-on-accent font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer hover:bg-accent-strong transition-all"
           >
             <FileUp className="w-3.5 h-3.5" />
-            <span>{lang === 'ar' ? '⚡ فتح ملف الملزمة من هذا الجهاز فوراً' : '⚡ Open PDF on this device now'}</span>
+            <span>{lang === 'ar' ? 'فتح PDF على هذه الشاشة' : 'Open a PDF on this screen'}</span>
           </button>
         )}
       </div>
@@ -182,11 +182,6 @@ export const BeamReceiveTab: React.FC<{
       </button>
     </div>
 
-    {!local && <div className="text-[10px] text-ink-muted flex items-center gap-1 font-mono">
-      <span>{lang === 'ar' ? 'رابط السبورة السريع:' : 'Quick link:'}</span>
-      <strong className="text-accent underline">xrtm8.github.io/Otium-Lab/</strong>
-    </div>}
-
     {reader.doc ? (
       <div className="w-full p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-start space-y-1">
         <div className="flex items-center justify-between">
@@ -199,17 +194,12 @@ export const BeamReceiveTab: React.FC<{
           </span>
         </div>
         <div className="text-xs font-bold text-ink truncate">{reader.docTitle}</div>
-        <p className="text-[10px] text-ink-muted leading-tight">
-          {lang === 'ar'
-            ? 'اكتب الرمز أعلاه في هاتفك للبدء بالتقليب فوراً كالريموت! 📱'
-            : 'Enter code on your phone to turn pages wirelessly! 📱'}
-        </p>
       </div>
     ) : (
       <div className="w-full p-3 rounded-2xl bg-hover-subtle border border-line text-start space-y-2">
         <div className="flex items-center gap-1.5 text-ink font-bold text-xs">
           <FolderOpen className="w-4 h-4 text-accent" />
-          <span>{lang === 'ar' ? 'حل فوري: فتح الملزمة على هذه الشاشة' : 'Instant: Open PDF on this screen'}</span>
+          <span>{lang === 'ar' ? 'ملف على هذه الشاشة أو USB' : 'File on this screen or USB'}</span>
         </div>
         <p className="text-[11px] text-ink-muted leading-tight">
           {lang === 'ar'
@@ -222,7 +212,7 @@ export const BeamReceiveTab: React.FC<{
           className="w-full py-2 px-3 rounded-xl bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
         >
           <FileUp className="w-3.5 h-3.5" />
-          <span>{lang === 'ar' ? 'اختيار ملف الملزمة من هذا الجهاز ⚡' : 'Select PDF from this device ⚡'}</span>
+          <span>{lang === 'ar' ? 'اختيار PDF' : 'Choose PDF'}</span>
         </button>
       </div>
     )}
