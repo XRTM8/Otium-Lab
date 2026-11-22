@@ -10,7 +10,7 @@
 | :--- | :--- | :--- |
 | **مستودع كود تطبيق الموبايل** | `E:\PROJECTS\Otium-Mobile` | تطبيق Android الأصلي (Kotlin + Jetpack Compose + Rust Bridge) |
 | **مستودع GitHub الرسمي** | `https://github.com/XRTM8/Otium-Mobile.git` | الفرع الأساسي: `main` |
-| **أحدث حزمة APK موقعة ومثبتة** | `E:\PROJECTS\Otium-Mobile\app\build\outputs\apk\release\app-arm64-v8a-release.apk` | الحزمة الرسمية الموقعة الجاهزة للاستخدام الفوري |
+| **أحدث حزمة APK موقعة ومثبتة** | `E:\PROJECTS\pdf\Otium-Lab_2.2.7_arm64-v8a.apk` | الحزمة الرسمية الموقعة الجاهزة للاستخدام الفوري |
 
 ---
 
