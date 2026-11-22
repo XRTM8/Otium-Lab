@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.BorderColor
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material3.*
@@ -32,6 +33,8 @@ fun PdfTopOverlay(
     textColor: Color,
     readingLayout: ReadingLayout,
     pageColorMode: PageColorMode,
+    isSelectionModeActive: Boolean = false,
+    onToggleSelectionMode: () -> Unit = {},
     onToggleLayout: () -> Unit,
     onToggleColorMode: () -> Unit,
     onClose: () -> Unit,
@@ -86,6 +89,14 @@ fun PdfTopOverlay(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onToggleSelectionMode) {
+                        Icon(
+                            imageVector = Icons.Rounded.BorderColor,
+                            contentDescription = if (isSelectionModeActive) "إيقاف التحديد" else "أداة التحديد والتظليل",
+                            tint = if (isSelectionModeActive) MaterialTheme.colorScheme.primary else textColor
+                        )
+                    }
+
                     IconButton(onClick = onToggleLayout) {
                         Icon(
                             imageVector = if (readingLayout == ReadingLayout.VERTICAL) Icons.Rounded.AutoStories else Icons.Rounded.ViewStream,

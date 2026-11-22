@@ -8,7 +8,7 @@ plugins {
 
 val versionMajor = 2
 val versionMinor = 2
-val versionPatch = 6
+val versionPatch = 7
 val baseVersionCode = (versionMajor * 1_000_000) + (versionMinor * 10_000) + (versionPatch * 100)
 val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
 
@@ -121,6 +121,9 @@ dependencies {
 
     // Native Bridge UniFFI (JNA)
     implementation(libs.jna)
+
+    // PDFBox Android (Offline Text Extraction & Positioning)
+    implementation(libs.pdfbox.android)
 
     // Network & In-App Updater
     implementation(libs.okhttp)

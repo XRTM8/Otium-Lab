@@ -19,17 +19,29 @@ import androidx.compose.ui.unit.sp
 import com.otium.lab.pdf.NativePdfRenderer
 import com.otium.lab.pdf.model.InvertColorMatrix
 import com.otium.lab.pdf.model.PageColorMode
+import com.otium.lab.pdf.model.PdfHighlight
+import com.otium.lab.pdf.model.PdfTextSpan
 import com.otium.lab.pdf.model.SepiaColorMatrix
+import com.otium.lab.pdf.text.PdfTextExtractor
 
 @Composable
 fun PdfPageItem(
     renderer: NativePdfRenderer,
     pageIndex: Int,
     pageColorMode: PageColorMode,
-    cardBg: Color
+    cardBg: Color,
+    textExtractor: PdfTextExtractor? = null,
+    highlights: List<PdfHighlight> = emptyList(),
+    selectedSpans: List<PdfTextSpan> = emptyList(),
+    selectedHighlight: PdfHighlight? = null,
+    isSelectionModeActive: Boolean = false,
+    onSelectSpans: (List<PdfTextSpan>) -> Unit = {},
+    onTapHighlight: (PdfHighlight) -> Unit = {},
+    onClearSelection: () -> Unit = {}
 ) {
     var pageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var pageSpans by remember { mutableStateOf<List<PdfTextSpan>>(emptyList()) }
 
     LaunchedEffect(pageIndex) {
         isLoading = true
@@ -37,6 +49,13 @@ fun PdfPageItem(
             pageBitmap = renderer.renderPage(pageIndex)
         } catch (_: Exception) {}
         isLoading = false
+    }
+
+    LaunchedEffect(pageIndex, renderer.documentUri) {
+        val uri = renderer.documentUri
+        if (uri != null && textExtractor != null) {
+            pageSpans = textExtractor.extractPageSpans(uri, pageIndex)
+        }
     }
 
     val colorFilter = when (pageColorMode) {
@@ -54,13 +73,28 @@ fun PdfPageItem(
     ) {
         val bmp = pageBitmap
         if (bmp != null) {
-            Image(
-                bitmap = bmp.asImageBitmap(),
-                contentDescription = "صفحة ${pageIndex + 1}",
-                colorFilter = colorFilter,
-                contentScale = ContentScale.FillWidth,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "صفحة ${pageIndex + 1}",
+                    colorFilter = colorFilter,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                PdfTextSelectionOverlay(
+                    pageIndex = pageIndex,
+                    spans = pageSpans,
+                    highlights = highlights,
+                    selectedSpans = selectedSpans,
+                    selectedHighlight = selectedHighlight,
+                    isSelectionModeActive = isSelectionModeActive,
+                    onSelectSpans = onSelectSpans,
+                    onTapHighlight = onTapHighlight,
+                    onClearSelection = onClearSelection,
+                    modifier = Modifier.matchParentSize()
+                )
+            }
         } else {
             Box(
                 modifier = Modifier

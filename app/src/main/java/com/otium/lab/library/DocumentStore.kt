@@ -18,7 +18,8 @@ data class StoredDocument(
     val isScanned: Boolean,
     val timestamp: Long,
     val lastPage: Int = 1,
-    val totalPages: Int = 0
+    val totalPages: Int = 0,
+    val scrollOffset: Int = 0
 ) {
     val uri: Uri get() = Uri.parse(uriString)
 }
@@ -82,49 +83,66 @@ class DocumentStore(private val context: Context) {
 
     fun getDocuments(): List<StoredDocument> {
         val list = mutableListOf<StoredDocument>()
+        val recentMap = mutableMapOf<String, StoredDocument>()
 
-        // 1. Scanned documents from scans directory
-        val scansDir = File(context.filesDir, "scans")
-        if (scansDir.exists() && scansDir.isDirectory) {
-            val files = scansDir.listFiles { f -> f.extension.equals("pdf", ignoreCase = true) } ?: emptyArray()
-            files.sortedByDescending { it.lastModified() }.forEach { f ->
-                list.add(
-                    StoredDocument(
-                        uriString = Uri.fromFile(f).toString(),
-                        title = f.nameWithoutExtension,
-                        isScanned = true,
-                        timestamp = f.lastModified()
-                    )
-                )
-            }
-        }
-
-        // 2. Imported / Opened documents from preferences
+        // 1. Read stored document metadata & progress from preferences first
         val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
         try {
             val arr = JSONArray(jsonStr)
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 val uriStr = obj.getString("uri")
-                if (list.none { it.uriString == uriStr }) {
-                    list.add(
-                        StoredDocument(
-                            uriString = uriStr,
-                            title = obj.optString("title", "مستند PDF"),
-                            isScanned = obj.optBoolean("isScanned", false),
-                            timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                            lastPage = obj.optInt("lastPage", 1),
-                            totalPages = obj.optInt("totalPages", 0)
-                        )
-                    )
-                }
+                recentMap[uriStr] = StoredDocument(
+                    uriString = uriStr,
+                    title = obj.optString("title", "مستند PDF"),
+                    isScanned = obj.optBoolean("isScanned", false),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                    lastPage = obj.optInt("lastPage", 1),
+                    totalPages = obj.optInt("totalPages", 0),
+                    scrollOffset = obj.optInt("scrollOffset", 0)
+                )
             }
         } catch (_: Exception) {}
+
+        // 2. Scanned documents from scans directory (merge with any saved progress)
+        val scansDir = File(context.filesDir, "scans")
+        if (scansDir.exists() && scansDir.isDirectory) {
+            val files = scansDir.listFiles { f -> f.extension.equals("pdf", ignoreCase = true) } ?: emptyArray()
+            files.sortedByDescending { it.lastModified() }.forEach { f ->
+                val uriStr = Uri.fromFile(f).toString()
+                val savedProgress = recentMap[uriStr]
+                list.add(
+                    StoredDocument(
+                        uriString = uriStr,
+                        title = f.nameWithoutExtension,
+                        isScanned = true,
+                        timestamp = f.lastModified(),
+                        lastPage = savedProgress?.lastPage ?: 1,
+                        totalPages = savedProgress?.totalPages ?: 0,
+                        scrollOffset = savedProgress?.scrollOffset ?: 0
+                    )
+                )
+            }
+        }
+
+        // 3. Add imported / non-scanned documents from preferences
+        for ((_, doc) in recentMap) {
+            if (list.none { it.uriString == doc.uriString }) {
+                list.add(doc)
+            }
+        }
 
         return list.sortedByDescending { it.timestamp }
     }
 
-    fun addOrUpdateDocument(uri: Uri, title: String? = null, isScanned: Boolean = false, page: Int = 1, total: Int = 0) {
+    fun addOrUpdateDocument(
+        uri: Uri,
+        title: String? = null,
+        isScanned: Boolean = false,
+        page: Int = 1,
+        total: Int = 0,
+        offset: Int = 0
+    ) {
         val resolvedTitle = if (!title.isNullOrBlank() && !title.startsWith("document:")) {
             title
         } else {
@@ -133,14 +151,21 @@ class DocumentStore(private val context: Context) {
 
         val docs = getDocuments().toMutableList()
         val existingIndex = docs.indexOfFirst { it.uriString == uri.toString() }
+        val existing = if (existingIndex != -1) docs[existingIndex] else null
+
+        // Preserve previous reading position if new page is 1 and previous was > 1
+        val resolvedPage = if (page > 1) page else (existing?.lastPage ?: 1)
+        val resolvedTotal = if (total > 0) total else (existing?.totalPages ?: 0)
+        val resolvedOffset = if (page > 1) offset else (existing?.scrollOffset ?: 0)
 
         val doc = StoredDocument(
             uriString = uri.toString(),
             title = resolvedTitle,
             isScanned = isScanned,
             timestamp = System.currentTimeMillis(),
-            lastPage = page,
-            totalPages = total
+            lastPage = resolvedPage,
+            totalPages = resolvedTotal,
+            scrollOffset = resolvedOffset
         )
 
         if (existingIndex != -1) {
@@ -167,7 +192,23 @@ class DocumentStore(private val context: Context) {
         return 1
     }
 
-    fun updateProgress(uri: Uri, page: Int, total: Int) {
+    fun getLastScrollOffset(uri: Uri): Int {
+        val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
+        try {
+            val arr = JSONArray(jsonStr)
+            val uriStr = uri.toString()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                if (obj.getString("uri") == uriStr) {
+                    return obj.optInt("scrollOffset", 0)
+                }
+            }
+        } catch (_: Exception) {}
+        return 0
+    }
+
+    fun updateProgress(uri: Uri, page: Int, total: Int, offset: Int = 0) {
+        if (page < 1) return
         val docs = getDocuments().toMutableList()
         val existingIndex = docs.indexOfFirst { it.uriString == uri.toString() }
         if (existingIndex != -1) {
@@ -175,9 +216,12 @@ class DocumentStore(private val context: Context) {
             docs[existingIndex] = existing.copy(
                 lastPage = page,
                 totalPages = if (total > 0) total else existing.totalPages,
+                scrollOffset = offset,
                 timestamp = System.currentTimeMillis()
             )
             saveDocuments(docs)
+        } else {
+            addOrUpdateDocument(uri = uri, page = page, total = total, offset = offset)
         }
     }
 
@@ -192,6 +236,7 @@ class DocumentStore(private val context: Context) {
                 put("timestamp", d.timestamp)
                 put("lastPage", d.lastPage)
                 put("totalPages", d.totalPages)
+                put("scrollOffset", d.scrollOffset)
             }
             arr.put(obj)
         }

@@ -51,7 +51,7 @@ com.otium.lab.<feature>/
 
 | Feature Module | Core Orchestrator | Sub-Components Package | Model / Logic Package |
 | :--- | :--- | :--- | :--- |
-| **PDF Reader** | `PdfViewerScreen.kt` | `pdf.components.*` (`PdfTopOverlay`, `PdfBottomScrubber`, `PdfPageItem`, `PdfJumpDialog`) | `pdf.model.*` (`PageColorMode`, `ReadingLayout`, `ColorMatrices`) |
+| **PDF Reader** | `PdfViewerScreen.kt` | `pdf.components.*` (`PdfTopOverlay`, `PdfBottomScrubber`, `PdfPageItem`, `PdfJumpDialog`, `PdfContentCanvas`, `PdfTextSelectionOverlay`, `PdfSelectionActionBar`, `PdfResumePill`) | `pdf.model.*` (`PageColorMode`, `ReadingLayout`, `PdfHighlight`, `PdfTextSpan`), `pdf.store.AnnotationStore`, `pdf.text.PdfTextExtractor` |
 | **Document Library** | `LibraryScreen.kt` | `library.components.*` (`ContinueReadingHero`, `DocumentCard`, `DocumentFilterChips`, `EmptyLibraryState`, `LibraryHeader`) | `library.DocumentStore.kt`, `library.StoredDocument.kt` |
 | **Camera Scanner** | `CameraScannerScreen.kt` | `scanner.components.*` (`ScannerViewfinder`, `ScannerTopBar`, `ScannerBottomBar`, `ScannerPermissionGate`) | `scanner.PdfExporter.kt`, `otium-bridge` |
 | **Settings & Specs** | `SettingsScreen.kt` | `ui.settings.components.*` (`ThemeSelectionCard`, `ReadingPreferencesCard`, `StorageCacheCard`, `AboutOtiumCard`) | `ui.theme.ThemePreferences.kt` |

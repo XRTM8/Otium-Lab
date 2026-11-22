@@ -1,40 +1,24 @@
 package com.otium.lab.pdf
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
-import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import com.otium.lab.core.extensions.findActivity
-import com.otium.lab.library.DocumentStore
-import com.otium.lab.pdf.components.PdfBottomScrubber
-import com.otium.lab.pdf.components.PdfJumpDialog
-import com.otium.lab.pdf.components.PdfPageItem
-import com.otium.lab.pdf.components.PdfTopOverlay
-import com.otium.lab.pdf.model.PageColorMode
-import com.otium.lab.pdf.model.ReadingLayout
-import com.otium.lab.ui.theme.AppThemeMode
+import com.otium.lab.pdf.components.PdfContentCanvas
+import com.otium.lab.pdf.components.PdfViewerOverlays
+import com.otium.lab.pdf.model.*
 import com.otium.lab.ui.theme.ThemePreferences
 import kotlinx.coroutines.launch
 
@@ -45,289 +29,154 @@ fun PdfViewerScreen(
     themePreferences: ThemePreferences,
     onClose: () -> Unit
 ) {
-    val context = LocalContext.current
+    val state = rememberPdfViewerState(uri, title, themePreferences)
     val scope = rememberCoroutineScope()
-    val renderer = remember { NativePdfRenderer(context) }
-    val documentStore = remember { DocumentStore(context) }
 
-    val currentTheme by themePreferences.currentTheme
-    val keepScreenOn by themePreferences.keepScreenOn
-
-    var isLoaded by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showControls by remember { mutableStateOf(true) }
-    var showJumpDialog by remember { mutableStateOf(false) }
-
-    var readingLayout by remember {
-        mutableStateOf(
-            if (themePreferences.defaultHorizontalLayout.value) ReadingLayout.HORIZONTAL
-            else ReadingLayout.VERTICAL
-        )
-    }
-
-    var pageColorMode by remember {
-        mutableStateOf(
-            if (currentTheme == AppThemeMode.AMOLED) PageColorMode.AMOLED_BLACK
-            else if (currentTheme == AppThemeMode.CREAM) PageColorMode.SEPIA
-            else PageColorMode.ORIGINAL
-        )
-    }
-
-    val listState = rememberLazyListState()
-    val pagerState = rememberPagerState(
-        initialPage = 0,
-        pageCount = { renderer.pageCount.coerceAtLeast(1) }
-    )
-
-    var targetScale by remember { mutableFloatStateOf(1f) }
-    val scale by animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-        label = "scale"
-    )
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    val scale by animateFloatAsState(targetValue = state.targetScale, animationSpec = tween(220, easing = FastOutSlowInEasing), label = "scale")
 
     val currentPage by remember {
         derivedStateOf {
-            if (renderer.pageCount <= 0) 1
-            else if (readingLayout == ReadingLayout.VERTICAL) {
-                (listState.firstVisibleItemIndex + 1).coerceAtMost(renderer.pageCount)
-            } else {
-                (pagerState.currentPage + 1).coerceAtMost(renderer.pageCount)
+            if (state.renderer.pageCount <= 0) 1
+            else if (state.readingLayout == ReadingLayout.VERTICAL) (state.listState.firstVisibleItemIndex + 1).coerceAtMost(state.renderer.pageCount)
+            else (state.pagerState.currentPage + 1).coerceAtMost(state.renderer.pageCount)
+        }
+    }
+
+    LaunchedEffect(currentPage, state.isDraggingSlider) { if (!state.isDraggingSlider) state.sliderValue = currentPage.toFloat() }
+
+    LaunchedEffect(state.isLoaded) {
+        if (state.isLoaded && state.renderer.pageCount > 0 && !state.hasRestoredPosition) {
+            val idx = (state.savedPage - 1).coerceAtLeast(0)
+            if (state.savedPage in 2..state.renderer.pageCount) {
+                state.listState.scrollToItem(idx, state.savedOffset)
+                state.pagerState.scrollToPage(idx)
             }
+            state.hasRestoredPosition = true
+        }
+    }
+    LaunchedEffect(currentPage, state.isLoaded, state.hasRestoredPosition) {
+        if (state.isLoaded && state.hasRestoredPosition && state.renderer.pageCount > 0) {
+            val offset = if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.firstVisibleItemScrollOffset else 0
+            state.documentStore.updateProgress(uri, currentPage, state.renderer.pageCount, offset)
         }
     }
 
-    var isDraggingSlider by remember { mutableStateOf(false) }
-    var sliderValue by remember { mutableFloatStateOf(1f) }
+    BackHandler { state.handleBack(onClose) }
 
-    LaunchedEffect(currentPage, isDraggingSlider) {
-        if (!isDraggingSlider) {
-            sliderValue = currentPage.toFloat()
-        }
-    }
-
-    // Keep screen awake
-    DisposableEffect(keepScreenOn) {
-        val window = context.findActivity()?.window
-        if (keepScreenOn) {
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
-    // Immersive Mode
-    DisposableEffect(Unit) {
-        val window = context.findActivity()?.window
-        val insetsController = window?.let { WindowInsetsControllerCompat(it, it.decorView) }
-        insetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        insetsController?.hide(WindowInsetsCompat.Type.systemBars())
-
-        onDispose {
-            insetsController?.show(WindowInsetsCompat.Type.systemBars())
-        }
-    }
-
-    // Smart Reading Resume
-    LaunchedEffect(isLoaded) {
-        if (isLoaded && renderer.pageCount > 0) {
-            val savedPage = documentStore.getLastPage(uri)
-            if (savedPage > 1 && savedPage <= renderer.pageCount) {
-                val targetIndex = (savedPage - 1).coerceAtLeast(0)
-                listState.scrollToItem(targetIndex)
-                pagerState.scrollToPage(targetIndex)
-            }
-        }
-    }
-
-    // Save reading progress
-    LaunchedEffect(currentPage, renderer.pageCount) {
-        if (renderer.pageCount > 0) {
-            documentStore.updateProgress(uri, currentPage, renderer.pageCount)
-        }
-    }
-
-    DisposableEffect(uri) {
-        try {
-            renderer.open(uri, title)
-            isLoaded = true
-        } catch (e: Exception) {
-            errorMessage = e.localizedMessage ?: "تعذر قراءة ملف الـ PDF"
-        }
-        onDispose { renderer.close() }
-    }
-
-    val containerBg = when (pageColorMode) {
+    val containerBg = when (state.pageColorMode) {
         PageColorMode.AMOLED_BLACK -> Color.Black
         PageColorMode.SEPIA -> Color(0xFFFBF7EE)
-        PageColorMode.ORIGINAL -> if (currentTheme == AppThemeMode.AMOLED) Color.Black else Color(0xFFF1F5F9)
+        PageColorMode.ORIGINAL -> Color(0xFFF1F5F9)
     }
-
-    val barBg = when (pageColorMode) {
+    val barBg = when (state.pageColorMode) {
         PageColorMode.AMOLED_BLACK -> Color(0xFF111114)
         PageColorMode.SEPIA -> Color(0xFFF4EBD9)
         PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.surface
     }
-
-    val textColor = when (pageColorMode) {
+    val textColor = when (state.pageColorMode) {
         PageColorMode.AMOLED_BLACK -> Color(0xFFF8FAFC)
         PageColorMode.SEPIA -> Color(0xFF2C2416)
         PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.onSurface
     }
-
-    val cardBg = when (pageColorMode) {
+    val cardBg = when (state.pageColorMode) {
         PageColorMode.AMOLED_BLACK -> Color.Black
         PageColorMode.SEPIA -> Color(0xFFFBF7EE)
         PageColorMode.ORIGINAL -> Color.White
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(containerBg)
-    ) {
-        // PDF Content Layer (Takes 100% full screen, zero CLS on toggle)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { showControls = !showControls },
-                        onDoubleTap = {
-                            if (targetScale > 1.2f) {
-                                targetScale = 1f
-                                offsetX = 0f
-                                offsetY = 0f
-                            } else {
-                                targetScale = 2.2f
-                            }
-                        }
-                    )
-                }
-        ) {
-            when {
-                errorMessage != null -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = errorMessage ?: "", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
-                    }
-                }
+    Box(modifier = Modifier.fillMaxSize().background(containerBg)) {
+        PdfContentCanvas(
+            renderer = state.renderer, uri = uri, isLoaded = state.isLoaded, errorMessage = state.errorMessage,
+            readingLayout = state.readingLayout, pageColorMode = state.pageColorMode, cardBg = cardBg,
+            scale = scale, offsetX = state.offsetX, offsetY = state.offsetY, listState = state.listState, pagerState = state.pagerState,
+            textExtractor = state.textExtractor, annotationStore = state.annotationStore, refreshTrigger = state.refreshHighlightTrigger,
+            isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans,
+            selectedHighlight = state.selectedHighlight, selectedPage = state.selectedPage,
+            onSelectSpans = { p, spans -> state.selectedPage = p; state.selectedHighlight = null; state.selectedSpans = spans },
+            onTapHighlight = { h -> state.selectedPage = h.pageIndex; state.selectedSpans = emptyList(); state.selectedHighlight = h },
+            onClearSelection = { state.clearSelection() },
+            onTap = { state.showControls = !state.showControls },
+            onDoubleTap = { if (state.targetScale > 1.2f) { state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f } else state.targetScale = 2.2f }
+        )
 
-                !isLoaded -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-
-                else -> {
-                    if (readingLayout == ReadingLayout.VERTICAL) {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
-                            items(renderer.pageCount, key = { it }) { pageIndex ->
-                                PdfPageItem(renderer = renderer, pageIndex = pageIndex, pageColorMode = pageColorMode, cardBg = cardBg)
-                            }
-                        }
-                    } else {
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY),
-                            pageSpacing = 0.dp
-                        ) { pageIndex ->
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                PdfPageItem(renderer = renderer, pageIndex = pageIndex, pageColorMode = pageColorMode, cardBg = cardBg)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Floating Top Bar Overlay
-        PdfTopOverlay(
-            visible = showControls,
-            title = title,
-            currentPage = currentPage,
-            pageCount = renderer.pageCount,
-            barBg = barBg,
-            textColor = textColor,
-            readingLayout = readingLayout,
-            pageColorMode = pageColorMode,
+        PdfViewerOverlays(
+            showControls = state.showControls, title = title, currentPage = currentPage, pageCount = state.renderer.pageCount,
+            barBg = barBg, textColor = textColor, readingLayout = state.readingLayout, pageColorMode = state.pageColorMode,
+            isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans, selectedHighlight = state.selectedHighlight,
+            showResumePill = state.showResumePill, resumedPage = state.savedPage, sliderValue = state.sliderValue,
+            isDraggingSlider = state.isDraggingSlider, showJumpDialog = state.showJumpDialog,
+            onToggleSelectionMode = {
+                state.isSelectionModeActive = !state.isSelectionModeActive
+                if (!state.isSelectionModeActive) state.clearSelection()
+            },
             onToggleLayout = {
                 val target = currentPage
-                readingLayout = if (readingLayout == ReadingLayout.VERTICAL) ReadingLayout.HORIZONTAL else ReadingLayout.VERTICAL
+                state.readingLayout = if (state.readingLayout == ReadingLayout.VERTICAL) ReadingLayout.HORIZONTAL else ReadingLayout.VERTICAL
                 scope.launch {
-                    if (readingLayout == ReadingLayout.HORIZONTAL) pagerState.scrollToPage((target - 1).coerceAtLeast(0))
-                    else listState.scrollToItem((target - 1).coerceAtLeast(0))
+                    if (state.readingLayout == ReadingLayout.HORIZONTAL) state.pagerState.scrollToPage((target - 1).coerceAtLeast(0))
+                    else state.listState.scrollToItem((target - 1).coerceAtLeast(0))
                 }
             },
             onToggleColorMode = {
-                pageColorMode = when (pageColorMode) {
+                state.pageColorMode = when (state.pageColorMode) {
                     PageColorMode.ORIGINAL -> PageColorMode.AMOLED_BLACK
                     PageColorMode.AMOLED_BLACK -> PageColorMode.SEPIA
                     PageColorMode.SEPIA -> PageColorMode.ORIGINAL
                 }
             },
             onClose = onClose,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
-
-        // Floating Bottom Bar Overlay
-        PdfBottomScrubber(
-            visible = showControls,
-            currentPage = currentPage,
-            pageCount = renderer.pageCount,
-            sliderValue = sliderValue,
-            isDraggingSlider = isDraggingSlider,
-            barBg = barBg,
-            textColor = textColor,
-            onSliderValueChange = { newVal ->
-                isDraggingSlider = true
-                sliderValue = newVal
+            onCopyText = {
+                val text = state.selectedHighlight?.text ?: state.selectedSpans.joinToString(" ") { it.text }
+                val cm = state.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("Otium PDF", text))
+                Toast.makeText(state.context, "تم نسخ النص إلى الحافظة", Toast.LENGTH_SHORT).show()
+                state.clearSelection()
             },
-            onSliderValueChangeFinished = {
-                isDraggingSlider = false
-                val target = sliderValue.toInt()
+            onApplyHighlight = { color ->
+                if (state.selectedHighlight != null) {
+                    state.annotationStore.saveHighlight(uri, state.selectedHighlight!!.copy(colorArgb = color))
+                    state.selectedHighlight = null; state.refreshHighlightTrigger++
+                } else if (state.selectedSpans.isNotEmpty()) {
+                    val highlight = PdfHighlight(
+                        pageIndex = state.selectedPage, text = state.selectedSpans.joinToString(" ") { it.text }, colorArgb = color,
+                        bounds = state.selectedSpans.map { NormalizedRect(it.normLeft, it.normTop, it.normRight, it.normBottom) }
+                    )
+                    state.annotationStore.saveHighlight(uri, highlight)
+                    state.selectedSpans = emptyList(); state.refreshHighlightTrigger++
+                    Toast.makeText(state.context, "تم حفظ التظليل", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDeleteHighlight = {
+                state.selectedHighlight?.let { state.annotationStore.deleteHighlight(uri, it.id) }
+                state.selectedHighlight = null; state.refreshHighlightTrigger++
+                Toast.makeText(state.context, "تم حذف التظليل", Toast.LENGTH_SHORT).show()
+            },
+            onClearSelection = { state.clearSelection() },
+            onJumpToBeginning = {
                 scope.launch {
-                    if (readingLayout == ReadingLayout.VERTICAL) listState.scrollToItem((target - 1).coerceAtLeast(0))
-                    else pagerState.scrollToPage((target - 1).coerceAtLeast(0))
+                    if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.scrollToItem(0) else state.pagerState.scrollToPage(0)
+                }
+                state.showResumePill = false
+            },
+            onDismissResumePill = { state.showResumePill = false },
+            onSliderValueChange = { newVal -> state.isDraggingSlider = true; state.sliderValue = newVal },
+            onSliderValueChangeFinished = {
+                state.isDraggingSlider = false
+                val target = state.sliderValue.toInt()
+                scope.launch {
+                    if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.scrollToItem((target - 1).coerceAtLeast(0))
+                    else state.pagerState.scrollToPage((target - 1).coerceAtLeast(0))
                 }
             },
-            onOpenJumpDialog = { showJumpDialog = true },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
-
-        // Fast Page Jump Dialog
-        if (showJumpDialog) {
-            PdfJumpDialog(
-                pageCount = renderer.pageCount,
-                initialPage = currentPage,
-                onDismiss = { showJumpDialog = false },
-                onConfirmJump = { target ->
-                    scope.launch {
-                        if (readingLayout == ReadingLayout.VERTICAL) listState.scrollToItem(target - 1)
-                        else pagerState.scrollToPage(target - 1)
-                    }
-                    showJumpDialog = false
+            onOpenJumpDialog = { state.showJumpDialog = true },
+            onDismissJumpDialog = { state.showJumpDialog = false },
+            onConfirmJump = { target ->
+                scope.launch {
+                    if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.scrollToItem(target - 1)
+                    else state.pagerState.scrollToPage(target - 1)
                 }
-            )
-        }
+                state.showJumpDialog = false
+            }
+        )
     }
 }
