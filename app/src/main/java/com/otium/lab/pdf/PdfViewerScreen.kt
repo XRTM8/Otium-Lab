@@ -96,7 +96,17 @@ fun PdfViewerScreen(
             onTapHighlight = { h -> state.selectedPage = h.pageIndex; state.selectedSpans = emptyList(); state.selectedHighlight = h },
             onClearSelection = { state.clearSelection() },
             onTap = { state.showControls = !state.showControls },
-            onDoubleTap = { if (state.targetScale > 1.2f) { state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f } else state.targetScale = 2.2f }
+            onDoubleTap = { if (state.targetScale > 1.2f) { state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f } else state.targetScale = 2.2f },
+            onTransform = { zoom, pan ->
+                val newScale = (state.targetScale * zoom).coerceIn(1f, 4.5f)
+                state.targetScale = newScale
+                if (newScale > 1.05f) {
+                    state.offsetX = (state.offsetX + pan.x).coerceIn(-1200f, 1200f)
+                    state.offsetY = (state.offsetY + pan.y).coerceIn(-2000f, 2000f)
+                } else {
+                    state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f
+                }
+            }
         )
 
         PdfViewerOverlays(

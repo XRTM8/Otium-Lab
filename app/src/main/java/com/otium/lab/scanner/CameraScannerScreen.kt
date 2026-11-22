@@ -47,13 +47,9 @@ fun CameraScannerScreen(
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val primaryColor = MaterialTheme.colorScheme.primary
-
     var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        )
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { hasCameraPermission = it }
@@ -124,14 +120,13 @@ fun CameraScannerScreen(
             factory = {
                 previewView.setOnTouchListener { view, event ->
                     if (event.action == MotionEvent.ACTION_UP) {
-                        try {
+                        runCatching {
                             camera?.let { cam ->
                                 val pt = previewView.meteringPointFactory.createPoint(event.x, event.y)
-                                val act = FocusMeteringAction.Builder(pt, FocusMeteringAction.FLAG_AF)
-                                    .setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+                                val act = FocusMeteringAction.Builder(pt, FocusMeteringAction.FLAG_AF).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
                                 cam.cameraControl.startFocusAndMetering(act)
                             }
-                        } catch (_: Throwable) {}
+                        }
                         view.performClick()
                     }
                     true
@@ -159,8 +154,7 @@ fun CameraScannerScreen(
             onClose = onClose,
             onToggleFlash = {
                 camera?.takeIf { it.cameraInfo.hasFlashUnit() }?.let { cam ->
-                    isFlashOn = !isFlashOn
-                    cam.cameraControl.enableTorch(isFlashOn)
+                    isFlashOn = !isFlashOn; cam.cameraControl.enableTorch(isFlashOn)
                 }
             },
             modifier = Modifier.align(Alignment.TopCenter)

@@ -33,8 +33,10 @@ import com.otium.lab.scanner.CropAndFilterScreen
 import com.otium.lab.scanner.PdfExporter
 import com.otium.lab.ui.theme.AppThemeMode
 import com.otium.lab.ui.theme.ThemePreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class AppDestination(val labelAr: String, val icon: ImageVector) {
     LIBRARY("المكتبة", Icons.Rounded.FolderOpen),
@@ -58,8 +60,13 @@ fun OtiumApp() {
 
     // CamScanner Active State
     var capturedImageBytes by remember { mutableStateOf<ByteArray?>(null) }
-    val accumulatedPages = remember { mutableStateListOf<Bitmap>() }
+    val accumulatedPageFiles = remember { mutableStateListOf<File>() }
     var isExportingPdf by remember { mutableStateOf(false) }
+
+    fun clearScanSession() {
+        accumulatedPageFiles.forEach { runCatching { it.delete() } }
+        accumulatedPageFiles.clear()
+    }
 
     // Back navigation control
     var lastBackPressedTime by remember { mutableLongStateOf(0L) }
@@ -78,7 +85,7 @@ fun OtiumApp() {
 
     // 3. In Camera Scanner -> Return to Library
     BackHandler(enabled = activePdfUri == null && capturedImageBytes == null && currentDestination == AppDestination.SCANNER) {
-        accumulatedPages.clear()
+        clearScanSession()
         currentDestination = AppDestination.LIBRARY
     }
 
@@ -118,21 +125,32 @@ fun OtiumApp() {
                 if (capturedImageBytes != null) {
                     CropAndFilterScreen(
                         rawImageBytes = capturedImageBytes!!,
-                        pageNumber = accumulatedPages.size + 1,
+                        pageNumber = accumulatedPageFiles.size + 1,
                         onAddMore = { bmp ->
-                            accumulatedPages.add(bmp)
+                            scope.launch(Dispatchers.IO) {
+                                val tempDir = File(context.cacheDir, "scan_session").apply { if (!exists()) mkdirs() }
+                                val tempFile = File(tempDir, "page_${System.currentTimeMillis()}_${accumulatedPageFiles.size}.jpg")
+                                java.io.FileOutputStream(tempFile).use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 92, out) }
+                                bmp.recycle()
+                                accumulatedPageFiles.add(tempFile)
+                            }
                             capturedImageBytes = null
                         },
                         onSavePdf = { bmp, title ->
-                            accumulatedPages.add(bmp)
                             capturedImageBytes = null
                             isExportingPdf = true
-                            scope.launch {
+                            scope.launch(Dispatchers.IO) {
                                 try {
-                                    val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList(), customTitle = title)
+                                    val tempDir = File(context.cacheDir, "scan_session").apply { if (!exists()) mkdirs() }
+                                    val tempFile = File(tempDir, "page_${System.currentTimeMillis()}_${accumulatedPageFiles.size}.jpg")
+                                    java.io.FileOutputStream(tempFile).use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 92, out) }
+                                    bmp.recycle()
+                                    accumulatedPageFiles.add(tempFile)
+
+                                    val file = PdfExporter.exportImageFilesToPdf(context, accumulatedPageFiles.toList(), customTitle = title)
                                     val uri = Uri.fromFile(file)
                                     documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
-                                    accumulatedPages.clear()
+                                    clearScanSession()
                                     activePdfUri = uri
                                     activePdfTitle = file.nameWithoutExtension
                                     currentDestination = AppDestination.LIBRARY
@@ -152,19 +170,19 @@ fun OtiumApp() {
                 // Fullscreen CamScanner (Hides bottom bar completely for maximum immersive camera preview)
                 if (currentDestination == AppDestination.SCANNER) {
                     CameraScannerScreen(
-                        pageCount = accumulatedPages.size,
+                        pageCount = accumulatedPageFiles.size,
                         onImageCaptured = { bytes ->
                             capturedImageBytes = bytes
                         },
                         onFinishBatch = {
-                            if (accumulatedPages.isNotEmpty()) {
+                            if (accumulatedPageFiles.isNotEmpty()) {
                                 isExportingPdf = true
-                                scope.launch {
+                                scope.launch(Dispatchers.IO) {
                                     try {
-                                        val file = PdfExporter.exportBitmapsToPdf(context, accumulatedPages.toList())
+                                        val file = PdfExporter.exportImageFilesToPdf(context, accumulatedPageFiles.toList())
                                         val uri = Uri.fromFile(file)
                                         documentStore.addOrUpdateDocument(uri, file.nameWithoutExtension, isScanned = true)
-                                        accumulatedPages.clear()
+                                        clearScanSession()
                                         activePdfUri = uri
                                         activePdfTitle = file.nameWithoutExtension
                                         currentDestination = AppDestination.LIBRARY
@@ -176,7 +194,7 @@ fun OtiumApp() {
                             }
                         },
                         onClose = {
-                            accumulatedPages.clear()
+                            clearScanSession()
                             currentDestination = AppDestination.LIBRARY
                         }
                     )
@@ -201,7 +219,7 @@ fun OtiumApp() {
                                     selected = isSelected,
                                     onClick = {
                                         if (destination == AppDestination.SCANNER) {
-                                            accumulatedPages.clear()
+                                            clearScanSession()
                                             capturedImageBytes = null
                                         }
                                         currentDestination = destination
@@ -245,7 +263,7 @@ fun OtiumApp() {
                                             activePdfTitle = title
                                         },
                                         onNavigateToScanner = {
-                                            accumulatedPages.clear()
+                                            clearScanSession()
                                             capturedImageBytes = null
                                             currentDestination = AppDestination.SCANNER
                                         }
@@ -275,7 +293,7 @@ fun OtiumApp() {
                                         selected = isSelected,
                                         onClick = {
                                             if (destination == AppDestination.SCANNER) {
-                                                accumulatedPages.clear()
+                                                clearScanSession()
                                                 capturedImageBytes = null
                                             }
                                             currentDestination = destination
@@ -320,7 +338,7 @@ fun OtiumApp() {
                                             activePdfTitle = title
                                         },
                                         onNavigateToScanner = {
-                                            accumulatedPages.clear()
+                                            clearScanSession()
                                             capturedImageBytes = null
                                             currentDestination = AppDestination.SCANNER
                                         }

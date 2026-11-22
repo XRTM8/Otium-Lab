@@ -1,6 +1,9 @@
 package com.otium.lab.library.components
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,10 +14,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.otium.lab.library.StoredDocument
+import com.otium.lab.library.util.PdfThumbnailLoader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,8 +36,14 @@ fun DocumentCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
+    var thumbnail by remember(doc.uriString) { mutableStateOf<Bitmap?>(null) }
     val dateStr = SimpleDateFormat("dd MMM yyyy · hh:mm a", Locale.getDefault()).format(Date(doc.timestamp))
+
+    LaunchedEffect(doc.uriString) {
+        thumbnail = PdfThumbnailLoader.loadThumbnail(context, doc.uri, targetWidth = 180)
+    }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -38,20 +51,33 @@ fun DocumentCard(
         tonalElevation = 1.dp,
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
+                        .width(42.dp)
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (doc.isScanned) Icons.Rounded.CameraAlt else Icons.Rounded.PictureAsPdf,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    val thumb = thumbnail
+                    if (thumb != null && !thumb.isRecycled) {
+                        Image(
+                            bitmap = thumb.asImageBitmap(),
+                            contentDescription = doc.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (doc.isScanned) Icons.Rounded.CameraAlt else Icons.Rounded.PictureAsPdf,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(14.dp))
@@ -73,12 +99,7 @@ fun DocumentCard(
                             fontWeight = FontWeight.Medium
                         )
                         if (doc.totalPages > 0) {
-                            Text(
-                                text = " · ${doc.totalPages} ص",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Text(text = " · ${doc.totalPages} ص", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                         }
                         Text(text = " · $dateStr", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -88,39 +109,22 @@ fun DocumentCard(
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Rounded.MoreVert, contentDescription = "خيارات", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("مشاركة") },
-                            onClick = { showMenu = false; onShare() },
-                            leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("تعديل الاسم") },
-                            onClick = { showMenu = false; onRename() },
-                            leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("حفظ في التنزيلات") },
-                            onClick = { showMenu = false; onExport() },
-                            leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("حذف", color = MaterialTheme.colorScheme.error) },
-                            onClick = { showMenu = false; onDelete() },
-                            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
-                        )
+                        DropdownMenuItem(text = { Text("مشاركة") }, onClick = { showMenu = false; onShare() }, leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null) })
+                        DropdownMenuItem(text = { Text("تعديل الاسم") }, onClick = { showMenu = false; onRename() }, leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) })
+                        DropdownMenuItem(text = { Text("حفظ في التنزيلات") }, onClick = { showMenu = false; onExport() }, leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null) })
+                        DropdownMenuItem(text = { Text("حذف", color = MaterialTheme.colorScheme.error) }, onClick = { showMenu = false; onDelete() }, leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) })
                     }
                 }
             }
 
             if (doc.totalPages > 0 && doc.lastPage > 1) {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 val progress = (doc.lastPage.toFloat() / doc.totalPages.toFloat()).coerceIn(0f, 1f)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth().padding(start = 60.dp)
+                    modifier = Modifier.fillMaxWidth().padding(start = 56.dp)
                 ) {
                     LinearProgressIndicator(
                         progress = { progress },
@@ -128,12 +132,7 @@ fun DocumentCard(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                     )
-                    Text(
-                        text = "ص ${doc.lastPage}/${doc.totalPages}",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text(text = "ص ${doc.lastPage}/${doc.totalPages}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                 }
             }
         }
