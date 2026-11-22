@@ -9,6 +9,8 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
@@ -22,6 +24,7 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
         } catch (_: Exception) {}
     }
 
+    private val mutex = Mutex()
     private val pageSpanCache = LruCache<Int, List<PdfTextSpan>>(35)
     private var cachedDocument: PDDocument? = null
     private var cachedUri: Uri? = null
@@ -37,12 +40,12 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
             } else {
                 context.contentResolver.openInputStream(uri)
             }
-            if (stream != null) {
-                val doc = PDDocument.load(stream)
+            stream?.use {
+                val doc = PDDocument.load(it)
                 cachedDocument = doc
                 cachedUri = uri
                 doc
-            } else null
+            }
         } catch (_: Exception) {
             null
         }
@@ -70,51 +73,65 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
         if (cached != null) return@withContext cached
 
         val spans = mutableListOf<PdfTextSpan>()
-        try {
-            val document = getOrLoadDocument(uri) ?: return@withContext emptyList()
-            if (pageIndex in 0 until document.numberOfPages) {
-                val pdPage = document.getPage(pageIndex)
-                val cropBox = pdPage.cropBox ?: pdPage.mediaBox
-                val pWidth = cropBox.width
-                val pHeight = cropBox.height
+        mutex.withLock {
+            try {
+                val document = getOrLoadDocument(uri) ?: return@withLock
+                if (pageIndex in 0 until document.numberOfPages) {
+                    val pdPage = document.getPage(pageIndex)
+                    val cropBox = pdPage.cropBox ?: pdPage.mediaBox
+                    val pWidth = cropBox.width
+                    val pHeight = cropBox.height
 
-                val stripper = object : PDFTextStripper() {
-                    init {
-                        startPage = pageIndex + 1
-                        endPage = pageIndex + 1
-                        sortByPosition = true
-                    }
-
-                    override fun writeString(text: String?, textPositions: MutableList<TextPosition>?) {
-                        val cleanText = text?.trim() ?: ""
-                        if (cleanText.isNotEmpty() && !textPositions.isNullOrEmpty()) {
-                            val minX = textPositions.map { it.xDirAdj }.minOrNull() ?: 0f
-                            val maxX = textPositions.map { it.xDirAdj + it.widthDirAdj }.maxOrNull() ?: 0f
-                            val minY = textPositions.map { it.yDirAdj - it.heightDir }.minOrNull() ?: 0f
-                            val maxY = textPositions.map { it.yDirAdj }.maxOrNull() ?: 0f
-
-                            val normLeft = (minX / pWidth).coerceIn(0f, 1f)
-                            val normTop = (minY / pHeight).coerceIn(0f, 1f)
-                            val normRight = (maxX / pWidth).coerceIn(0f, 1f)
-                            val normBottom = (maxY / pHeight).coerceIn(0f, 1f)
-
-                            spans.add(
-                                PdfTextSpan(
-                                    text = cleanText,
-                                    pageIndex = pageIndex,
-                                    normLeft = normLeft,
-                                    normTop = normTop,
-                                    normRight = normRight,
-                                    normBottom = normBottom
-                                )
-                            )
+                    val stripper = object : PDFTextStripper() {
+                        init {
+                            startPage = pageIndex + 1
+                            endPage = pageIndex + 1
+                            sortByPosition = true
                         }
-                        super.writeString(text, textPositions)
+
+                        override fun writeString(text: String?, textPositions: MutableList<TextPosition>?) {
+                            val currentWord = StringBuilder()
+                            val currentPositions = mutableListOf<TextPosition>()
+
+                            fun flushWord() {
+                                val word = currentWord.toString().trim()
+                                if (word.isNotEmpty() && currentPositions.isNotEmpty()) {
+                                    val minX = currentPositions.map { it.xDirAdj }.minOrNull() ?: 0f
+                                    val maxX = currentPositions.map { it.xDirAdj + it.widthDirAdj }.maxOrNull() ?: 0f
+                                    val minY = currentPositions.map { it.yDirAdj - it.heightDir }.minOrNull() ?: 0f
+                                    val maxY = currentPositions.map { it.yDirAdj }.maxOrNull() ?: 0f
+
+                                    spans.add(
+                                        PdfTextSpan(
+                                            text = word,
+                                            pageIndex = pageIndex,
+                                            normLeft = (minX / pWidth).coerceIn(0f, 1f),
+                                            normTop = (minY / pHeight).coerceIn(0f, 1f),
+                                            normRight = (maxX / pWidth).coerceIn(0f, 1f),
+                                            normBottom = (maxY / pHeight).coerceIn(0f, 1f)
+                                        )
+                                    )
+                                }
+                                currentWord.clear()
+                                currentPositions.clear()
+                            }
+
+                            textPositions?.forEach { tp ->
+                                if (tp.unicode.isNullOrBlank()) {
+                                    flushWord()
+                                } else {
+                                    currentWord.append(tp.unicode)
+                                    currentPositions.add(tp)
+                                }
+                            }
+                            flushWord()
+                            super.writeString(text, textPositions)
+                        }
                     }
+                    stripper.writeText(document, StringWriter())
                 }
-                stripper.writeText(document, StringWriter())
-            }
-        } catch (_: Exception) {}
+            } catch (_: Exception) {}
+        }
 
         pageSpanCache.put(pageIndex, spans)
         spans

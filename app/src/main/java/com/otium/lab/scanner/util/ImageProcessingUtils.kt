@@ -74,9 +74,29 @@ object ImageProcessingUtils {
             val bytes = input?.use { it.readBytes() } ?: return null
             val sampledBitmap = decodeSampledBitmap(bytes, targetMaxDim) ?: return null
 
+            // Correct EXIF camera orientation (handles Samsung/Pixel/Xiaomi portrait photo rotations)
+            val rotationDegrees = try {
+                val exif = android.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
+                when (exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)) {
+                    android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    else -> 0
+                }
+            } catch (_: Throwable) { 0 }
+
+            val finalBitmap = if (rotationDegrees != 0) {
+                val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                val rotated = Bitmap.createBitmap(sampledBitmap, 0, 0, sampledBitmap.width, sampledBitmap.height, matrix, true)
+                if (rotated != sampledBitmap) sampledBitmap.recycle()
+                rotated
+            } else {
+                sampledBitmap
+            }
+
             val out = ByteArrayOutputStream()
-            sampledBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-            sampledBitmap.recycle()
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+            finalBitmap.recycle()
             out.toByteArray()
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to process URI image", t)

@@ -27,6 +27,7 @@ import com.otium.lab.pdf.NativePdfRenderer
 import com.otium.lab.pdf.model.*
 import com.otium.lab.pdf.store.AnnotationStore
 import com.otium.lab.pdf.text.PdfTextExtractor
+import com.otium.lab.pdf.util.detectPdfViewerGestures
 
 @Composable
 fun PdfContentCanvas(
@@ -39,15 +40,19 @@ fun PdfContentCanvas(
     onClearSelection: () -> Unit, onTap: () -> Unit, onDoubleTap: () -> Unit,
     onTransform: (Float, Offset) -> Unit, modifier: Modifier = Modifier
 ) {
+    val isZoomed = scale > 1.05f
+
     Box(
         modifier = modifier.fillMaxSize()
-            .pointerInput(isSelectionModeActive) {
-                if (!isSelectionModeActive) detectTapGestures(onTap = { onTap() }, onDoubleTap = { onDoubleTap() })
-            }
             .then(
                 if (!isSelectionModeActive) {
-                    Modifier.pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ -> onTransform(zoom, pan) }
+                    Modifier.pointerInput(isZoomed) {
+                        detectPdfViewerGestures(
+                            isZoomed = isZoomed,
+                            onTransform = onTransform,
+                            onTap = onTap,
+                            onDoubleTap = onDoubleTap
+                        )
                     }
                 } else Modifier
             )
@@ -73,10 +78,10 @@ fun PdfContentCanvas(
 
                     PdfPageItem(
                         renderer = renderer, pageIndex = pageIndex, pageColorMode = pageColorMode, cardBg = cardBg,
-                        textExtractor = textExtractor, highlights = highlights, selectedSpans = pageSelectedSpans,
-                        selectedHighlight = pageSelectedHighlight, isSelectionModeActive = isSelectionModeActive,
-                        onSelectSpans = { spans -> onSelectSpans(pageIndex, spans) }, onTapHighlight = onTapHighlight,
-                        onClearSelection = onClearSelection
+                        readingLayout = readingLayout, textExtractor = textExtractor, highlights = highlights,
+                        selectedSpans = pageSelectedSpans, selectedHighlight = pageSelectedHighlight,
+                        isSelectionModeActive = isSelectionModeActive, onSelectSpans = { spans -> onSelectSpans(pageIndex, spans) },
+                        onTapHighlight = onTapHighlight, onClearSelection = onClearSelection
                     )
                 }
 

@@ -17,7 +17,8 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
 
     private var fileDescriptor: ParcelFileDescriptor? = null
     private var renderer: PdfRenderer? = null
-    private val renderDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+    private var renderExecutor = Executors.newSingleThreadExecutor()
+    private var renderDispatcher = renderExecutor.asCoroutineDispatcher()
 
     // Dynamically sized page cache (10-18 pages max, keeping heap footprint safely under 90MB)
     private val cacheLimit = ((Runtime.getRuntime().maxMemory() / (1024 * 1024)) / 22).toInt().coerceIn(10, 18)
@@ -38,6 +39,8 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
 
     fun open(uri: Uri, name: String = "مستند بدون عنوان") {
         close()
+        renderExecutor = Executors.newSingleThreadExecutor()
+        renderDispatcher = renderExecutor.asCoroutineDispatcher()
         this.documentUri = uri
         this.documentName = name
 
@@ -67,18 +70,20 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
         }
 
         val page = r.openPage(pageIndex)
-        val aspect = page.height.toFloat() / page.width.toFloat()
-        val width = targetWidth.coerceIn(300, 2400)
-        val height = (width * aspect).toInt().coerceIn(300, 4000)
+        try {
+            val aspect = page.height.toFloat() / page.width.toFloat()
+            val width = targetWidth.coerceIn(300, 2400)
+            val height = (width * aspect).toInt().coerceIn(300, 4000)
 
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        bitmap.eraseColor(Color.WHITE)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(Color.WHITE)
 
-        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-        page.close()
-
-        pageCache.put(pageIndex, bitmap)
-        bitmap
+            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            pageCache.put(pageIndex, bitmap)
+            bitmap
+        } finally {
+            try { page.close() } catch (_: Exception) {}
+        }
     }
 
     override fun close() {
@@ -86,6 +91,7 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
             pageCache.evictAll()
             renderer?.close()
             fileDescriptor?.close()
+            renderExecutor.shutdown()
         } catch (_: Exception) {}
         renderer = null
         fileDescriptor = null

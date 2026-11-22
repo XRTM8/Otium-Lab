@@ -251,6 +251,12 @@ class DocumentStore(private val context: Context) {
             } catch (_: Exception) {}
         }
 
+        // Clean up cached thumbnail and annotations
+        try {
+            com.otium.lab.library.util.PdfThumbnailLoader.deleteThumbnail(context, doc.uri)
+            com.otium.lab.pdf.store.AnnotationStore(context).clearAllHighlights(doc.uri)
+        } catch (_: Exception) {}
+
         val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
         try {
             val arr = JSONArray(jsonStr)

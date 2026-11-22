@@ -21,6 +21,7 @@ import com.otium.lab.pdf.model.InvertColorMatrix
 import com.otium.lab.pdf.model.PageColorMode
 import com.otium.lab.pdf.model.PdfHighlight
 import com.otium.lab.pdf.model.PdfTextSpan
+import com.otium.lab.pdf.model.ReadingLayout
 import com.otium.lab.pdf.model.SepiaColorMatrix
 import com.otium.lab.pdf.text.PdfTextExtractor
 
@@ -30,6 +31,7 @@ fun PdfPageItem(
     pageIndex: Int,
     pageColorMode: PageColorMode,
     cardBg: Color,
+    readingLayout: ReadingLayout = ReadingLayout.VERTICAL,
     textExtractor: PdfTextExtractor? = null,
     highlights: List<PdfHighlight> = emptyList(),
     selectedSpans: List<PdfTextSpan> = emptyList(),
@@ -64,22 +66,25 @@ fun PdfPageItem(
         PageColorMode.ORIGINAL -> null
     }
 
-    // Edge-to-edge flush canvas: NO horizontal padding, full screen width
+    val isHorizontal = readingLayout == ReadingLayout.HORIZONTAL
+    val scaleMode = if (isHorizontal) ContentScale.Fit else ContentScale.FillWidth
+
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(cardBg),
+        modifier = if (isHorizontal) Modifier.fillMaxSize().background(cardBg) else Modifier.fillMaxWidth().background(cardBg),
         contentAlignment = Alignment.Center
     ) {
         val bmp = pageBitmap
-        if (bmp != null) {
-            Box(modifier = Modifier.fillMaxWidth()) {
+        if (bmp != null && !bmp.isRecycled) {
+            Box(
+                modifier = if (isHorizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
                 Image(
                     bitmap = bmp.asImageBitmap(),
                     contentDescription = "صفحة ${pageIndex + 1}",
                     colorFilter = colorFilter,
-                    contentScale = ContentScale.FillWidth,
-                    modifier = Modifier.fillMaxWidth()
+                    contentScale = scaleMode,
+                    modifier = if (isHorizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
                 )
 
                 PdfTextSelectionOverlay(

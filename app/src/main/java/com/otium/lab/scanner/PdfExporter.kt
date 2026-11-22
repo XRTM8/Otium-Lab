@@ -31,12 +31,14 @@ object PdfExporter {
 
         val pdfDocument = PdfDocument()
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        var writtenPages = 0
 
         try {
-            for ((index, file) in pageFiles.withIndex()) {
+            for (file in pageFiles) {
                 val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: continue
+                writtenPages++
                 try {
-                    val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, index + 1).create()
+                    val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, writtenPages).create()
                     val page = pdfDocument.startPage(pageInfo)
                     val canvas: Canvas = page.canvas
 
@@ -62,6 +64,10 @@ object PdfExporter {
                 } finally {
                     bitmap.recycle() // Free memory immediately
                 }
+            }
+
+            if (writtenPages == 0) {
+                throw IllegalStateException("تعذر قراءة صور الصفحات لإنشاء مستند الـ PDF")
             }
 
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())

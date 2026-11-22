@@ -56,6 +56,12 @@ class AnnotationStore(context: Context) {
         saveList(uri, current)
     }
 
+    fun clearAllHighlights(uri: Uri) {
+        try {
+            prefs.edit().remove(uri.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
     private fun saveList(uri: Uri, list: List<PdfHighlight>) {
         val arr = JSONArray()
         for (h in list) {

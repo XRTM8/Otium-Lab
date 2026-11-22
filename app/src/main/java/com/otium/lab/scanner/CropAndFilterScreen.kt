@@ -50,8 +50,7 @@ fun CropAndFilterScreen(
 
     LaunchedEffect(rawImageBytes) {
         withContext(Dispatchers.Default) {
-            val bmp = ImageProcessingUtils.decodeSampledBitmap(rawImageBytes)
-            if (bmp != null) {
+            ImageProcessingUtils.decodeSampledBitmap(rawImageBytes)?.let { bmp ->
                 previewRawBitmap = bmp
                 cropQuad = ImageProcessingUtils.detectDocumentCorners(bmp)
             }
@@ -97,9 +96,16 @@ fun CropAndFilterScreen(
                     val currentBmp = (if (isCropping) previewRawBitmap else displayedBitmap) ?: return@CropFilterTopBar
                     val matrix = android.graphics.Matrix().apply { postRotate(90f) }
                     val rotated = Bitmap.createBitmap(currentBmp, 0, 0, currentBmp.width, currentBmp.height, matrix, true)
-                    if (isCropping) previewRawBitmap = rotated else {
-                        displayedBitmap = rotated
+                    val stream = java.io.ByteArrayOutputStream()
+                    rotated.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+                    val rotatedBytes = stream.toByteArray()
+                    activeBytes = rotatedBytes
+                    if (isCropping) {
+                        previewRawBitmap = rotated
+                    } else {
+                        filterCache.clear()
                         filterCache[selectedFilter] = rotated
+                        displayedBitmap = rotated
                     }
                 },
                 onToggleCropMode = { filterCache.clear(); isCropping = true }
@@ -119,13 +125,9 @@ fun CropAndFilterScreen(
                         val rawBmp = previewRawBitmap ?: return@CropBottomActionBar
                         isProcessing = true
                         scope.launch(Dispatchers.Default) {
-                            val warped = ImageProcessingUtils.warpDocument(rawImageBytes, cropQuad, rawBmp.width, rawBmp.height)
+                            val warped = ImageProcessingUtils.warpDocument(activeBytes, cropQuad, rawBmp.width, rawBmp.height)
                             filterCache.clear()
-                            withContext(Dispatchers.Main) {
-                                activeBytes = warped
-                                isCropping = false
-                                isProcessing = false
-                            }
+                            withContext(Dispatchers.Main) { activeBytes = warped; isCropping = false; isProcessing = false }
                         }
                     }
                 )

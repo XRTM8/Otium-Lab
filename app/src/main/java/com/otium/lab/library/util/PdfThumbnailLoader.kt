@@ -59,14 +59,18 @@ object PdfThumbnailLoader {
             if (renderer.pageCount <= 0) return@withContext null
 
             val page = renderer.openPage(0)
-            val aspect = page.height.toFloat() / page.width.toFloat()
-            val width = targetWidth.coerceIn(120, 400)
-            val height = (width * aspect).toInt().coerceIn(120, 600)
+            val bitmap = try {
+                val aspect = page.height.toFloat() / page.width.toFloat()
+                val width = targetWidth.coerceIn(120, 400)
+                val height = (width * aspect).toInt().coerceIn(120, 600)
 
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
+                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bmp.eraseColor(Color.WHITE)
+                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bmp
+            } finally {
+                try { page.close() } catch (_: Exception) {}
+            }
 
             // Save to disk cache
             try {
@@ -83,5 +87,15 @@ object PdfThumbnailLoader {
             try { renderer?.close() } catch (_: Exception) {}
             try { pfd?.close() } catch (_: Exception) {}
         }
+    }
+
+    fun deleteThumbnail(context: Context, uri: Uri) {
+        val key = getCacheKey(uri)
+        memoryCache.remove(key)
+        try {
+            val thumbDir = File(context.cacheDir, "pdf_thumbnails")
+            val diskFile = File(thumbDir, "$key.jpg")
+            if (diskFile.exists()) diskFile.delete()
+        } catch (_: Exception) {}
     }
 }
