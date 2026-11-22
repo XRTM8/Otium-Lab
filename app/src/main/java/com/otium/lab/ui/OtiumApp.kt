@@ -45,7 +45,10 @@ enum class AppDestination(val labelAr: String, val icon: ImageVector) {
 }
 
 @Composable
-fun OtiumApp() {
+fun OtiumApp(
+    initialPdfUri: Uri? = null,
+    initialPdfTitle: String? = null
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val documentStore = remember { DocumentStore(context) }
@@ -55,8 +58,17 @@ fun OtiumApp() {
     var currentDestination by remember { mutableStateOf(AppDestination.LIBRARY) }
 
     // Active Reader State
-    var activePdfUri by remember { mutableStateOf<Uri?>(null) }
-    var activePdfTitle by remember { mutableStateOf("") }
+    var activePdfUri by remember { mutableStateOf(initialPdfUri) }
+    var activePdfTitle by remember { mutableStateOf(initialPdfTitle ?: "") }
+
+    LaunchedEffect(initialPdfUri) {
+        if (initialPdfUri != null) {
+            activePdfUri = initialPdfUri
+            val resolved = initialPdfTitle ?: DocumentStore.resolveDisplayName(context, initialPdfUri)
+            activePdfTitle = resolved
+            documentStore.addOrUpdateDocument(initialPdfUri, resolved)
+        }
+    }
 
     // CamScanner Active State
     var capturedImageBytes by remember { mutableStateOf<ByteArray?>(null) }

@@ -125,9 +125,13 @@ class DocumentStore(private val context: Context) {
             }
         }
 
-        // 3. Add imported / non-scanned documents from preferences
+        // 3. Add imported / non-scanned documents from preferences (skip locally deleted files)
         for ((_, doc) in recentMap) {
             if (list.none { it.uriString == doc.uriString }) {
+                if (doc.uri.scheme == "file") {
+                    val f = File(doc.uri.path ?: "")
+                    if (!f.exists()) continue
+                }
                 list.add(doc)
             }
         }

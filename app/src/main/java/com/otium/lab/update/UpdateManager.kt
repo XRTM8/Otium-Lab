@@ -42,8 +42,8 @@ class UpdateManager(private val context: Context) {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    private val feedUrl = "https://github.com/XRTM8/Otium-Lab/releases/latest/download/latest.json"
-    private val apiFallbackUrl = "https://api.github.com/repos/XRTM8/Otium-Lab/releases/latest"
+    private val feedUrl = "https://github.com/XRTM8/Otium-Mobile/releases/latest/download/latest.json"
+    private val apiFallbackUrl = "https://api.github.com/repos/XRTM8/Otium-Mobile/releases/latest"
 
     fun checkForUpdates(): Flow<UpdateState> = flow {
         emit(UpdateState.Checking)
@@ -64,7 +64,7 @@ class UpdateManager(private val context: Context) {
     fun downloadUpdate(update: UpdateInfo): Flow<UpdateState> = flow {
         emit(UpdateState.Downloading(0f, "0.0", "%.1f".format(update.sizeBytes / (1024f * 1024f))))
 
-        val apkFile = File(context.cacheDir, "Otium-Lab-update.apk")
+        val apkFile = File(context.cacheDir, "Otium-update.apk")
         if (apkFile.exists()) apkFile.delete()
 
         try {
@@ -115,17 +115,30 @@ class UpdateManager(private val context: Context) {
     }.flowOn(Dispatchers.IO)
 
     fun installApk(file: File) {
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = android.net.Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(settingsIntent)
+                    return
+                }
+            }
 
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {}
     }
 
     private fun fetchFeed(): UpdateInfo? {

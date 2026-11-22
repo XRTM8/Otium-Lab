@@ -9,6 +9,6 @@
 -keep class uniffi.** { *; }
 -keep class com.otium.bridge.** { *; }
 
-# Pdfium Android
--keep class com.github.barteksc.pdfviewer.** { *; }
--keep class com.shockwave.** { *; }
+# Apache PDFBox Android
+-keep class com.tom_roush.pdfbox.** { *; }
+-dontwarn com.tom_roush.pdfbox.**
