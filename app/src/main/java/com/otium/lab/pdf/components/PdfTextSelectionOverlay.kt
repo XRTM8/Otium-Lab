@@ -95,13 +95,8 @@ fun PdfTextSelectionOverlay(
                                 dragStartOffset = null
                                 dragCurrentOffset = null
                             },
-                            onDragCancel = {
-                                dragStartOffset = null
-                                dragCurrentOffset = null
-                            },
-                            onDrag = { change, _ ->
-                                dragCurrentOffset = change.position
-                            }
+                            onDragCancel = { dragStartOffset = null; dragCurrentOffset = null },
+                            onDrag = { change, _ -> dragCurrentOffset = change.position }
                         )
                     }
                 } else Modifier
@@ -115,17 +110,12 @@ fun PdfTextSelectionOverlay(
             highlights.forEach { highlight ->
                 val color = Color(highlight.colorArgb).copy(alpha = 0.38f)
                 highlight.bounds.forEach { b ->
-                    val left = b.left * canvasWidth
-                    val top = b.top * canvasHeight
-                    val width = (b.right - b.left) * canvasWidth
-                    val height = (b.bottom - b.top) * canvasHeight
+                    val left = b.left * canvasWidth; val top = b.top * canvasHeight
+                    val width = (b.right - b.left) * canvasWidth; val height = (b.bottom - b.top) * canvasHeight
 
                     drawRoundRect(
-                        color = color,
-                        topLeft = Offset(left, top),
-                        size = Size(width, height),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                        blendMode = BlendMode.Multiply
+                        color = color, topLeft = Offset(left, top), size = Size(width, height),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()), blendMode = BlendMode.Multiply
                     )
                 }
             }
@@ -133,15 +123,11 @@ fun PdfTextSelectionOverlay(
             // 2. Draw currently selected text spans
             val selectionColor = Color(0xFF38BDF8).copy(alpha = 0.40f)
             selectedSpans.forEach { span ->
-                val left = span.normLeft * canvasWidth
-                val top = span.normTop * canvasHeight
-                val width = (span.normRight - span.normLeft) * canvasWidth
-                val height = (span.normBottom - span.normTop) * canvasHeight
+                val left = span.normLeft * canvasWidth; val top = span.normTop * canvasHeight
+                val width = (span.normRight - span.normLeft) * canvasWidth; val height = (span.normBottom - span.normTop) * canvasHeight
 
                 drawRoundRect(
-                    color = selectionColor,
-                    topLeft = Offset(left, top),
-                    size = Size(width, height),
+                    color = selectionColor, topLeft = Offset(left, top), size = Size(width, height),
                     cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 )
             }

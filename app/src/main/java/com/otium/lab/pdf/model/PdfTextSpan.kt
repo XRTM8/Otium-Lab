@@ -9,11 +9,11 @@ data class PdfTextSpan(
     val normBottom: Float,
     val lineIndex: Int = 0
 ) {
-    fun contains(normX: Float, normY: Float, tolerance: Float = 0.015f): Boolean {
-        return normX >= (normLeft - tolerance) &&
-               normX <= (normRight + tolerance) &&
-               normY >= (normTop - tolerance) &&
-               normY <= (normBottom + tolerance)
+    fun contains(normX: Float, normY: Float, toleranceX: Float = 0.02f, toleranceY: Float = 0.025f): Boolean {
+        return normX >= (normLeft - toleranceX) &&
+               normX <= (normRight + toleranceX) &&
+               normY >= (normTop - toleranceY) &&
+               normY <= (normBottom + toleranceY)
     }
 
     fun intersects(rLeft: Float, rTop: Float, rRight: Float, rBottom: Float): Boolean {

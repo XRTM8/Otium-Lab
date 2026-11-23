@@ -7,6 +7,9 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -28,7 +31,7 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
         }
     }
 
-    var pageCount: Int = 0
+    var pageCount by mutableIntStateOf(0)
         private set
 
     var documentUri: Uri? = null

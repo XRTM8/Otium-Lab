@@ -78,7 +78,7 @@ fun PdfContentCanvas(
 
                     PdfPageItem(
                         renderer = renderer, pageIndex = pageIndex, pageColorMode = pageColorMode, cardBg = cardBg,
-                        readingLayout = readingLayout, textExtractor = textExtractor, highlights = highlights,
+                        readingLayout = readingLayout, uri = uri, textExtractor = textExtractor, highlights = highlights,
                         selectedSpans = pageSelectedSpans, selectedHighlight = pageSelectedHighlight,
                         isSelectionModeActive = isSelectionModeActive, onSelectSpans = { spans -> onSelectSpans(pageIndex, spans) },
                         onTapHighlight = onTapHighlight, onClearSelection = onClearSelection

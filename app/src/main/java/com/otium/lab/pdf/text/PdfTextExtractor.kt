@@ -12,9 +12,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.InputStream
 import java.io.StringWriter
+import kotlin.math.max
+import kotlin.math.min
 
 class PdfTextExtractor(private val context: Context) : AutoCloseable {
 
@@ -30,31 +32,32 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
     private var cachedUri: Uri? = null
 
     private fun getOrLoadDocument(uri: Uri): PDDocument? {
-        if (cachedUri == uri && cachedDocument != null) {
-            return cachedDocument
-        }
+        if (cachedUri == uri && cachedDocument != null) return cachedDocument
         closeDocument()
         return try {
-            val stream: InputStream? = if (uri.scheme == "file") {
-                File(uri.path ?: "").inputStream()
+            val doc = if (uri.scheme == "file" && uri.path != null) {
+                val f = File(uri.path!!)
+                if (f.exists()) PDDocument.load(f) else loadFromResolver(uri)
             } else {
-                context.contentResolver.openInputStream(uri)
+                loadFromResolver(uri)
             }
-            stream?.use {
-                val doc = PDDocument.load(it)
+            if (doc != null) {
                 cachedDocument = doc
                 cachedUri = uri
-                doc
             }
+            doc
         } catch (_: Exception) {
             null
         }
     }
 
+    private fun loadFromResolver(uri: Uri): PDDocument? {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        return PDDocument.load(ByteArrayInputStream(bytes))
+    }
+
     private fun closeDocument() {
-        try {
-            cachedDocument?.close()
-        } catch (_: Exception) {}
+        try { cachedDocument?.close() } catch (_: Exception) {}
         cachedDocument = null
         cachedUri = null
     }
@@ -64,23 +67,25 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
         closeDocument()
     }
 
-    override fun close() {
-        clearCache()
-    }
+    override fun close() = clearCache()
 
     suspend fun extractPageSpans(uri: Uri, pageIndex: Int): List<PdfTextSpan> = withContext(Dispatchers.IO) {
         val cached = pageSpanCache.get(pageIndex)
         if (cached != null) return@withContext cached
 
         val spans = mutableListOf<PdfTextSpan>()
+        var success = false
         mutex.withLock {
             try {
                 val document = getOrLoadDocument(uri) ?: return@withLock
                 if (pageIndex in 0 until document.numberOfPages) {
                     val pdPage = document.getPage(pageIndex)
                     val cropBox = pdPage.cropBox ?: pdPage.mediaBox
-                    val pWidth = cropBox.width
-                    val pHeight = cropBox.height
+                    val rotation = pdPage.rotation ?: 0
+                    val isRotated = rotation == 90 || rotation == 270
+                    val pWidth = if (isRotated) cropBox.height else cropBox.width
+                    val pHeight = if (isRotated) cropBox.width else cropBox.height
+                    if (pWidth <= 0f || pHeight <= 0f) return@withLock
 
                     val stripper = object : PDFTextStripper() {
                         init {
@@ -100,15 +105,16 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
                                     val maxX = currentPositions.map { it.xDirAdj + it.widthDirAdj }.maxOrNull() ?: 0f
                                     val minY = currentPositions.map { it.yDirAdj - it.heightDir }.minOrNull() ?: 0f
                                     val maxY = currentPositions.map { it.yDirAdj }.maxOrNull() ?: 0f
+                                    val left = min(minX, maxX); val right = max(minX, maxX)
+                                    val top = min(minY, maxY); val bottom = max(minY, maxY)
 
                                     spans.add(
                                         PdfTextSpan(
-                                            text = word,
-                                            pageIndex = pageIndex,
-                                            normLeft = (minX / pWidth).coerceIn(0f, 1f),
-                                            normTop = (minY / pHeight).coerceIn(0f, 1f),
-                                            normRight = (maxX / pWidth).coerceIn(0f, 1f),
-                                            normBottom = (maxY / pHeight).coerceIn(0f, 1f)
+                                            text = word, pageIndex = pageIndex,
+                                            normLeft = (left / pWidth).coerceIn(0f, 1f),
+                                            normTop = (top / pHeight).coerceIn(0f, 1f),
+                                            normRight = (right / pWidth).coerceIn(0f, 1f),
+                                            normBottom = (bottom / pHeight).coerceIn(0f, 1f)
                                         )
                                     )
                                 }
@@ -117,23 +123,19 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
                             }
 
                             textPositions?.forEach { tp ->
-                                if (tp.unicode.isNullOrBlank()) {
-                                    flushWord()
-                                } else {
-                                    currentWord.append(tp.unicode)
-                                    currentPositions.add(tp)
-                                }
+                                if (tp.unicode.isNullOrBlank()) flushWord()
+                                else { currentWord.append(tp.unicode); currentPositions.add(tp) }
                             }
                             flushWord()
                             super.writeString(text, textPositions)
                         }
                     }
                     stripper.writeText(document, StringWriter())
+                    success = true
                 }
             } catch (_: Exception) {}
         }
-
-        pageSpanCache.put(pageIndex, spans)
+        if (success) pageSpanCache.put(pageIndex, spans)
         spans
     }
 }

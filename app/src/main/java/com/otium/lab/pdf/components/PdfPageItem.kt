@@ -1,6 +1,7 @@
 package com.otium.lab.pdf.components
 
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -32,6 +33,7 @@ fun PdfPageItem(
     pageColorMode: PageColorMode,
     cardBg: Color,
     readingLayout: ReadingLayout = ReadingLayout.VERTICAL,
+    uri: Uri? = null,
     textExtractor: PdfTextExtractor? = null,
     highlights: List<PdfHighlight> = emptyList(),
     selectedSpans: List<PdfTextSpan> = emptyList(),
@@ -53,10 +55,10 @@ fun PdfPageItem(
         isLoading = false
     }
 
-    LaunchedEffect(pageIndex, renderer.documentUri) {
-        val uri = renderer.documentUri
-        if (uri != null && textExtractor != null) {
-            pageSpans = textExtractor.extractPageSpans(uri, pageIndex)
+    LaunchedEffect(pageIndex, uri) {
+        val targetUri = uri ?: renderer.documentUri
+        if (targetUri != null && textExtractor != null) {
+            pageSpans = textExtractor.extractPageSpans(targetUri, pageIndex)
         }
     }
 

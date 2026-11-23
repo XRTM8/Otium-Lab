@@ -44,7 +44,7 @@ fun PdfViewerScreen(
 
     LaunchedEffect(currentPage, state.isDraggingSlider) { if (!state.isDraggingSlider) state.sliderValue = currentPage.toFloat() }
 
-    LaunchedEffect(state.isLoaded) {
+    LaunchedEffect(state.isLoaded, state.renderer.pageCount) {
         if (state.isLoaded && state.renderer.pageCount > 0 && !state.hasRestoredPosition) {
             val idx = (state.savedPage - 1).coerceAtLeast(0)
             if (state.savedPage in 2..state.renderer.pageCount) {
