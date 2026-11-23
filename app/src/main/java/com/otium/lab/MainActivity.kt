@@ -48,6 +48,18 @@ class MainActivity : ComponentActivity() {
         incomingPdfUri = uri
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN && com.otium.lab.pdf.util.ReaderKeyEvents.onNextPage != null) {
+            com.otium.lab.pdf.util.ReaderKeyEvents.onNextPage?.invoke()
+            return true
+        }
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP && com.otium.lab.pdf.util.ReaderKeyEvents.onPrevPage != null) {
+            com.otium.lab.pdf.util.ReaderKeyEvents.onPrevPage?.invoke()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     private fun enableHighRefreshRate() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

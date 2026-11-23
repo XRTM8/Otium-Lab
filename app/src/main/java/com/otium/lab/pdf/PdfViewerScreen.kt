@@ -63,31 +63,34 @@ fun PdfViewerScreen(
 
     BackHandler { state.handleBack(onClose) }
 
-    val containerBg = when (state.pageColorMode) {
-        PageColorMode.AMOLED_BLACK -> Color.Black
-        PageColorMode.SEPIA -> Color(0xFFFBF7EE)
-        PageColorMode.ORIGINAL -> Color(0xFFF1F5F9)
-    }
-    val barBg = when (state.pageColorMode) {
-        PageColorMode.AMOLED_BLACK -> Color(0xFF111114)
-        PageColorMode.SEPIA -> Color(0xFFF4EBD9)
-        PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.surface
-    }
-    val textColor = when (state.pageColorMode) {
-        PageColorMode.AMOLED_BLACK -> Color(0xFFF8FAFC)
-        PageColorMode.SEPIA -> Color(0xFF2C2416)
-        PageColorMode.ORIGINAL -> MaterialTheme.colorScheme.onSurface
-    }
-    val cardBg = when (state.pageColorMode) {
-        PageColorMode.AMOLED_BLACK -> Color.Black
-        PageColorMode.SEPIA -> Color(0xFFFBF7EE)
-        PageColorMode.ORIGINAL -> Color.White
+    val volumeKeysPageTurn by themePreferences.volumeKeysPageTurn
+    DisposableEffect(volumeKeysPageTurn, currentPage, state.renderer.pageCount) {
+        if (volumeKeysPageTurn) {
+            com.otium.lab.pdf.util.ReaderKeyEvents.onNextPage = {
+                if (currentPage < state.renderer.pageCount) scope.launch {
+                    if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.animateScrollToItem(currentPage)
+                    else state.pagerState.animateScrollToPage(currentPage)
+                }
+            }
+            com.otium.lab.pdf.util.ReaderKeyEvents.onPrevPage = {
+                if (currentPage > 1) scope.launch {
+                    val p = currentPage - 2
+                    if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.animateScrollToItem(p)
+                    else state.pagerState.animateScrollToPage(p)
+                }
+            }
+        }
+        onDispose {
+            com.otium.lab.pdf.util.ReaderKeyEvents.onNextPage = null
+            com.otium.lab.pdf.util.ReaderKeyEvents.onPrevPage = null
+        }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(containerBg)) {
+    val mode = state.pageColorMode
+    Box(modifier = Modifier.fillMaxSize().background(mode.containerBg)) {
         PdfContentCanvas(
             renderer = state.renderer, uri = uri, isLoaded = state.isLoaded, errorMessage = state.errorMessage,
-            readingLayout = state.readingLayout, pageColorMode = state.pageColorMode, cardBg = cardBg,
+            readingLayout = state.readingLayout, pageColorMode = state.pageColorMode, cardBg = mode.cardBg,
             scale = scale, offsetX = state.offsetX, offsetY = state.offsetY, listState = state.listState, pagerState = state.pagerState,
             textExtractor = state.textExtractor, annotationStore = state.annotationStore, refreshTrigger = state.refreshHighlightTrigger,
             isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans,
@@ -111,7 +114,7 @@ fun PdfViewerScreen(
 
         PdfViewerOverlays(
             showControls = state.showControls, title = title, currentPage = currentPage, pageCount = state.renderer.pageCount,
-            barBg = barBg, textColor = textColor, readingLayout = state.readingLayout, pageColorMode = state.pageColorMode,
+            barBg = mode.barBg, textColor = mode.textColor, readingLayout = state.readingLayout, pageColorMode = state.pageColorMode,
             isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans, selectedHighlight = state.selectedHighlight,
             showResumePill = state.showResumePill, resumedPage = state.savedPage, sliderValue = state.sliderValue,
             isDraggingSlider = state.isDraggingSlider, showJumpDialog = state.showJumpDialog,

@@ -1,7 +1,33 @@
 package com.otium.lab.pdf.model
 
-enum class PageColorMode(val labelAr: String) {
-    ORIGINAL("أبيض طبيعي"),
-    AMOLED_BLACK("أموليـد أسود"),
-    SEPIA("سيبيا ورقي")
+import androidx.compose.ui.graphics.Color
+
+enum class PageColorMode(
+    val labelAr: String,
+    val containerBg: Color,
+    val barBg: Color,
+    val textColor: Color,
+    val cardBg: Color
+) {
+    ORIGINAL(
+        labelAr = "أبيض طبيعي",
+        containerBg = Color(0xFFF1F5F9),
+        barBg = Color(0xFFF8FAFC),
+        textColor = Color(0xFF0F172A),
+        cardBg = Color.White
+    ),
+    AMOLED_BLACK(
+        labelAr = "أموليـد أسود",
+        containerBg = Color.Black,
+        barBg = Color(0xFF111114),
+        textColor = Color(0xFFF8FAFC),
+        cardBg = Color.Black
+    ),
+    SEPIA(
+        labelAr = "سيبيا ورقي",
+        containerBg = Color(0xFFFBF7EE),
+        barBg = Color(0xFFF4EBD9),
+        textColor = Color(0xFF2C2416),
+        cardBg = Color(0xFFFBF7EE)
+    )
 }

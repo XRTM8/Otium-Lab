@@ -126,7 +126,16 @@ fun rememberPdfViewerState(
         onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
     }
     DisposableEffect(uri) {
-        try { renderer.open(uri, title); state.isLoaded = true } catch (e: Exception) { state.errorMessage = e.localizedMessage ?: "تعذر قراءة ملف الـ PDF" }
+        try {
+            renderer.open(uri, title)
+            state.isLoaded = true
+        } catch (e: Exception) {
+            state.errorMessage = if (e is SecurityException || e.message?.contains("password", ignoreCase = true) == true) {
+                "هذا المستند محمي بكلمة مرور، يرجى إزالة الحماية لفتحه."
+            } else {
+                e.localizedMessage ?: "تعذر قراءة ملف الـ PDF"
+            }
+        }
         onDispose { renderer.close(); textExtractor.clearCache() }
     }
 
