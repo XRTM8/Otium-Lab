@@ -16,6 +16,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.otium.lab.pdf.model.PdfHighlight
 import com.otium.lab.pdf.model.PdfTextSpan
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -41,32 +42,19 @@ fun PdfTextSelectionOverlay(
             .pointerInput(pageIndex, spans, highlights, isSelectionModeActive) {
                 detectTapGestures(
                     onLongPress = { offset ->
-                        val normX = offset.x / size.width
-                        val normY = offset.y / size.height
-                        val hitSpan = spans.firstOrNull { it.contains(normX, normY) }
-                        if (hitSpan != null) {
-                            onSelectSpans(listOf(hitSpan))
-                        }
+                        val hitSpan = spans.firstOrNull { it.contains(offset.x / size.width, offset.y / size.height) }
+                        if (hitSpan != null) onSelectSpans(listOf(hitSpan))
                     },
                     onTap = { offset ->
-                        val normX = offset.x / size.width
-                        val normY = offset.y / size.height
-                        // Check if an existing highlight was tapped
+                        val normX = offset.x / size.width; val normY = offset.y / size.height
                         val hitHighlight = highlights.firstOrNull { h ->
                             h.bounds.any { b -> normX in b.left..b.right && normY in b.top..b.bottom }
                         }
-                        if (hitHighlight != null) {
-                            onTapHighlight(hitHighlight)
-                        } else if (isSelectionModeActive) {
+                        if (hitHighlight != null) onTapHighlight(hitHighlight)
+                        else if (isSelectionModeActive) {
                             val hitSpan = spans.firstOrNull { it.contains(normX, normY) }
-                            if (hitSpan != null) {
-                                onSelectSpans(listOf(hitSpan))
-                            } else {
-                                onClearSelection()
-                            }
-                        } else {
-                            onClearSelection()
-                        }
+                            if (hitSpan != null) onSelectSpans(listOf(hitSpan)) else onClearSelection()
+                        } else onClearSelection()
                     }
                 )
             }
@@ -96,7 +84,10 @@ fun PdfTextSelectionOverlay(
                                 dragCurrentOffset = null
                             },
                             onDragCancel = { dragStartOffset = null; dragCurrentOffset = null },
-                            onDrag = { change, _ -> dragCurrentOffset = change.position }
+                            onDrag = { change, _ ->
+                                dragCurrentOffset = change.position
+                                change.consume()
+                            }
                         )
                     }
                 } else Modifier
@@ -128,6 +119,19 @@ fun PdfTextSelectionOverlay(
 
                 drawRoundRect(
                     color = selectionColor, topLeft = Offset(left, top), size = Size(width, height),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                )
+            }
+
+            // 3. Draw active drag selection rectangle
+            val s = dragStartOffset
+            val e = dragCurrentOffset
+            if (s != null && e != null) {
+                val dLeft = min(s.x, e.x); val dTop = min(s.y, e.y)
+                val dWidth = max(abs(e.x - s.x), 2f); val dHeight = max(abs(e.y - s.y), 2f)
+                drawRoundRect(
+                    color = Color(0xFF38BDF8).copy(alpha = 0.28f),
+                    topLeft = Offset(dLeft, dTop), size = Size(dWidth, dHeight),
                     cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 )
             }

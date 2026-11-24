@@ -109,7 +109,8 @@ fun PdfViewerScreen(
             isDraggingSlider = state.isDraggingSlider, showJumpDialog = state.showJumpDialog,
             showSearch = state.showSearch, searchQuery = state.searchQuery, searchMatchCount = state.searchMatches.size,
             currentSearchMatchIndex = state.currentMatchIndex, isSearching = state.isSearching, showTocDialog = state.showTocDialog,
-            outline = state.outline, onOpenSearch = { state.showSearch = true },
+            outline = state.outline, allHighlights = remember(state.refreshHighlightTrigger) { state.annotationStore.getAllHighlights(uri) },
+            onOpenSearch = { state.showSearch = true },
             onCloseSearch = { state.showSearch = false; state.searchQuery = ""; state.searchMatches = emptyList() },
             onQueryChange = { q ->
                 state.searchQuery = q
@@ -137,6 +138,7 @@ fun PdfViewerScreen(
             onToggleSelectionMode = {
                 state.isSelectionModeActive = !state.isSelectionModeActive
                 if (!state.isSelectionModeActive) state.clearSelection()
+                else Toast.makeText(state.context, "وضع التظليل مفعّل: اسحب فوق النص للتظليل", Toast.LENGTH_SHORT).show()
             },
             onToggleLayout = {
                 val target = currentPage
@@ -155,7 +157,7 @@ fun PdfViewerScreen(
                 val text = state.selectedHighlight?.text ?: state.selectedSpans.joinToString(" ") { it.text }
                 (state.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Otium PDF", text))
                 Toast.makeText(state.context, "تم نسخ النص إلى الحافظة", Toast.LENGTH_SHORT).show()
-                state.clearSelection()
+                state.clearSelection(); state.isSelectionModeActive = false
             },
             onApplyHighlight = { color ->
                 if (state.selectedHighlight != null) {
@@ -172,13 +174,18 @@ fun PdfViewerScreen(
                     state.selectedSpans = emptyList(); state.refreshHighlightTrigger++
                     Toast.makeText(state.context, "تم حفظ التظليل", Toast.LENGTH_SHORT).show()
                 }
+                state.isSelectionModeActive = false
             },
             onDeleteHighlight = {
                 state.selectedHighlight?.let { state.annotationStore.deleteHighlight(uri, it.id) }
-                state.selectedHighlight = null; state.refreshHighlightTrigger++
+                state.selectedHighlight = null; state.isSelectionModeActive = false; state.refreshHighlightTrigger++
                 Toast.makeText(state.context, "تم حذف التظليل", Toast.LENGTH_SHORT).show()
             },
-            onClearSelection = { state.clearSelection() },
+            onDeleteHighlightItem = { h ->
+                state.annotationStore.deleteHighlight(uri, h.id); state.refreshHighlightTrigger++
+                Toast.makeText(state.context, "تم حذف التظليل", Toast.LENGTH_SHORT).show()
+            },
+            onClearSelection = { state.clearSelection(); state.isSelectionModeActive = false },
             onJumpToBeginning = { scrollTo(0); state.showResumePill = false },
             onDismissResumePill = { state.showResumePill = false },
             onSliderValueChange = { newVal -> state.isDraggingSlider = true; state.sliderValue = newVal },

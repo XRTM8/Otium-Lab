@@ -37,29 +37,16 @@ fun PdfViewerOverlays(
     isSearching: Boolean = false,
     showTocDialog: Boolean = false,
     outline: List<PdfOutlineItem> = emptyList(),
-    onOpenSearch: () -> Unit = {},
-    onCloseSearch: () -> Unit = {},
-    onQueryChange: (String) -> Unit = {},
-    onNextSearchMatch: () -> Unit = {},
-    onPrevSearchMatch: () -> Unit = {},
-    onOpenToc: () -> Unit = {},
-    onDismissToc: () -> Unit = {},
-    onSelectTocPage: (Int) -> Unit = {},
-    onToggleSelectionMode: () -> Unit,
-    onToggleLayout: () -> Unit,
-    onToggleColorMode: () -> Unit,
-    onClose: () -> Unit,
-    onCopyText: () -> Unit,
-    onApplyHighlight: (Long) -> Unit,
-    onDeleteHighlight: () -> Unit,
-    onClearSelection: () -> Unit,
-    onJumpToBeginning: () -> Unit,
-    onDismissResumePill: () -> Unit,
-    onSliderValueChange: (Float) -> Unit,
-    onSliderValueChangeFinished: () -> Unit,
-    onOpenJumpDialog: () -> Unit,
-    onDismissJumpDialog: () -> Unit,
-    onConfirmJump: (Int) -> Unit
+    allHighlights: List<PdfHighlight> = emptyList(),
+    onOpenSearch: () -> Unit = {}, onCloseSearch: () -> Unit = {}, onQueryChange: (String) -> Unit = {},
+    onNextSearchMatch: () -> Unit = {}, onPrevSearchMatch: () -> Unit = {},
+    onOpenToc: () -> Unit = {}, onDismissToc: () -> Unit = {}, onSelectTocPage: (Int) -> Unit = {},
+    onToggleSelectionMode: () -> Unit, onToggleLayout: () -> Unit, onToggleColorMode: () -> Unit, onClose: () -> Unit,
+    onCopyText: () -> Unit, onApplyHighlight: (Long) -> Unit, onDeleteHighlight: () -> Unit,
+    onDeleteHighlightItem: (PdfHighlight) -> Unit = {}, onClearSelection: () -> Unit,
+    onJumpToBeginning: () -> Unit, onDismissResumePill: () -> Unit,
+    onSliderValueChange: (Float) -> Unit, onSliderValueChangeFinished: () -> Unit,
+    onOpenJumpDialog: () -> Unit, onDismissJumpDialog: () -> Unit, onConfirmJump: (Int) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         PdfTopOverlay(
@@ -94,6 +81,12 @@ fun PdfViewerOverlays(
             onPrevMatch = onPrevSearchMatch,
             onClose = onCloseSearch,
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+        )
+
+        PdfHighlightBanner(
+            visible = isSelectionModeActive && selectedSpans.isEmpty() && selectedHighlight == null,
+            onCancel = onToggleSelectionMode,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 70.dp)
         )
 
         PdfSelectionActionBar(
@@ -135,7 +128,11 @@ fun PdfViewerOverlays(
         }
 
         if (showTocDialog) {
-            PdfTableOfContentsDialog(outline = outline, currentPage = currentPage, onSelectPage = onSelectTocPage, onDismiss = onDismissToc)
+            PdfTableOfContentsDialog(
+                outline = outline, currentPage = currentPage, highlights = allHighlights,
+                documentTitle = title, onDeleteHighlight = onDeleteHighlightItem,
+                onSelectPage = onSelectTocPage, onDismiss = onDismissToc
+            )
         }
     }
 }

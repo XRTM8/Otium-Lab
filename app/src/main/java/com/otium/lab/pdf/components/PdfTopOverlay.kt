@@ -6,11 +6,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.AutoStories
-import androidx.compose.material.icons.rounded.BorderColor
+import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.ViewStream
@@ -109,10 +110,15 @@ fun PdfTopOverlay(
                         )
                     }
 
-                    IconButton(onClick = onToggleSelectionMode) {
+                    IconButton(
+                        onClick = onToggleSelectionMode,
+                        modifier = if (isSelectionModeActive) {
+                            Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
+                        } else Modifier
+                    ) {
                         Icon(
-                            imageVector = Icons.Rounded.BorderColor,
-                            contentDescription = if (isSelectionModeActive) "إيقاف التحديد" else "أداة التحديد والتظليل",
+                            imageVector = Icons.Rounded.Highlight,
+                            contentDescription = if (isSelectionModeActive) "إيقاف وضع التظليل" else "أداة التظليل",
                             tint = if (isSelectionModeActive) MaterialTheme.colorScheme.primary else textColor
                         )
                     }
