@@ -69,7 +69,6 @@ fun PdfPageItem(
     }
 
     val isHorizontal = readingLayout == ReadingLayout.HORIZONTAL
-    val scaleMode = if (isHorizontal) ContentScale.Fit else ContentScale.FillWidth
 
     Box(
         modifier = if (isHorizontal) Modifier.fillMaxSize().background(cardBg) else Modifier.fillMaxWidth().background(cardBg),
@@ -77,16 +76,17 @@ fun PdfPageItem(
     ) {
         val bmp = pageBitmap
         if (bmp != null && !bmp.isRecycled) {
+            val aspect = (bmp.width.toFloat() / bmp.height.toFloat().coerceAtLeast(1f)).coerceIn(0.2f, 5f)
             Box(
-                modifier = if (isHorizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                modifier = if (isHorizontal) Modifier.fillMaxHeight().aspectRatio(aspect) else Modifier.fillMaxWidth().aspectRatio(aspect),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
                     bitmap = bmp.asImageBitmap(),
                     contentDescription = "صفحة ${pageIndex + 1}",
                     colorFilter = colorFilter,
-                    contentScale = scaleMode,
-                    modifier = if (isHorizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize()
                 )
 
                 PdfTextSelectionOverlay(
@@ -99,7 +99,7 @@ fun PdfPageItem(
                     onSelectSpans = onSelectSpans,
                     onTapHighlight = onTapHighlight,
                     onClearSelection = onClearSelection,
-                    modifier = Modifier.matchParentSize()
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         } else {

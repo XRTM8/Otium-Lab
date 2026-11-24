@@ -42,8 +42,13 @@ fun PdfTextSelectionOverlay(
             .pointerInput(pageIndex, spans, highlights, isSelectionModeActive) {
                 detectTapGestures(
                     onLongPress = { offset ->
-                        val hitSpan = spans.firstOrNull { it.contains(offset.x / size.width, offset.y / size.height) }
+                        val normX = offset.x / size.width; val normY = offset.y / size.height
+                        val hitSpan = spans.firstOrNull { it.contains(normX, normY) }
                         if (hitSpan != null) onSelectSpans(listOf(hitSpan))
+                        else {
+                            val w = 0.16f; val h = 0.035f
+                            onSelectSpans(listOf(PdfTextSpan("تظليل محدد", pageIndex, (normX - w / 2).coerceIn(0f, 1f - w), (normY - h / 2).coerceIn(0f, 1f - h), (normX + w / 2).coerceIn(w, 1f), (normY + h / 2).coerceIn(h, 1f))))
+                        }
                     },
                     onTap = { offset ->
                         val normX = offset.x / size.width; val normY = offset.y / size.height
@@ -67,21 +72,17 @@ fun PdfTextSelectionOverlay(
                                 dragCurrentOffset = start
                             },
                             onDragEnd = {
-                                val start = dragStartOffset
-                                val end = dragCurrentOffset
-                                if (start != null && end != null && size.width > 0 && size.height > 0) {
-                                    val rLeft = min(start.x, end.x) / size.width
-                                    val rRight = max(start.x, end.x) / size.width
-                                    val rTop = min(start.y, end.y) / size.height
-                                    val rBottom = max(start.y, end.y) / size.height
-
-                                    val matched = spans.filter { it.intersects(rLeft, rTop, rRight, rBottom) }
-                                    if (matched.isNotEmpty()) {
-                                        onSelectSpans(matched)
+                                val s = dragStartOffset; val e = dragCurrentOffset
+                                if (s != null && e != null && size.width > 0 && size.height > 0) {
+                                    val rL = min(s.x, e.x) / size.width; val rR = max(s.x, e.x) / size.width
+                                    val rT = min(s.y, e.y) / size.height; val rB = max(s.y, e.y) / size.height
+                                    if ((rR - rL) > 0.015f || (rB - rT) > 0.015f) {
+                                        val matched = spans.filter { it.intersects(rL, rT, rR, rB) }
+                                        if (matched.isNotEmpty()) onSelectSpans(matched)
+                                        else onSelectSpans(listOf(PdfTextSpan("تظليل صفحة ${pageIndex + 1}", pageIndex, rL.coerceIn(0f, 1f), rT.coerceIn(0f, 1f), rR.coerceIn(0f, 1f), rB.coerceIn(0f, 1f))))
                                     }
                                 }
-                                dragStartOffset = null
-                                dragCurrentOffset = null
+                                dragStartOffset = null; dragCurrentOffset = null
                             },
                             onDragCancel = { dragStartOffset = null; dragCurrentOffset = null },
                             onDrag = { change, _ ->

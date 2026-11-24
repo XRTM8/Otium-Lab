@@ -129,14 +129,15 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
                         override fun writeString(text: String?, textPositions: MutableList<TextPosition>?) {
                             val currentWord = StringBuilder()
                             val currentPositions = mutableListOf<TextPosition>()
+                            val cLeft = cropBox.lowerLeftX
 
                             fun flushWord() {
                                 val word = currentWord.toString().trim()
                                 if (word.isNotEmpty() && currentPositions.isNotEmpty()) {
-                                    val minX = currentPositions.map { it.xDirAdj }.minOrNull() ?: 0f
-                                    val maxX = currentPositions.map { it.xDirAdj + it.widthDirAdj }.maxOrNull() ?: 0f
+                                    val minX = (currentPositions.map { it.xDirAdj }.minOrNull() ?: 0f) - cLeft
+                                    val maxX = (currentPositions.map { it.xDirAdj + it.widthDirAdj }.maxOrNull() ?: 0f) - cLeft
                                     val minY = currentPositions.map { it.yDirAdj - it.heightDir }.minOrNull() ?: 0f
-                                    val maxY = currentPositions.map { it.yDirAdj }.maxOrNull() ?: 0f
+                                    val maxY = currentPositions.map { it.yDirAdj + (it.heightDir * 0.35f) }.maxOrNull() ?: 0f
                                     val left = min(minX, maxX); val right = max(minX, maxX)
                                     val top = min(minY, maxY); val bottom = max(minY, maxY)
 
