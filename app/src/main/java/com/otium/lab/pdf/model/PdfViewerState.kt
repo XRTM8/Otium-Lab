@@ -58,13 +58,27 @@ class PdfViewerState(
     var isDraggingSlider by mutableStateOf(false)
     var sliderValue by mutableFloatStateOf(1f)
 
+    var showSearch by mutableStateOf(false)
+    var showTocDialog by mutableStateOf(false)
+    var searchQuery by mutableStateOf("")
+    var searchMatches by mutableStateOf<List<PdfSearchMatch>>(emptyList())
+    var currentMatchIndex by mutableIntStateOf(0)
+    var isSearching by mutableStateOf(false)
+    var outline by mutableStateOf<List<PdfOutlineItem>>(emptyList())
+
     fun clearSelection() {
         selectedSpans = emptyList()
         selectedHighlight = null
     }
 
     fun handleBack(onClose: () -> Unit) {
-        if (selectedSpans.isNotEmpty() || selectedHighlight != null) {
+        if (showSearch) {
+            showSearch = false
+            searchQuery = ""
+            searchMatches = emptyList()
+        } else if (showTocDialog) {
+            showTocDialog = false
+        } else if (selectedSpans.isNotEmpty() || selectedHighlight != null) {
             clearSelection()
         } else if (isSelectionModeActive) {
             isSelectionModeActive = false
@@ -137,6 +151,12 @@ fun rememberPdfViewerState(
             }
         }
         onDispose { renderer.close(); textExtractor.clearCache() }
+    }
+
+    LaunchedEffect(uri, state.isLoaded) {
+        if (state.isLoaded) {
+            state.outline = com.otium.lab.pdf.text.PdfOutlineExtractor.extractOutline(textExtractor, uri)
+        }
     }
 
     return state

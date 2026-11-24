@@ -8,7 +8,7 @@ const rootDir = path.resolve(__dirname, '..');
 
 const version = process.argv[2] || '2.1.0';
 const notes = process.argv[3] || 'Otium Sovereign Mobile Release';
-const repo = process.env.GITHUB_REPOSITORY || 'XRTM8/Otium-Lab';
+const repo = process.env.GITHUB_REPOSITORY || 'XRTM8/Otium-Mobile';
 const tag = `v${version.replace(/^v/, '')}`;
 
 function sha256File(filePath) {

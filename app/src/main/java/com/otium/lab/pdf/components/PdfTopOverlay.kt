@@ -8,9 +8,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.BorderColor
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -34,6 +36,8 @@ fun PdfTopOverlay(
     readingLayout: ReadingLayout,
     pageColorMode: PageColorMode,
     isSelectionModeActive: Boolean = false,
+    onOpenSearch: () -> Unit = {},
+    onOpenToc: () -> Unit = {},
     onToggleSelectionMode: () -> Unit = {},
     onToggleLayout: () -> Unit,
     onToggleColorMode: () -> Unit,
@@ -89,6 +93,22 @@ fun PdfTopOverlay(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenSearch) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = "بحث في المستند",
+                            tint = textColor
+                        )
+                    }
+
+                    IconButton(onClick = onOpenToc) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.MenuBook,
+                            contentDescription = "فهرس المحتويات",
+                            tint = textColor
+                        )
+                    }
+
                     IconButton(onClick = onToggleSelectionMode) {
                         Icon(
                             imageVector = Icons.Rounded.BorderColor,

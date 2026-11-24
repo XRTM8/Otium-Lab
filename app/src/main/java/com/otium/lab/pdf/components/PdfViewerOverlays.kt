@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.otium.lab.pdf.model.PageColorMode
 import com.otium.lab.pdf.model.PdfHighlight
+import com.otium.lab.pdf.model.PdfOutlineItem
 import com.otium.lab.pdf.model.PdfTextSpan
 import com.otium.lab.pdf.model.ReadingLayout
 
@@ -29,6 +30,21 @@ fun PdfViewerOverlays(
     sliderValue: Float,
     isDraggingSlider: Boolean,
     showJumpDialog: Boolean,
+    showSearch: Boolean = false,
+    searchQuery: String = "",
+    searchMatchCount: Int = 0,
+    currentSearchMatchIndex: Int = 0,
+    isSearching: Boolean = false,
+    showTocDialog: Boolean = false,
+    outline: List<PdfOutlineItem> = emptyList(),
+    onOpenSearch: () -> Unit = {},
+    onCloseSearch: () -> Unit = {},
+    onQueryChange: (String) -> Unit = {},
+    onNextSearchMatch: () -> Unit = {},
+    onPrevSearchMatch: () -> Unit = {},
+    onOpenToc: () -> Unit = {},
+    onDismissToc: () -> Unit = {},
+    onSelectTocPage: (Int) -> Unit = {},
     onToggleSelectionMode: () -> Unit,
     onToggleLayout: () -> Unit,
     onToggleColorMode: () -> Unit,
@@ -56,11 +72,28 @@ fun PdfViewerOverlays(
             readingLayout = readingLayout,
             pageColorMode = pageColorMode,
             isSelectionModeActive = isSelectionModeActive,
+            onOpenSearch = onOpenSearch,
+            onOpenToc = onOpenToc,
             onToggleSelectionMode = onToggleSelectionMode,
             onToggleLayout = onToggleLayout,
             onToggleColorMode = onToggleColorMode,
             onClose = onClose,
             modifier = Modifier.align(Alignment.TopCenter)
+        )
+
+        PdfSearchBar(
+            visible = showSearch,
+            query = searchQuery,
+            matchCount = searchMatchCount,
+            currentMatchIndex = currentSearchMatchIndex,
+            isSearching = isSearching,
+            barBg = barBg,
+            textColor = textColor,
+            onQueryChange = onQueryChange,
+            onNextMatch = onNextSearchMatch,
+            onPrevMatch = onPrevSearchMatch,
+            onClose = onCloseSearch,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
         )
 
         PdfSelectionActionBar(
@@ -98,12 +131,11 @@ fun PdfViewerOverlays(
         )
 
         if (showJumpDialog) {
-            PdfJumpDialog(
-                pageCount = pageCount,
-                initialPage = currentPage,
-                onDismiss = onDismissJumpDialog,
-                onConfirmJump = onConfirmJump
-            )
+            PdfJumpDialog(pageCount = pageCount, initialPage = currentPage, onDismiss = onDismissJumpDialog, onConfirmJump = onConfirmJump)
+        }
+
+        if (showTocDialog) {
+            PdfTableOfContentsDialog(outline = outline, currentPage = currentPage, onSelectPage = onSelectTocPage, onDismiss = onDismissToc)
         }
     }
 }

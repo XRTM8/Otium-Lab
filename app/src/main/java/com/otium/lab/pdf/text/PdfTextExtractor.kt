@@ -31,7 +31,7 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
     private var cachedDocument: PDDocument? = null
     private var cachedUri: Uri? = null
 
-    private fun getOrLoadDocument(uri: Uri): PDDocument? {
+    internal fun getOrLoadDocument(uri: Uri): PDDocument? {
         if (cachedUri == uri && cachedDocument != null) return cachedDocument
         closeDocument()
         return try {
@@ -52,14 +52,46 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
     }
 
     private fun loadFromResolver(uri: Uri): PDDocument? {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-        return PDDocument.load(ByteArrayInputStream(bytes))
+        val cacheFile = File(context.cacheDir, "stream_temp_doc.pdf")
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(cacheFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return null
+            PDDocument.load(cacheFile)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun closeDocument() {
         try { cachedDocument?.close() } catch (_: Exception) {}
         cachedDocument = null
         cachedUri = null
+        try {
+            val cacheFile = File(context.cacheDir, "stream_temp_doc.pdf")
+            if (cacheFile.exists()) cacheFile.delete()
+        } catch (_: Exception) {}
+    }
+
+    suspend fun extractPageText(uri: Uri, pageIndex: Int): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            try {
+                val doc = getOrLoadDocument(uri) ?: return@withLock ""
+                if (pageIndex in 0 until doc.numberOfPages) {
+                    val stripper = object : PDFTextStripper() {
+                        init {
+                            startPage = pageIndex + 1
+                            endPage = pageIndex + 1
+                        }
+                    }
+                    stripper.getText(doc) ?: ""
+                } else ""
+            } catch (_: Exception) {
+                ""
+            }
+        }
     }
 
     fun clearCache() {

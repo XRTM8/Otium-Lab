@@ -1,84 +1,142 @@
 package com.otium.lab.pdf.store
 
+import android.content.ContentValues
 import android.content.Context
-import android.content.SharedPreferences
 import android.net.Uri
+import com.otium.lab.core.database.OtiumDbHelper
 import com.otium.lab.pdf.model.NormalizedRect
 import com.otium.lab.pdf.model.PdfHighlight
 import org.json.JSONArray
-import org.json.JSONObject
 
 class AnnotationStore(context: Context) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("otium_pdf_annotations", Context.MODE_PRIVATE)
+    private val dbHelper = OtiumDbHelper.getInstance(context)
 
     fun getHighlights(uri: Uri, pageIndex: Int): List<PdfHighlight> {
-        return getAllHighlights(uri).filter { it.pageIndex == pageIndex }
-    }
-
-    fun getAllHighlights(uri: Uri): List<PdfHighlight> {
-        val jsonStr = prefs.getString(uri.toString(), "[]") ?: "[]"
         val list = mutableListOf<PdfHighlight>()
-        try {
-            val arr = JSONArray(jsonStr)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val boundsArr = obj.optJSONArray("bounds") ?: JSONArray()
+        val db = dbHelper.readableDatabase
+        val cursor = db.query(
+            OtiumDbHelper.TABLE_HIGHLIGHTS,
+            null,
+            "${OtiumDbHelper.COL_HL_URI} = ? AND ${OtiumDbHelper.COL_HL_PAGE} = ?",
+            arrayOf(uri.toString(), pageIndex.toString()),
+            null,
+            null,
+            "${OtiumDbHelper.COL_HL_TIMESTAMP} ASC"
+        )
+        cursor.use { c ->
+            val idIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_ID)
+            val pageIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_PAGE)
+            val textIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_TEXT)
+            val colorIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_COLOR)
+            val boundsIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_BOUNDS)
+            val timeIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_TIMESTAMP)
+
+            while (c.moveToNext()) {
                 val bounds = mutableListOf<NormalizedRect>()
-                for (j in 0 until boundsArr.length()) {
-                    bounds.add(NormalizedRect.fromJson(boundsArr.getJSONObject(j)))
-                }
+                try {
+                    val arr = JSONArray(c.getString(boundsIdx))
+                    for (i in 0 until arr.length()) {
+                        bounds.add(NormalizedRect.fromJson(arr.getJSONObject(i)))
+                    }
+                } catch (_: Exception) {}
+
                 list.add(
                     PdfHighlight(
-                        id = obj.optString("id"),
-                        pageIndex = obj.optInt("pageIndex"),
-                        text = obj.optString("text"),
-                        colorArgb = obj.optLong("colorArgb"),
+                        id = c.getString(idIdx),
+                        pageIndex = c.getInt(pageIdx),
+                        text = c.getString(textIdx),
+                        colorArgb = c.getLong(colorIdx),
                         bounds = bounds,
-                        timestamp = obj.optLong("timestamp")
+                        timestamp = c.getLong(timeIdx)
                     )
                 )
             }
-        } catch (_: Exception) {}
+        }
+        return list
+    }
+
+    fun getAllHighlights(uri: Uri): List<PdfHighlight> {
+        val list = mutableListOf<PdfHighlight>()
+        val db = dbHelper.readableDatabase
+        val cursor = db.query(
+            OtiumDbHelper.TABLE_HIGHLIGHTS,
+            null,
+            "${OtiumDbHelper.COL_HL_URI} = ?",
+            arrayOf(uri.toString()),
+            null,
+            null,
+            "${OtiumDbHelper.COL_HL_TIMESTAMP} ASC"
+        )
+        cursor.use { c ->
+            val idIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_ID)
+            val pageIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_PAGE)
+            val textIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_TEXT)
+            val colorIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_COLOR)
+            val boundsIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_BOUNDS)
+            val timeIdx = c.getColumnIndexOrThrow(OtiumDbHelper.COL_HL_TIMESTAMP)
+
+            while (c.moveToNext()) {
+                val bounds = mutableListOf<NormalizedRect>()
+                try {
+                    val arr = JSONArray(c.getString(boundsIdx))
+                    for (i in 0 until arr.length()) {
+                        bounds.add(NormalizedRect.fromJson(arr.getJSONObject(i)))
+                    }
+                } catch (_: Exception) {}
+
+                list.add(
+                    PdfHighlight(
+                        id = c.getString(idIdx),
+                        pageIndex = c.getInt(pageIdx),
+                        text = c.getString(textIdx),
+                        colorArgb = c.getLong(colorIdx),
+                        bounds = bounds,
+                        timestamp = c.getLong(timeIdx)
+                    )
+                )
+            }
+        }
         return list
     }
 
     fun saveHighlight(uri: Uri, highlight: PdfHighlight) {
-        val current = getAllHighlights(uri).toMutableList()
-        current.removeAll { it.id == highlight.id }
-        current.add(highlight)
-        saveList(uri, current)
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put(OtiumDbHelper.COL_HL_ID, highlight.id)
+            put(OtiumDbHelper.COL_HL_URI, uri.toString())
+            put(OtiumDbHelper.COL_HL_PAGE, highlight.pageIndex)
+            put(OtiumDbHelper.COL_HL_TEXT, highlight.text)
+            put(OtiumDbHelper.COL_HL_COLOR, highlight.colorArgb)
+            val boundsArr = JSONArray()
+            for (b in highlight.bounds) {
+                boundsArr.put(b.toJson())
+            }
+            put(OtiumDbHelper.COL_HL_BOUNDS, boundsArr.toString())
+            put(OtiumDbHelper.COL_HL_TIMESTAMP, highlight.timestamp)
+        }
+        db.insertWithOnConflict(
+            OtiumDbHelper.TABLE_HIGHLIGHTS,
+            null,
+            values,
+            android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE
+        )
     }
 
     fun deleteHighlight(uri: Uri, highlightId: String) {
-        val current = getAllHighlights(uri).toMutableList()
-        current.removeAll { it.id == highlightId }
-        saveList(uri, current)
+        val db = dbHelper.writableDatabase
+        db.delete(
+            OtiumDbHelper.TABLE_HIGHLIGHTS,
+            "${OtiumDbHelper.COL_HL_ID} = ?",
+            arrayOf(highlightId)
+        )
     }
 
     fun clearAllHighlights(uri: Uri) {
-        try {
-            prefs.edit().remove(uri.toString()).apply()
-        } catch (_: Exception) {}
-    }
-
-    private fun saveList(uri: Uri, list: List<PdfHighlight>) {
-        val arr = JSONArray()
-        for (h in list) {
-            val obj = JSONObject().apply {
-                put("id", h.id)
-                put("pageIndex", h.pageIndex)
-                put("text", h.text)
-                put("colorArgb", h.colorArgb)
-                put("timestamp", h.timestamp)
-                val boundsArr = JSONArray()
-                for (b in h.bounds) {
-                    boundsArr.put(b.toJson())
-                }
-                put("bounds", boundsArr)
-            }
-            arr.put(obj)
-        }
-        prefs.edit().putString(uri.toString(), arr.toString()).apply()
+        val db = dbHelper.writableDatabase
+        db.delete(
+            OtiumDbHelper.TABLE_HIGHLIGHTS,
+            "${OtiumDbHelper.COL_HL_URI} = ?",
+            arrayOf(uri.toString())
+        )
     }
 }

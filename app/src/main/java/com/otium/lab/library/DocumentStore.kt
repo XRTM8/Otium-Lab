@@ -2,74 +2,32 @@ package com.otium.lab.library
 
 import android.content.ContentValues
 import android.content.Context
-import android.content.SharedPreferences
+import android.database.Cursor
+import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
-import android.provider.OpenableColumns
-import org.json.JSONArray
-import org.json.JSONObject
+import com.otium.lab.core.database.OtiumDbHelper
+import com.otium.lab.library.util.DocumentExporter
+import com.otium.lab.library.util.DocumentNameResolver
+import com.otium.lab.library.util.PdfThumbnailLoader
+import com.otium.lab.pdf.store.AnnotationStore
 import java.io.File
-
-data class StoredDocument(
-    val uriString: String,
-    val title: String,
-    val isScanned: Boolean,
-    val timestamp: Long,
-    val lastPage: Int = 1,
-    val totalPages: Int = 0,
-    val scrollOffset: Int = 0
-) {
-    val uri: Uri get() = Uri.parse(uriString)
-}
 
 class DocumentStore(private val context: Context) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("otium_doc_store", Context.MODE_PRIVATE)
+    private val dbHelper = OtiumDbHelper.getInstance(context)
 
     companion object {
-        fun resolveDisplayName(context: Context, uri: Uri): String {
-            if (uri.scheme == "file") {
-                return File(uri.path ?: "").nameWithoutExtension.ifBlank { "مستند PDF" }
-            }
-            if (uri.scheme == "content") {
-                try {
-                    context.contentResolver.query(
-                        uri,
-                        arrayOf(OpenableColumns.DISPLAY_NAME),
-                        null,
-                        null,
-                        null
-                    )?.use { cursor ->
-                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        if (nameIndex != -1 && cursor.moveToFirst()) {
-                            val name = cursor.getString(nameIndex)
-                            if (!name.isNullOrBlank()) {
-                                return name.substringBeforeLast('.')
-                            }
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-            val raw = uri.lastPathSegment ?: "مستند PDF"
-            val clean = raw.substringAfterLast('/').substringAfterLast(':')
-            return if (clean.matches(Regex("^\\d+$")) || clean.isBlank()) "مستند بدون عنوان" else clean.substringBeforeLast('.')
-        }
+        fun resolveDisplayName(context: Context, uri: Uri): String =
+            DocumentNameResolver.resolveDisplayName(context, uri)
     }
 
     fun getStorageUsageBytes(): Long {
         var total = 0L
         try {
             val scansDir = File(context.filesDir, "scans")
-            if (scansDir.exists()) {
-                scansDir.listFiles()?.forEach { total += it.length() }
-            }
+            if (scansDir.exists()) scansDir.listFiles()?.forEach { total += it.length() }
             val cacheDir = context.cacheDir
-            if (cacheDir.exists()) {
-                cacheDir.walkTopDown().forEach { total += it.length() }
-            }
+            if (cacheDir.exists()) cacheDir.walkTopDown().forEach { total += it.length() }
         } catch (_: Exception) {}
         return total
     }
@@ -81,270 +39,124 @@ class DocumentStore(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    private fun Cursor.toStoredDocument(): StoredDocument = StoredDocument(
+        uriString = getString(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_URI)),
+        title = getString(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TITLE)),
+        isScanned = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_IS_SCANNED)) == 1,
+        timestamp = getLong(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TIMESTAMP)),
+        lastPage = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_LAST_PAGE)),
+        totalPages = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TOTAL_PAGES)),
+        scrollOffset = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_SCROLL_OFFSET))
+    )
+
     fun getDocuments(): List<StoredDocument> {
         val list = mutableListOf<StoredDocument>()
         val recentMap = mutableMapOf<String, StoredDocument>()
 
-        // 1. Read stored document metadata & progress from preferences first
-        val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
-        try {
-            val arr = JSONArray(jsonStr)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val uriStr = obj.getString("uri")
-                recentMap[uriStr] = StoredDocument(
-                    uriString = uriStr,
-                    title = obj.optString("title", "مستند PDF"),
-                    isScanned = obj.optBoolean("isScanned", false),
-                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                    lastPage = obj.optInt("lastPage", 1),
-                    totalPages = obj.optInt("totalPages", 0),
-                    scrollOffset = obj.optInt("scrollOffset", 0)
-                )
+        val db = dbHelper.readableDatabase
+        val cursor = db.query(OtiumDbHelper.TABLE_DOCUMENTS, null, null, null, null, null, "${OtiumDbHelper.COL_DOC_TIMESTAMP} DESC")
+        cursor.use { c ->
+            while (c.moveToNext()) {
+                val doc = c.toStoredDocument()
+                recentMap[doc.uriString] = doc
             }
-        } catch (_: Exception) {}
+        }
 
-        // 2. Scanned documents from scans directory (merge with any saved progress)
         val scansDir = File(context.filesDir, "scans")
         if (scansDir.exists() && scansDir.isDirectory) {
             val files = scansDir.listFiles { f -> f.extension.equals("pdf", ignoreCase = true) } ?: emptyArray()
             files.sortedByDescending { it.lastModified() }.forEach { f ->
                 val uriStr = Uri.fromFile(f).toString()
-                val savedProgress = recentMap[uriStr]
-                list.add(
-                    StoredDocument(
-                        uriString = uriStr,
-                        title = f.nameWithoutExtension,
-                        isScanned = true,
-                        timestamp = f.lastModified(),
-                        lastPage = savedProgress?.lastPage ?: 1,
-                        totalPages = savedProgress?.totalPages ?: 0,
-                        scrollOffset = savedProgress?.scrollOffset ?: 0
-                    )
-                )
+                val saved = recentMap[uriStr]
+                list.add(StoredDocument(uriStr, f.nameWithoutExtension, true, f.lastModified(), saved?.lastPage ?: 1, saved?.totalPages ?: 0, saved?.scrollOffset ?: 0))
             }
         }
 
-        // 3. Add imported / non-scanned documents from preferences (skip locally deleted files)
         for ((_, doc) in recentMap) {
             if (list.none { it.uriString == doc.uriString }) {
-                if (doc.uri.scheme == "file") {
-                    val f = File(doc.uri.path ?: "")
-                    if (!f.exists()) continue
-                }
+                if (doc.uri.scheme == "file" && !File(doc.uri.path ?: "").exists()) continue
                 list.add(doc)
             }
         }
-
         return list.sortedByDescending { it.timestamp }
     }
 
-    fun addOrUpdateDocument(
-        uri: Uri,
-        title: String? = null,
-        isScanned: Boolean = false,
-        page: Int = 1,
-        total: Int = 0,
-        offset: Int = 0
-    ) {
-        val resolvedTitle = if (!title.isNullOrBlank() && !title.startsWith("document:")) {
-            title
-        } else {
-            resolveDisplayName(context, uri)
-        }
-
-        val docs = getDocuments().toMutableList()
-        val existingIndex = docs.indexOfFirst { it.uriString == uri.toString() }
-        val existing = if (existingIndex != -1) docs[existingIndex] else null
-
-        // Preserve previous reading position if new page is 1 and previous was > 1
+    fun addOrUpdateDocument(uri: Uri, title: String? = null, isScanned: Boolean = false, page: Int = 1, total: Int = 0, offset: Int = 0) {
+        val resolvedTitle = if (!title.isNullOrBlank() && !title.startsWith("document:")) title else resolveDisplayName(context, uri)
+        val existing = getDocument(uri)
         val resolvedPage = if (page > 1) page else (existing?.lastPage ?: 1)
         val resolvedTotal = if (total > 0) total else (existing?.totalPages ?: 0)
         val resolvedOffset = if (page > 1) offset else (existing?.scrollOffset ?: 0)
 
-        val doc = StoredDocument(
-            uriString = uri.toString(),
-            title = resolvedTitle,
-            isScanned = isScanned,
-            timestamp = System.currentTimeMillis(),
-            lastPage = resolvedPage,
-            totalPages = resolvedTotal,
-            scrollOffset = resolvedOffset
-        )
-
-        if (existingIndex != -1) {
-            docs[existingIndex] = doc
-        } else {
-            docs.add(0, doc)
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put(OtiumDbHelper.COL_DOC_URI, uri.toString())
+            put(OtiumDbHelper.COL_DOC_TITLE, resolvedTitle)
+            put(OtiumDbHelper.COL_DOC_IS_SCANNED, if (isScanned) 1 else 0)
+            put(OtiumDbHelper.COL_DOC_TIMESTAMP, System.currentTimeMillis())
+            put(OtiumDbHelper.COL_DOC_LAST_PAGE, resolvedPage)
+            put(OtiumDbHelper.COL_DOC_TOTAL_PAGES, resolvedTotal)
+            put(OtiumDbHelper.COL_DOC_SCROLL_OFFSET, resolvedOffset)
         }
-
-        saveDocuments(docs)
+        db.insertWithOnConflict(OtiumDbHelper.TABLE_DOCUMENTS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    fun getLastPage(uri: Uri): Int {
-        val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
-        try {
-            val arr = JSONArray(jsonStr)
-            val uriStr = uri.toString()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                if (obj.getString("uri") == uriStr) {
-                    return obj.optInt("lastPage", 1)
-                }
-            }
-        } catch (_: Exception) {}
-        return 1
+    private fun getDocument(uri: Uri): StoredDocument? {
+        val db = dbHelper.readableDatabase
+        val cursor = db.query(OtiumDbHelper.TABLE_DOCUMENTS, null, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(uri.toString()), null, null, null)
+        return cursor.use { if (it.moveToFirst()) it.toStoredDocument() else null }
     }
 
-    fun getLastScrollOffset(uri: Uri): Int {
-        val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
-        try {
-            val arr = JSONArray(jsonStr)
-            val uriStr = uri.toString()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                if (obj.getString("uri") == uriStr) {
-                    return obj.optInt("scrollOffset", 0)
-                }
-            }
-        } catch (_: Exception) {}
-        return 0
-    }
+    fun getLastPage(uri: Uri): Int = getDocument(uri)?.lastPage ?: 1
+
+    fun getLastScrollOffset(uri: Uri): Int = getDocument(uri)?.scrollOffset ?: 0
 
     fun updateProgress(uri: Uri, page: Int, total: Int, offset: Int = 0) {
         if (page < 1) return
-        val docs = getDocuments().toMutableList()
-        val existingIndex = docs.indexOfFirst { it.uriString == uri.toString() }
-        if (existingIndex != -1) {
-            val existing = docs[existingIndex]
-            docs[existingIndex] = existing.copy(
-                lastPage = page,
-                totalPages = if (total > 0) total else existing.totalPages,
-                scrollOffset = offset,
-                timestamp = System.currentTimeMillis()
-            )
-            saveDocuments(docs)
-        } else {
-            addOrUpdateDocument(uri = uri, page = page, total = total, offset = offset)
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put(OtiumDbHelper.COL_DOC_LAST_PAGE, page)
+            if (total > 0) put(OtiumDbHelper.COL_DOC_TOTAL_PAGES, total)
+            put(OtiumDbHelper.COL_DOC_SCROLL_OFFSET, offset)
+            put(OtiumDbHelper.COL_DOC_TIMESTAMP, System.currentTimeMillis())
         }
-    }
-
-    private fun saveDocuments(docs: List<StoredDocument>) {
-        val limited = docs.take(50)
-        val arr = JSONArray()
-        for (d in limited) {
-            val obj = JSONObject().apply {
-                put("uri", d.uriString)
-                put("title", d.title)
-                put("isScanned", d.isScanned)
-                put("timestamp", d.timestamp)
-                put("lastPage", d.lastPage)
-                put("totalPages", d.totalPages)
-                put("scrollOffset", d.scrollOffset)
-            }
-            arr.put(obj)
-        }
-        prefs.edit().putString("recent_docs", arr.toString()).apply()
+        val updated = db.update(OtiumDbHelper.TABLE_DOCUMENTS, values, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(uri.toString()))
+        if (updated == 0) addOrUpdateDocument(uri = uri, page = page, total = total, offset = offset)
     }
 
     fun deleteDocument(doc: StoredDocument): Boolean {
         if (doc.isScanned && doc.uri.scheme == "file") {
-            try {
-                val f = File(doc.uri.path ?: "")
-                if (f.exists()) f.delete()
-            } catch (_: Exception) {}
+            try { File(doc.uri.path ?: "").takeIf { it.exists() }?.delete() } catch (_: Exception) {}
         }
-
-        // Clean up cached thumbnail and annotations
         try {
-            com.otium.lab.library.util.PdfThumbnailLoader.deleteThumbnail(context, doc.uri)
-            com.otium.lab.pdf.store.AnnotationStore(context).clearAllHighlights(doc.uri)
+            PdfThumbnailLoader.deleteThumbnail(context, doc.uri)
+            AnnotationStore(context).clearAllHighlights(doc.uri)
         } catch (_: Exception) {}
-
-        val jsonStr = prefs.getString("recent_docs", "[]") ?: "[]"
-        try {
-            val arr = JSONArray(jsonStr)
-            val newArr = JSONArray()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                if (obj.getString("uri") != doc.uriString) {
-                    newArr.put(obj)
-                }
-            }
-            prefs.edit().putString("recent_docs", newArr.toString()).apply()
-            return true
-        } catch (_: Exception) {
-            return false
-        }
+        val db = dbHelper.writableDatabase
+        return db.delete(OtiumDbHelper.TABLE_DOCUMENTS, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(doc.uriString)) > 0
     }
 
     fun renameDocument(doc: StoredDocument, newTitle: String): Boolean {
-        val cleanTitle = newTitle.trim()
-        if (cleanTitle.isBlank()) return false
-
-        val docs = getDocuments().toMutableList()
-        val index = docs.indexOfFirst { it.uriString == doc.uriString }
-        if (index == -1) return false
-
+        val cleanTitle = newTitle.trim().ifBlank { return false }
         val newUri = if (doc.isScanned && doc.uri.scheme == "file") {
             try {
                 val oldFile = File(doc.uri.path ?: "")
                 if (oldFile.exists()) {
                     val safeName = "${cleanTitle.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")}.pdf"
                     val newFile = File(oldFile.parentFile, safeName)
-                    if (oldFile.renameTo(newFile)) {
-                        Uri.fromFile(newFile)
-                    } else doc.uri
+                    if (oldFile.renameTo(newFile)) Uri.fromFile(newFile) else doc.uri
                 } else doc.uri
-            } catch (_: Exception) {
-                doc.uri
-            }
-        } else {
-            doc.uri
-        }
+            } catch (_: Exception) { doc.uri }
+        } else doc.uri
 
-        docs[index] = doc.copy(
-            title = cleanTitle,
-            uriString = newUri.toString()
-        )
-        saveDocuments(docs)
-        return true
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put(OtiumDbHelper.COL_DOC_TITLE, cleanTitle)
+            put(OtiumDbHelper.COL_DOC_URI, newUri.toString())
+        }
+        return db.update(OtiumDbHelper.TABLE_DOCUMENTS, values, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(doc.uriString)) > 0
     }
 
-    fun exportToDownloads(doc: StoredDocument): Boolean {
-        return try {
-            val resolver = context.contentResolver
-            val inputStream = if (doc.uri.scheme == "file") {
-                File(doc.uri.path ?: "").inputStream()
-            } else {
-                resolver.openInputStream(doc.uri)
-            } ?: return false
-
-            val filename = "${doc.title.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")}.pdf"
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                }
-                val destUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
-                resolver.openOutputStream(destUri)?.use { out ->
-                    inputStream.use { it.copyTo(out) }
-                }
-                true
-            } else {
-                @Suppress("DEPRECATION")
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!downloadsDir.exists()) downloadsDir.mkdirs()
-                val destFile = File(downloadsDir, filename)
-                destFile.outputStream().use { out ->
-                    inputStream.use { it.copyTo(out) }
-                }
-                true
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
+    fun exportToDownloads(doc: StoredDocument): Boolean =
+        DocumentExporter.exportToDownloads(context, doc.uri, doc.title)
 }

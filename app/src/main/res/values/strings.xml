@@ -1,7 +1,20 @@
 <resources>
     <string name="app_name">Otium</string>
-    <string name="open_pdf">فتح ملف</string>
+    <string name="open_pdf">فتح ملف PDF</string>
     <string name="scanner">الماسح الضوئي</string>
     <string name="library">المكتبة</string>
     <string name="settings">الإعدادات</string>
+    <string name="search_hint">بحث صرفي في المستند...</string>
+    <string name="table_of_contents">فهرس المحتويات</string>
+    <string name="no_toc">لا يتوفر فهرس رقمي لهذا المستند</string>
+    <string name="delete_document">حذف المستند</string>
+    <string name="rename_document">إعادة تسمية المستند</string>
+    <string name="share_document">مشاركة المستند</string>
+    <string name="copied_to_clipboard">تم نسخ النص إلى الحافظة</string>
+    <string name="highlight_saved">تم حفظ التظليل</string>
+    <string name="highlight_deleted">تم حذف التظليل</string>
+    <string name="exit_prompt">اضغط مرة أخرى للخروج من التطبيق</string>
+    <string name="all_documents">الكل</string>
+    <string name="scanned_documents">ممسوحة</string>
+    <string name="imported_documents">ملفات PDF</string>
 </resources>
