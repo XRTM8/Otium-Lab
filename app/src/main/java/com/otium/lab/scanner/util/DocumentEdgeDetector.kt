@@ -18,6 +18,7 @@ object DocumentEdgeDetector {
     private const val MAX_SIDE = 320
 
     fun detect(source: Bitmap): Detection? {
+        DocumentRegionDetector.detect(source)?.let { return it }
         if (source.width < 80 || source.height < 80) return null
         val scale = MAX_SIDE.toFloat() / max(source.width, source.height)
         val width = (source.width * scale).toInt().coerceAtLeast(2)

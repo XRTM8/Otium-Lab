@@ -9,6 +9,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Rect
 import android.net.Uri
 import android.util.Log
 import androidx.camera.core.ImageProxy
@@ -44,13 +45,17 @@ object ImageProcessingUtils {
             }
 
             val sampledBitmap = decodeSampledBitmap(rawBytes, targetMaxDim) ?: return null
+            val viewportBitmap = cropToViewPort(
+                sampledBitmap, imageProxy.cropRect, imageProxy.width, imageProxy.height
+            )
+            if (viewportBitmap !== sampledBitmap) sampledBitmap.recycle()
             val finalBitmap = if (rotationDegrees != 0) {
                 val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-                val rotated = Bitmap.createBitmap(sampledBitmap, 0, 0, sampledBitmap.width, sampledBitmap.height, matrix, true)
-                if (rotated != sampledBitmap) sampledBitmap.recycle()
+                val rotated = Bitmap.createBitmap(viewportBitmap, 0, 0, viewportBitmap.width, viewportBitmap.height, matrix, true)
+                if (rotated != viewportBitmap) viewportBitmap.recycle()
                 rotated
             } else {
-                sampledBitmap
+                viewportBitmap
             }
 
             val out = ByteArrayOutputStream()
@@ -134,6 +139,16 @@ object ImageProcessingUtils {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, options)
         return if (options.outWidth > 0 && options.outHeight > 0) options.outWidth to options.outHeight else null
+    }
+
+    fun cropToViewPort(bitmap: Bitmap, rect: Rect, sourceWidth: Int, sourceHeight: Int): Bitmap {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || rect.isEmpty) return bitmap
+        val left = (rect.left.toLong() * bitmap.width / sourceWidth).toInt().coerceIn(0, bitmap.width - 1)
+        val top = (rect.top.toLong() * bitmap.height / sourceHeight).toInt().coerceIn(0, bitmap.height - 1)
+        val right = (rect.right.toLong() * bitmap.width / sourceWidth).toInt().coerceIn(left + 1, bitmap.width)
+        val bottom = (rect.bottom.toLong() * bitmap.height / sourceHeight).toInt().coerceIn(top + 1, bitmap.height)
+        if (left == 0 && top == 0 && right == bitmap.width && bottom == bitmap.height) return bitmap
+        return Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
     }
 
     fun warpDocument(rawBytes: ByteArray, quad: NormalizedQuad, origW: Int, origH: Int): ByteArray {

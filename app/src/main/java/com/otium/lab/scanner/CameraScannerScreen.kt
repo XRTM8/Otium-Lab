@@ -34,6 +34,7 @@ import com.otium.lab.scanner.util.DocumentEdgeDetector
 import com.otium.lab.scanner.util.ScannerLiveAnalyzer
 import com.otium.lab.scanner.util.captureScannerPhoto
 import com.otium.lab.scanner.util.installScannerTapToFocus
+import com.otium.lab.scanner.util.scannerViewPort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -122,7 +123,7 @@ fun CameraScannerScreen(
                 else -> throw IllegalStateException("لا توجد كاميرا متاحة")
             }
             val group = UseCaseGroup.Builder().addUseCase(preview).addUseCase(capture).addUseCase(analysis)
-            previewView.viewPort?.let { group.setViewPort(it) }
+            group.setViewPort(scannerViewPort(previewView))
             camera = provider.bindToLifecycle(lifecycleOwner, cameraSelector, group.build())
             imageCapture = capture
         } catch (t: Throwable) {
