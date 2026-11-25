@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.UUID
 
 @Stable
@@ -105,6 +106,38 @@ class ScanSessionState(
     fun reviewBatch() {
         if (!isStagingPage && !isExportingPdf && accumulatedPageFiles.isNotEmpty()) {
             isReviewingBatch = true
+        }
+    }
+
+    fun importProcessedPages(pageUris: List<Uri>, onFailure: () -> Unit) {
+        if (pageUris.isEmpty() || isStagingPage || isExportingPdf) return
+        isStagingPage = true
+        val generation = sessionGeneration
+        scope.launch {
+            val staged = mutableListOf<File>()
+            try {
+                withContext(Dispatchers.IO) {
+                    val tempDir = File(context.cacheDir, "scan_session").apply { mkdirs() }
+                    for (uri in pageUris) {
+                        val file = File(tempDir, "page_${UUID.randomUUID()}.jpg")
+                        staged.add(file)
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(file).use { output -> input.copyTo(output) }
+                        } ?: throw IOException("تعذر قراءة إحدى الصفحات")
+                    }
+                }
+                if (generation == sessionGeneration) {
+                    accumulatedPageFiles.addAll(staged)
+                    isReviewingBatch = true
+                } else staged.forEach { it.delete() }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.IO) { staged.forEach { it.delete() } }
+                Log.e("ScanSession", "Failed to import scanned pages", t)
+                Toast.makeText(context, "تعذر استيراد الصفحات: ${t.localizedMessage ?: ""}", Toast.LENGTH_LONG).show()
+                onFailure()
+            } finally {
+                isStagingPage = false
+            }
         }
     }
 

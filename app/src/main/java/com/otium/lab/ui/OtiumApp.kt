@@ -23,10 +23,10 @@ import androidx.compose.ui.unit.sp
 import com.otium.lab.library.DocumentStore
 import com.otium.lab.library.LibraryScreen
 import com.otium.lab.pdf.PdfViewerScreen
-import com.otium.lab.scanner.CameraScannerScreen
 import com.otium.lab.scanner.CropAndFilterScreen
 import com.otium.lab.scanner.ScanSessionState
 import com.otium.lab.scanner.ScanReviewScreen
+import com.otium.lab.scanner.ScannerRouteScreen
 import com.otium.lab.ui.components.AppDestination
 import com.otium.lab.ui.components.AppNavigationShell
 import com.otium.lab.ui.theme.ThemePreferences
@@ -43,12 +43,11 @@ fun OtiumApp(
     val documentStore = remember { DocumentStore(context) }
     val themePreferences = remember { ThemePreferences(context) }
     val scanSession = remember { ScanSessionState(context, scope, documentStore) }
-
     var currentDestination by remember { mutableStateOf(AppDestination.LIBRARY) }
     var activePdfUri by remember { mutableStateOf(initialPdfUri) }
     var activePdfTitle by remember { mutableStateOf(initialPdfTitle ?: "") }
     var lastBackPressedTime by remember { mutableLongStateOf(0L) }
-
+    var useNativeScanner by remember { mutableStateOf(false) }
     LaunchedEffect(initialPdfUri) {
         if (initialPdfUri != null) {
             val resolved = withContext(Dispatchers.IO) {
@@ -60,7 +59,6 @@ fun OtiumApp(
             activePdfUri = initialPdfUri
         }
     }
-
     BackHandler(enabled = activePdfUri != null) { activePdfUri = null }
     BackHandler(enabled = activePdfUri == null && scanSession.capturedImageBytes != null) {
         if (!scanSession.isStagingPage) scanSession.capturedImageBytes = null
@@ -120,8 +118,15 @@ fun OtiumApp(
                         }
                     }
                 )
-                currentDestination == AppDestination.SCANNER -> CameraScannerScreen(
+                currentDestination == AppDestination.SCANNER -> ScannerRouteScreen(
+                    useNativeScanner = useNativeScanner,
                     pageCount = scanSession.accumulatedPageFiles.size,
+                    onPagesCaptured = { pages -> scanSession.importProcessedPages(pages) { useNativeScanner = true } },
+                    onFallback = { useNativeScanner = true },
+                    onCancel = {
+                        if (scanSession.accumulatedPageFiles.isNotEmpty()) scanSession.reviewBatch()
+                        else currentDestination = AppDestination.LIBRARY
+                    },
                     onImageCaptured = { bytes -> scanSession.capturedImageBytes = bytes },
                     onFinishBatch = { scanSession.reviewBatch() },
                     onClose = {
@@ -135,7 +140,10 @@ fun OtiumApp(
                         currentDestination = currentDestination,
                         isLandscape = isLandscape,
                         onSelectDestination = { destination ->
-                            if (destination == AppDestination.SCANNER) scanSession.clearSession()
+                            if (destination == AppDestination.SCANNER) {
+                                scanSession.clearSession()
+                                useNativeScanner = false
+                            }
                             currentDestination = destination
                         }
                     ) {
@@ -145,6 +153,7 @@ fun OtiumApp(
                                 onOpenPdf = { uri, title -> activePdfUri = uri; activePdfTitle = title },
                                 onNavigateToScanner = {
                                     scanSession.clearSession()
+                                    useNativeScanner = false
                                     currentDestination = AppDestination.SCANNER
                                 }
                             )
