@@ -1,73 +1,54 @@
-# Otium Mobile Native (Android)
+# Otium Mobile
 
-> The Sovereign, Ultra-Fast, Distraction-Free PDF Reader & Document Scanner for Android.  
-> Built natively with **Kotlin**, **Jetpack Compose**, **CameraX**, and an offline **Rust Shared Core**.
+## العربية
 
----
+تطبيق أندرويد لقراءة ملفات PDF ومسح المستندات بالكاميرا. الواجهة مكتوبة بـ Kotlin وJetpack Compose، وتستخدم أجزاء Rust للبحث العربي ومعالجة الصور.
 
-## ⚡ Architectural Foundations & Implemented Features
+### الموجود في المستودع
 
-1. **Lightweight Native PDF Viewer:** Fast native rendering via Android `PdfRenderer` with an adaptive memory LRU cache.
-2. **Arabic-First Morphological Search Engine:** Morphological light stemming (`arabic_light_stem`) and diacritic-tolerant root matching powered by an offline Rust core (`crates/otium-core`) through UniFFI JNI bridge (`crates/otium-bridge`).
-3. **Table of Contents (Outlines/Bookmarks):** Digital chapter navigation and outline hierarchy tree extraction.
-4. **Hardware Volume Key Page Turn:** Instant physical button page navigation for comfortable single-handed reading.
-5. **CameraX Document Scanner:** Perspective correction, warp, and clean enhancement filters powered by Rust math (`crates/otium-scanner` & `otium-scan-math`).
-6. **Reading Eye Comfort Palettes:** Pure Studio White, Warm Japanese Book Paper (Cream), and 100% AMOLED Pitch Black.
+- مكتبة محلية لإضافة ملفات PDF والبحث عنها وإعادة تسميتها وحذفها وتصديرها، مع استئناف القراءة.
+- قارئ PDF يعرض الصفحات عبر `PdfRenderer`، ويدعم البحث في النص، الفهرس، التحديد والتظليل، تغيير طريقة العرض وألوان القراءة، والتنقل بأزرار الصوت.
+- ماسح مستندات عبر CameraX مع تحديد زوايا الصفحة، تصحيح المنظور، مرشحات الصورة، وتصدير الصفحات إلى PDF.
+- حزم Rust في `crates/` للبحث وتطبيع النص العربي، حسابات المنظور ومعالجة الصور، مع جسر UniFFI إلى تطبيق أندرويد.
+- إعدادات للمظهر والقراءة والتخزين، وفحص تحديثات التطبيق.
 
----
+### البنية والبناء
 
-## 🗺️ Roadmap & Upcoming Modules
+`app/` يحتوي تطبيق أندرويد واختباراته، و`crates/` يحتوي الحزم الأصلية. ملفات الربط ومكتبات `.so` مضمنة في `app/src/main/`. الحد الأدنى للنظام هو Android 8.0 ‏(API 26)، ويستخدم البناء JDK 17 وAndroid SDK 35. لبناء نسخة التطوير من جذر المستودع:
 
-- [ ] **Zero-Knowledge Vault (`crates/otium-vault`):** Argon2id + ChaCha20-Poly1305 biometric document encryption.
-- [ ] **Local P2P Smart Beam (`crates/otium-beam`):** Encrypted local Wi-Fi / WebRTC sync with desktop.
-- [ ] **Vector Ink & ISO Annotations (`crates/otium-ink`):** Direct ISO 32000-1 vector annotation serialization into PDF files.
-- [ ] **Pdfium NDK Sub-pixel Tiling:** Full Google Pdfium NDK integration for deep vector zoom.
-
----
-
-## 🏗️ Project Structure
-
-```text
-Otium-Lab/
-├── app/                        # Android application module (Jetpack Compose UI)
-│   ├── src/main/java/com/otium/
-│   │   ├── lab/
-│   │   │   ├── library/        # Document store, library grid, hero & search
-│   │   │   ├── pdf/            # Viewer orchestrator, canvas, search & outline
-│   │   │   ├── scanner/        # CameraX, viewfinder, filters & exporter
-│   │   │   ├── ui/             # Theme manager, settings & navigation
-│   │   │   └── MainActivity.kt
-│   │   └── uniffi/             # Generated UniFFI Kotlin bindings
-│   └── build.gradle.kts
-├── crates/                     # Shared Rust Core
-│   ├── otium-core/             # Arabic text normalization & morphological search
-│   ├── otium-scan-math/        # Perspective math & coordinates
-│   ├── otium-scanner/          # Image processing & filters
-│   └── otium-bridge/           # UniFFI / JNI Android native library (.so)
-├── gradle/                     # Gradle wrapper & version catalogs
-├── build.gradle.kts            # Root build configuration
-└── settings.gradle.kts         # Multi-module settings
-```
-
----
-
-## 🚀 Building & Developing
-
-### Requirements:
-- JDK 17+
-- Android SDK 35+ / NDK 27+
-- Rust 1.85+ with `cargo-ndk` for Android targets:
-  ```bash
-  rustup target add aarch64-linux-android x86_64-linux-android
-  cargo install cargo-ndk
-  ```
-
-### Build APK:
 ```bash
 ./gradlew assembleDebug
 ```
 
+لإعادة بناء أجزاء Rust تحتاج أدوات Rust وAndroid NDK. تفاصيل تقسيم الكود في [ARCHITECTURE.md](ARCHITECTURE.md).
+
+الترخيص: [GPL-3.0](LICENSE).
+
+## English
+
+Otium Mobile is an Android PDF reader and document scanner. Its interface uses Kotlin and Jetpack Compose; Rust crates handle Arabic text search and image processing.
+
+### Repository contents
+
+- A local PDF library for adding, searching, renaming, deleting, and exporting documents, with reading position saved.
+- A PDF reader using Android `PdfRenderer`, with text search, outlines, selection and highlights, reading layouts and color modes, and volume-key navigation.
+- A CameraX scanner with page-corner selection, perspective correction, image filters, and PDF export.
+- Rust crates under `crates/` for Arabic text normalization and search, perspective calculations, image processing, and a UniFFI bridge to Android.
+- Appearance, reading, and storage settings, plus an in-app update check.
+
+### Layout and build
+
+`app/` contains the Android application and tests. `crates/` contains the native code. Generated bindings and `.so` libraries are included under `app/src/main/`. The minimum supported version is Android 8.0 (API 26); the build uses JDK 17 and Android SDK 35. From the repository root:
+
+```bash
+./gradlew assembleDebug
+```
+
+Rebuilding the Rust components also requires Rust and the Android NDK. See [ARCHITECTURE.md](ARCHITECTURE.md) for the code layout.
+
+License: [GPL-3.0](LICENSE).
+
+
 ---
 
-## 📜 License
-GPL-3.0 License. Free, open, sovereign software.
+للتواصل / Contact: [@MA.XRT](https://www.instagram.com/ma.xrt/)
