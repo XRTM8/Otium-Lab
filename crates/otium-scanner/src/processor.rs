@@ -1,4 +1,4 @@
-use image::{DynamicImage, GrayImage, ImageBuffer, Rgba, RgbaImage};
+use image::{DynamicImage, GrayImage, RgbaImage};
 
 use crate::geometry::{HomographyMatrix, Point2D, QuadCorners};
 use otium_core::{OtiumError, Result};
@@ -210,43 +210,5 @@ impl DocumentScanner {
 
         RgbaImage::from_raw(width, height, out_buffer)
             .unwrap_or_else(|| image.clone())
-    }
-
-    /// Combine front and back sides of an ID card onto a clean standard A4 page layout (2480 x 3508 at 300 DPI)
-    /// Accelerated with linear fixed-point SIMD-friendly resampling.
-    pub fn stitch_id_card_a4(front: &RgbaImage, back: &RgbaImage) -> RgbaImage {
-        const A4_WIDTH: u32 = 2480;
-        const A4_HEIGHT: u32 = 3508;
-
-        let mut a4_canvas: RgbaImage = ImageBuffer::from_pixel(A4_WIDTH, A4_HEIGHT, Rgba([255, 255, 255, 255]));
-
-        // Standard ID card size at 300 DPI: ~1010 x 640 px (85.6mm x 53.98mm)
-        let target_card_w = 1010;
-        let target_card_h = 640;
-
-        let (fw, fh) = front.dimensions();
-        let front_raw = crate::simd_resample::FastResampler::resample_rgba(
-            front.as_raw(), fw, fh, target_card_w, target_card_h,
-        );
-        let resized_front = RgbaImage::from_raw(target_card_w, target_card_h, front_raw)
-            .unwrap_or_else(|| front.clone());
-
-        let (bw, bh) = back.dimensions();
-        let back_raw = crate::simd_resample::FastResampler::resample_rgba(
-            back.as_raw(), bw, bh, target_card_w, target_card_h,
-        );
-        let resized_back = RgbaImage::from_raw(target_card_w, target_card_h, back_raw)
-            .unwrap_or_else(|| back.clone());
-
-        // Center front card on upper half of page
-        let pos_x = (A4_WIDTH - target_card_w) / 2;
-        let pos_front_y = (A4_HEIGHT / 3) - (target_card_h / 2);
-        image::imageops::overlay(&mut a4_canvas, &resized_front, pos_x as i64, pos_front_y as i64);
-
-        // Center back card on lower half of page
-        let pos_back_y = (2 * A4_HEIGHT / 3) - (target_card_h / 2);
-        image::imageops::overlay(&mut a4_canvas, &resized_back, pos_x as i64, pos_back_y as i64);
-
-        a4_canvas
     }
 }

@@ -98,4 +98,22 @@ object PdfThumbnailLoader {
             if (diskFile.exists()) diskFile.delete()
         } catch (_: Exception) {}
     }
+
+    fun migrateThumbnail(context: Context, oldUri: Uri, newUri: Uri) {
+        if (oldUri == newUri) return
+        val oldKey = getCacheKey(oldUri)
+        val newKey = getCacheKey(newUri)
+        memoryCache.remove(oldKey)?.let { bmp ->
+            if (!bmp.isRecycled) memoryCache.put(newKey, bmp)
+        }
+        try {
+            val thumbDir = File(context.cacheDir, "pdf_thumbnails")
+            val oldFile = File(thumbDir, "$oldKey.jpg")
+            val newFile = File(thumbDir, "$newKey.jpg")
+            if (oldFile.exists()) {
+                if (newFile.exists()) newFile.delete()
+                oldFile.renameTo(newFile)
+            }
+        } catch (_: Exception) {}
+    }
 }

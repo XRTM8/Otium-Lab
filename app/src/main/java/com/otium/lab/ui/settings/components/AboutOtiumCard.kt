@@ -1,5 +1,6 @@
 package com.otium.lab.ui.settings.components
 
+import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.otium.lab.BuildConfig
 
 @Composable
 fun AboutOtiumCard(
@@ -55,8 +57,18 @@ fun AboutOtiumCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                Text("الإصدار", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("v${BuildConfig.VERSION_NAME}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Text("معمارية المعالج", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("ARM64-v8a محسنة", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
 
             Spacer(modifier = Modifier.height(6.dp))

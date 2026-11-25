@@ -7,7 +7,7 @@ plugins {
 }
 
 val versionMajor = 2
-val versionMinor = 5
+val versionMinor = 6
 val versionPatch = 0
 val baseVersionCode = (versionMajor * 1_000_000) + (versionMinor * 10_000) + (versionPatch * 100)
 val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
@@ -26,7 +26,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
@@ -50,12 +50,22 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
         }
     }
 
@@ -111,7 +121,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
-    implementation(libs.androidx.navigation.compose)
 
     // CameraX
     implementation(libs.androidx.camera.core)
@@ -131,6 +140,10 @@ dependencies {
 
     // Performance & Ahead-of-Time (AOT) Baseline Profile Execution
     implementation(libs.androidx.profileinstaller)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

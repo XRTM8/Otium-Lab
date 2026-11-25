@@ -12,9 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.StringWriter
+import java.security.MessageDigest
 import kotlin.math.max
 import kotlin.math.min
 
@@ -30,8 +30,15 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
     private val pageSpanCache = LruCache<Int, List<PdfTextSpan>>(35)
     private var cachedDocument: PDDocument? = null
     private var cachedUri: Uri? = null
+    private var cachedTempFile: File? = null
 
-    internal fun getOrLoadDocument(uri: Uri): PDDocument? {
+    private fun tempFileFor(uri: Uri): File {
+        val digest = MessageDigest.getInstance("MD5").digest(uri.toString().toByteArray())
+        val hash = digest.joinToString("") { "%02x".format(it) }
+        return File(context.cacheDir, "stream_doc_$hash.pdf")
+    }
+
+    private fun getOrLoadDocument(uri: Uri): PDDocument? {
         if (cachedUri == uri && cachedDocument != null) return cachedDocument
         closeDocument()
         return try {
@@ -52,15 +59,18 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
     }
 
     private fun loadFromResolver(uri: Uri): PDDocument? {
-        val cacheFile = File(context.cacheDir, "stream_temp_doc.pdf")
+        val cacheFile = tempFileFor(uri)
         return try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 java.io.FileOutputStream(cacheFile).use { output ->
                     input.copyTo(output)
                 }
             } ?: return null
+            cachedTempFile = cacheFile
             PDDocument.load(cacheFile)
         } catch (_: Exception) {
+            runCatching { cacheFile.delete() }
+            cachedTempFile = null
             null
         }
     }
@@ -69,10 +79,19 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
         try { cachedDocument?.close() } catch (_: Exception) {}
         cachedDocument = null
         cachedUri = null
-        try {
-            val cacheFile = File(context.cacheDir, "stream_temp_doc.pdf")
-            if (cacheFile.exists()) cacheFile.delete()
-        } catch (_: Exception) {}
+        try { cachedTempFile?.delete() } catch (_: Exception) {}
+        cachedTempFile = null
+    }
+
+    suspend fun <T> withDocument(uri: Uri, block: (PDDocument) -> T): T? = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            try {
+                val doc = getOrLoadDocument(uri) ?: return@withLock null
+                block(doc)
+            } catch (_: Exception) {
+                null
+            }
+        }
     }
 
     suspend fun extractPageText(uri: Uri, pageIndex: Int): String = withContext(Dispatchers.IO) {

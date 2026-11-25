@@ -17,10 +17,12 @@ import androidx.compose.ui.Modifier
 import com.otium.lab.pdf.components.PdfContentCanvas
 import com.otium.lab.pdf.components.PdfViewerOverlays
 import com.otium.lab.pdf.model.*
-import com.otium.lab.pdf.text.PdfSearchEngine
 import com.otium.lab.pdf.util.BindReaderVolumeKeys
 import com.otium.lab.ui.theme.ThemePreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun PdfViewerScreen(
@@ -60,10 +62,14 @@ fun PdfViewerScreen(
             state.hasRestoredPosition = true
         }
     }
-    LaunchedEffect(currentPage, state.isLoaded, state.hasRestoredPosition) {
+    LaunchedEffect(currentPage, state.listState.firstVisibleItemScrollOffset, state.isLoaded, state.hasRestoredPosition) {
         if (state.isLoaded && state.hasRestoredPosition && state.renderer.pageCount > 0) {
+            delay(350)
             val offset = if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.firstVisibleItemScrollOffset else 0
-            state.documentStore.updateProgress(uri, currentPage, state.renderer.pageCount, offset)
+            val total = state.renderer.pageCount
+            withContext(Dispatchers.IO) {
+                state.documentStore.updateProgress(uri, currentPage, total, offset)
+            }
         }
     }
 
@@ -84,9 +90,11 @@ fun PdfViewerScreen(
             renderer = state.renderer, uri = uri, isLoaded = state.isLoaded, errorMessage = state.errorMessage,
             readingLayout = state.readingLayout, pageColorMode = state.pageColorMode, cardBg = mode.cardBg,
             scale = scale, offsetX = state.offsetX, offsetY = state.offsetY, listState = state.listState, pagerState = state.pagerState,
-            textExtractor = state.textExtractor, annotationStore = state.annotationStore, refreshTrigger = state.refreshHighlightTrigger,
+            textExtractor = state.textExtractor, allHighlights = state.allHighlights,
+            searchQuery = state.searchQuery, searchMatches = state.searchMatches,
             isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans,
             selectedHighlight = state.selectedHighlight, selectedPage = state.selectedPage,
+            onViewportSizeChanged = { state.viewportSize = it },
             onSelectSpans = { p, spans -> state.selectedPage = p; state.selectedHighlight = null; state.selectedSpans = spans },
             onTapHighlight = { h -> state.selectedPage = h.pageIndex; state.selectedSpans = emptyList(); state.selectedHighlight = h },
             onClearSelection = { state.clearSelection() }, onTap = { state.showControls = !state.showControls },
@@ -95,8 +103,10 @@ fun PdfViewerScreen(
                 val newScale = (state.targetScale * zoom).coerceIn(1f, 4.5f)
                 state.targetScale = newScale
                 if (newScale > 1.05f) {
-                    state.offsetX = (state.offsetX + pan.x).coerceIn(-1200f, 1200f)
-                    state.offsetY = (state.offsetY + pan.y).coerceIn(-2000f, 2000f)
+                    val maxX = ((state.viewportSize.width * (newScale - 1f)) / 2f).coerceAtLeast(100f)
+                    val maxY = ((state.viewportSize.height * (newScale - 1f)) / 2f).coerceAtLeast(100f)
+                    state.offsetX = (state.offsetX + pan.x).coerceIn(-maxX, maxX)
+                    state.offsetY = (state.offsetY + pan.y).coerceIn(-maxY, maxY)
                 } else { state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f }
             }
         )
@@ -109,18 +119,10 @@ fun PdfViewerScreen(
             isDraggingSlider = state.isDraggingSlider, showJumpDialog = state.showJumpDialog,
             showSearch = state.showSearch, searchQuery = state.searchQuery, searchMatchCount = state.searchMatches.size,
             currentSearchMatchIndex = state.currentMatchIndex, isSearching = state.isSearching, showTocDialog = state.showTocDialog,
-            outline = state.outline, allHighlights = remember(state.refreshHighlightTrigger) { state.annotationStore.getAllHighlights(uri) },
+            outline = state.outline, allHighlights = state.allHighlights,
             onOpenSearch = { state.showSearch = true },
-            onCloseSearch = { state.showSearch = false; state.searchQuery = ""; state.searchMatches = emptyList() },
-            onQueryChange = { q ->
-                state.searchQuery = q
-                scope.launch {
-                    state.isSearching = true
-                    val res = PdfSearchEngine.search(state.textExtractor, uri, state.renderer.pageCount, q)
-                    state.searchMatches = res; state.currentMatchIndex = 0; state.isSearching = false
-                    if (res.isNotEmpty()) scrollTo(res[0].pageIndex)
-                }
-            },
+            onCloseSearch = { state.closeSearch() },
+            onQueryChange = { q -> state.updateSearchQuery(scope, q) { scrollTo(it) } },
             onNextSearchMatch = {
                 if (state.searchMatches.isNotEmpty()) {
                     state.currentMatchIndex = (state.currentMatchIndex + 1) % state.searchMatches.size
@@ -159,32 +161,9 @@ fun PdfViewerScreen(
                 Toast.makeText(state.context, "تم نسخ النص إلى الحافظة", Toast.LENGTH_SHORT).show()
                 state.clearSelection(); state.isSelectionModeActive = false
             },
-            onApplyHighlight = { color ->
-                if (state.selectedHighlight != null) {
-                    state.annotationStore.saveHighlight(uri, state.selectedHighlight!!.copy(colorArgb = color))
-                    state.selectedHighlight = null; state.refreshHighlightTrigger++
-                } else if (state.selectedSpans.isNotEmpty()) {
-                    val h = PdfHighlight(
-                        pageIndex = state.selectedPage,
-                        text = state.selectedSpans.joinToString(" ") { it.text },
-                        colorArgb = color,
-                        bounds = state.selectedSpans.map { NormalizedRect(it.normLeft, it.normTop, it.normRight, it.normBottom) }
-                    )
-                    state.annotationStore.saveHighlight(uri, h)
-                    state.selectedSpans = emptyList(); state.refreshHighlightTrigger++
-                    Toast.makeText(state.context, "تم حفظ التظليل", Toast.LENGTH_SHORT).show()
-                }
-                state.isSelectionModeActive = false
-            },
-            onDeleteHighlight = {
-                state.selectedHighlight?.let { state.annotationStore.deleteHighlight(uri, it.id) }
-                state.selectedHighlight = null; state.isSelectionModeActive = false; state.refreshHighlightTrigger++
-                Toast.makeText(state.context, "تم حذف التظليل", Toast.LENGTH_SHORT).show()
-            },
-            onDeleteHighlightItem = { h ->
-                state.annotationStore.deleteHighlight(uri, h.id); state.refreshHighlightTrigger++
-                Toast.makeText(state.context, "تم حذف التظليل", Toast.LENGTH_SHORT).show()
-            },
+            onApplyHighlight = { color -> state.applyHighlight(scope, color) },
+            onDeleteHighlight = { state.deleteHighlight(scope, state.selectedHighlight) },
+            onDeleteHighlightItem = { h -> state.deleteHighlight(scope, h) },
             onClearSelection = { state.clearSelection(); state.isSelectionModeActive = false },
             onJumpToBeginning = { scrollTo(0); state.showResumePill = false },
             onDismissResumePill = { state.showResumePill = false },

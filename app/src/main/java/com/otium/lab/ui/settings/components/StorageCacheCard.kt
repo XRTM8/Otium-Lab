@@ -18,6 +18,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.otium.lab.library.DocumentStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun StorageCacheCard(
@@ -26,7 +29,12 @@ fun StorageCacheCard(
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    var storageBytes by remember { mutableLongStateOf(documentStore.getStorageUsageBytes()) }
+    val scope = rememberCoroutineScope()
+    var storageBytes by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(Unit) {
+        storageBytes = withContext(Dispatchers.IO) { documentStore.getStorageUsageBytes() }
+    }
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -91,9 +99,14 @@ fun StorageCacheCard(
                 FilledTonalButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        documentStore.clearTemporaryCache()
-                        storageBytes = documentStore.getStorageUsageBytes()
-                        Toast.makeText(context, "تم تفريغ الذاكرة المؤقتة بنجاح", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            val updated = withContext(Dispatchers.IO) {
+                                documentStore.clearTemporaryCache()
+                                documentStore.getStorageUsageBytes()
+                            }
+                            storageBytes = updated
+                            Toast.makeText(context, "تم تفريغ الذاكرة المؤقتة بنجاح", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(

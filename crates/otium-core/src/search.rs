@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 /// High-performance Arabic text normalization:
 /// Strips diacritics, folds Alef/Yaa/Taa forms, converts Eastern numerals to ASCII,
 /// and strips formatting/Bidi controls with minimal heap allocation.
@@ -85,7 +83,7 @@ fn normalize_arabic_text_with_map(input: &str) -> (String, Vec<CharMapping>) {
     (norm, map)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchMatch {
     pub start_offset: usize,
     pub end_offset: usize,

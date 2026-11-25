@@ -3,7 +3,9 @@ package com.otium.lab.pdf.text
 import android.net.Uri
 import com.otium.lab.pdf.model.PdfSearchMatch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import uniffi.otium_bridge.bridgeArabicStem
 import uniffi.otium_bridge.bridgeFindArabicMatches
 
 object PdfSearchEngine {
@@ -20,6 +22,7 @@ object PdfSearchEngine {
 
         val results = mutableListOf<PdfSearchMatch>()
         for (page in 0 until pageCount) {
+            coroutineContext.ensureActive()
             val pageText = extractor.extractPageText(uri, page)
             if (pageText.isBlank()) continue
 
@@ -40,7 +43,7 @@ object PdfSearchEngine {
                     if (results.size >= maxResults) return@withContext results
                 }
             } catch (_: Throwable) {
-                // Fallback substring matching
+                // Fallback substring matching when native bridge is unavailable
                 var idx = pageText.indexOf(trimmed, ignoreCase = true)
                 while (idx >= 0) {
                     results.add(
@@ -57,5 +60,27 @@ object PdfSearchEngine {
             }
         }
         results
+    }
+
+    fun matchesToken(spanText: String, query: String, matchedSnippet: String?): Boolean {
+        val q = query.trim()
+        if (q.isEmpty()) return false
+        val cleanSpan = spanText.trim()
+        if (cleanSpan.isEmpty()) return false
+
+        if (cleanSpan.contains(q, ignoreCase = true)) return true
+        if (!matchedSnippet.isNullOrBlank()) {
+            val tokens = matchedSnippet.split(Regex("\\s+")).filter { it.isNotBlank() }
+            if (tokens.any { t -> cleanSpan.contains(t, ignoreCase = true) || t.contains(cleanSpan, ignoreCase = true) }) {
+                return true
+            }
+        }
+        return try {
+            val qTokens = q.split(Regex("\\s+")).filter { it.isNotBlank() }
+            val spanStem = bridgeArabicStem(cleanSpan)
+            spanStem.isNotEmpty() && qTokens.any { bridgeArabicStem(it) == spanStem }
+        } catch (_: Throwable) {
+            false
+        }
     }
 }

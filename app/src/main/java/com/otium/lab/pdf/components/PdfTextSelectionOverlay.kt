@@ -27,10 +27,12 @@ fun PdfTextSelectionOverlay(
     highlights: List<PdfHighlight>,
     selectedSpans: List<PdfTextSpan>,
     selectedHighlight: PdfHighlight?,
+    searchMatchedSpans: List<PdfTextSpan> = emptyList(),
     isSelectionModeActive: Boolean,
     onSelectSpans: (List<PdfTextSpan>) -> Unit,
     onTapHighlight: (PdfHighlight) -> Unit,
     onClearSelection: () -> Unit,
+    onRequestSpansForLongPress: ((normX: Float, normY: Float) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var dragStartOffset by remember { mutableStateOf<Offset?>(null) }
@@ -42,7 +44,12 @@ fun PdfTextSelectionOverlay(
             .pointerInput(pageIndex, spans, highlights, isSelectionModeActive) {
                 detectTapGestures(
                     onLongPress = { offset ->
+                        if (size.width <= 0 || size.height <= 0) return@detectTapGestures
                         val normX = offset.x / size.width; val normY = offset.y / size.height
+                        if (spans.isEmpty() && onRequestSpansForLongPress != null) {
+                            onRequestSpansForLongPress(normX, normY)
+                            return@detectTapGestures
+                        }
                         val hitSpan = spans.firstOrNull { it.contains(normX, normY) }
                         if (hitSpan != null) onSelectSpans(listOf(hitSpan))
                         else {
@@ -110,6 +117,17 @@ fun PdfTextSelectionOverlay(
                         cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()), blendMode = BlendMode.Multiply
                     )
                 }
+            }
+
+            // 1.5 Draw active search match highlights
+            val searchColor = Color(0xFFF59E0B).copy(alpha = 0.48f)
+            searchMatchedSpans.forEach { span ->
+                val left = span.normLeft * canvasWidth; val top = span.normTop * canvasHeight
+                val width = (span.normRight - span.normLeft) * canvasWidth; val height = (span.normBottom - span.normTop) * canvasHeight
+                drawRoundRect(
+                    color = searchColor, topLeft = Offset(left, top), size = Size(width, height),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                )
             }
 
             // 2. Draw currently selected text spans

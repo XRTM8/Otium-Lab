@@ -5,15 +5,16 @@ coreKtx = "1.15.0"
 lifecycleRuntimeKtx = "2.8.7"
 activityCompose = "1.10.1"
 composeBom = "2025.02.00"
-navigationCompose = "2.8.8"
 cameraX = "1.4.1"
-pdfium = "1.9.2"
 coroutines = "1.10.1"
 material3 = "1.3.1"
 jna = "5.14.0"
 okhttp = "4.12.0"
 profileinstaller = "1.4.1"
 pdfbox = "2.0.27.0"
+junit = "4.13.2"
+robolectric = "4.14.1"
+androidxTestCore = "1.6.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,7 +28,6 @@ androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
-androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 
 # CameraX
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraX" }
@@ -47,6 +47,11 @@ pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref
 
 # Performance & Baseline Profile AOT Compilation
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
+
+# Testing
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

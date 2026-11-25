@@ -21,10 +21,13 @@ import com.otium.lab.pdf.NativePdfRenderer
 import com.otium.lab.pdf.model.InvertColorMatrix
 import com.otium.lab.pdf.model.PageColorMode
 import com.otium.lab.pdf.model.PdfHighlight
+import com.otium.lab.pdf.model.PdfSearchMatch
 import com.otium.lab.pdf.model.PdfTextSpan
 import com.otium.lab.pdf.model.ReadingLayout
 import com.otium.lab.pdf.model.SepiaColorMatrix
+import com.otium.lab.pdf.text.PdfSearchEngine
 import com.otium.lab.pdf.text.PdfTextExtractor
+import kotlinx.coroutines.launch
 
 @Composable
 fun PdfPageItem(
@@ -38,27 +41,42 @@ fun PdfPageItem(
     highlights: List<PdfHighlight> = emptyList(),
     selectedSpans: List<PdfTextSpan> = emptyList(),
     selectedHighlight: PdfHighlight? = null,
+    searchQuery: String = "",
+    pageSearchMatches: List<PdfSearchMatch> = emptyList(),
+    renderTargetWidth: Int = 1080,
     isSelectionModeActive: Boolean = false,
     onSelectSpans: (List<PdfTextSpan>) -> Unit = {},
     onTapHighlight: (PdfHighlight) -> Unit = {},
     onClearSelection: () -> Unit = {}
 ) {
-    var pageBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var pageSpans by remember { mutableStateOf<List<PdfTextSpan>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+    var pageBitmap by remember(uri, pageIndex) { mutableStateOf<Bitmap?>(null) }
+    var isLoading by remember(uri, pageIndex) { mutableStateOf(true) }
+    var pageSpans by remember(uri, pageIndex) { mutableStateOf<List<PdfTextSpan>>(emptyList()) }
 
-    LaunchedEffect(pageIndex) {
-        isLoading = true
+    LaunchedEffect(uri, pageIndex, renderTargetWidth) {
+        if (pageBitmap == null) isLoading = true
         try {
-            pageBitmap = renderer.renderPage(pageIndex)
+            pageBitmap = renderer.renderPage(pageIndex, targetWidth = renderTargetWidth)
         } catch (_: Exception) {}
         isLoading = false
     }
 
-    LaunchedEffect(pageIndex, uri) {
+    val needsSpans = isSelectionModeActive || pageSearchMatches.isNotEmpty()
+    LaunchedEffect(uri, pageIndex, needsSpans) {
         val targetUri = uri ?: renderer.documentUri
-        if (targetUri != null && textExtractor != null) {
+        if (needsSpans && pageSpans.isEmpty() && targetUri != null && textExtractor != null) {
             pageSpans = textExtractor.extractPageSpans(targetUri, pageIndex)
+        }
+    }
+
+    val searchMatchedSpans = remember(pageSpans, searchQuery, pageSearchMatches) {
+        if (pageSearchMatches.isEmpty() || pageSpans.isEmpty() || searchQuery.isBlank()) emptyList()
+        else {
+            val snippets = pageSearchMatches.map { it.matchText }
+            pageSpans.filter { span ->
+                snippets.any { snippet -> PdfSearchEngine.matchesToken(span.text, searchQuery, snippet) }
+            }
         }
     }
 
@@ -95,10 +113,26 @@ fun PdfPageItem(
                     highlights = highlights,
                     selectedSpans = selectedSpans,
                     selectedHighlight = selectedHighlight,
+                    searchMatchedSpans = searchMatchedSpans,
                     isSelectionModeActive = isSelectionModeActive,
                     onSelectSpans = onSelectSpans,
                     onTapHighlight = onTapHighlight,
                     onClearSelection = onClearSelection,
+                    onRequestSpansForLongPress = { normX, normY ->
+                        val targetUri = uri ?: renderer.documentUri
+                        if (targetUri != null && textExtractor != null) {
+                            scope.launch {
+                                val loaded = textExtractor.extractPageSpans(targetUri, pageIndex)
+                                pageSpans = loaded
+                                val hitSpan = loaded.firstOrNull { it.contains(normX, normY) }
+                                if (hitSpan != null) onSelectSpans(listOf(hitSpan))
+                                else {
+                                    val w = 0.16f; val h = 0.035f
+                                    onSelectSpans(listOf(PdfTextSpan("تظليل محدد", pageIndex, (normX - w / 2).coerceIn(0f, 1f - w), (normY - h / 2).coerceIn(0f, 1f - h), (normX + w / 2).coerceIn(w, 1f), (normY + h / 2).coerceIn(h, 1f))))
+                                }
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             }

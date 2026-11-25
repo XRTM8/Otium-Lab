@@ -1,8 +1,6 @@
 package com.otium.lab.pdf.components
 
 import android.net.Uri
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -21,11 +19,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.otium.lab.pdf.NativePdfRenderer
 import com.otium.lab.pdf.model.*
-import com.otium.lab.pdf.store.AnnotationStore
 import com.otium.lab.pdf.text.PdfTextExtractor
 import com.otium.lab.pdf.util.detectPdfViewerGestures
 
@@ -34,16 +33,22 @@ fun PdfContentCanvas(
     renderer: NativePdfRenderer, uri: Uri, isLoaded: Boolean, errorMessage: String?,
     readingLayout: ReadingLayout, pageColorMode: PageColorMode, cardBg: Color,
     scale: Float, offsetX: Float, offsetY: Float, listState: LazyListState, pagerState: PagerState,
-    textExtractor: PdfTextExtractor, annotationStore: AnnotationStore, refreshTrigger: Int,
+    textExtractor: PdfTextExtractor, allHighlights: List<PdfHighlight>,
+    searchQuery: String, searchMatches: List<PdfSearchMatch>,
     isSelectionModeActive: Boolean, selectedSpans: List<PdfTextSpan>, selectedHighlight: PdfHighlight?,
-    selectedPage: Int, onSelectSpans: (Int, List<PdfTextSpan>) -> Unit, onTapHighlight: (PdfHighlight) -> Unit,
+    selectedPage: Int, onViewportSizeChanged: (IntSize) -> Unit,
+    onSelectSpans: (Int, List<PdfTextSpan>) -> Unit, onTapHighlight: (PdfHighlight) -> Unit,
     onClearSelection: () -> Unit, onTap: () -> Unit, onDoubleTap: () -> Unit,
     onTransform: (Float, Offset) -> Unit, modifier: Modifier = Modifier
 ) {
     val isZoomed = scale > 1.05f
+    val renderTargetWidth = if (scale >= 1.8f) 2160 else 1080
+    val highlightsByPage = remember(allHighlights) { allHighlights.groupBy { it.pageIndex } }
+    val matchesByPage = remember(searchMatches) { searchMatches.groupBy { it.pageIndex } }
 
     Box(
         modifier = modifier.fillMaxSize()
+            .onSizeChanged(onViewportSizeChanged)
             .then(
                 if (!isSelectionModeActive) {
                     Modifier.pointerInput(isZoomed) {
@@ -72,7 +77,8 @@ fun PdfContentCanvas(
             }
             else -> {
                 val pageItemContent: @Composable (Int) -> Unit = { pageIndex ->
-                    val highlights = remember(pageIndex, refreshTrigger, uri) { annotationStore.getHighlights(uri, pageIndex) }
+                    val highlights = highlightsByPage[pageIndex] ?: emptyList()
+                    val pageMatches = matchesByPage[pageIndex] ?: emptyList()
                     val pageSelectedSpans = if (selectedPage == pageIndex) selectedSpans else emptyList()
                     val pageSelectedHighlight = if (selectedHighlight?.pageIndex == pageIndex) selectedHighlight else null
 
@@ -80,7 +86,9 @@ fun PdfContentCanvas(
                         renderer = renderer, pageIndex = pageIndex, pageColorMode = pageColorMode, cardBg = cardBg,
                         readingLayout = readingLayout, uri = uri, textExtractor = textExtractor, highlights = highlights,
                         selectedSpans = pageSelectedSpans, selectedHighlight = pageSelectedHighlight,
-                        isSelectionModeActive = isSelectionModeActive, onSelectSpans = { spans -> onSelectSpans(pageIndex, spans) },
+                        searchQuery = searchQuery, pageSearchMatches = pageMatches,
+                        renderTargetWidth = renderTargetWidth, isSelectionModeActive = isSelectionModeActive,
+                        onSelectSpans = { spans -> onSelectSpans(pageIndex, spans) },
                         onTapHighlight = onTapHighlight, onClearSelection = onClearSelection
                     )
                 }
@@ -91,11 +99,12 @@ fun PdfContentCanvas(
                         modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY),
                         horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(0.dp)
                     ) {
-                        items(renderer.pageCount, key = { it }) { pageIndex -> pageItemContent(pageIndex) }
+                        items(renderer.pageCount, key = { "${uri}_$it" }) { pageIndex -> pageItemContent(pageIndex) }
                     }
                 } else {
                     HorizontalPager(
                         state = pagerState,
+                        key = { "${uri}_$it" },
                         modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY),
                         pageSpacing = 0.dp
                     ) { pageIndex ->

@@ -319,4 +319,20 @@ object ImageProcessingUtils {
             rawBytes
         }
     }
+
+    fun rotateJpegBytes90Cw(rawBytes: ByteArray): ByteArray? {
+        return try {
+            val source = decodeSampledBitmap(rawBytes, DEFAULT_MAX_DIM) ?: return null
+            val matrix = Matrix().apply { postRotate(90f) }
+            val rotated = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+            if (rotated != source) source.recycle()
+            val out = ByteArrayOutputStream()
+            rotated.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            rotated.recycle()
+            out.toByteArray()
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to rotate image bytes", t)
+            null
+        }
+    }
 }

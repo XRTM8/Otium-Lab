@@ -30,6 +30,7 @@ import com.otium.lab.scanner.components.ScannerPermissionGate
 import com.otium.lab.scanner.components.ScannerTopBar
 import com.otium.lab.scanner.components.ScannerViewfinder
 import com.otium.lab.scanner.util.ImageProcessingUtils
+import com.otium.lab.scanner.util.captureScannerPhoto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -170,27 +171,10 @@ fun CameraScannerScreen(
                 if (isCapturing) return@ScannerBottomBar
                 isCapturing = true
                 scope.launch { showShutterFlash = true; delay(70); showShutterFlash = false }
-
-                capture.takePicture(
-                    ContextCompat.getMainExecutor(context),
-                    object : ImageCapture.OnImageCapturedCallback() {
-                        override fun onCaptureSuccess(imageProxy: ImageProxy) {
-                            scope.launch(Dispatchers.Default) {
-                                try {
-                                    val processedBytes = ImageProcessingUtils.processImageProxy(imageProxy)
-                                    withContext(Dispatchers.Main) {
-                                        isCapturing = false
-                                        if (processedBytes != null && processedBytes.isNotEmpty()) onImageCaptured(processedBytes)
-                                    }
-                                } catch (_: Throwable) {
-                                    withContext(Dispatchers.Main) { isCapturing = false }
-                                }
-                            }
-                        }
-
-                        override fun onError(exception: ImageCaptureException) { isCapturing = false }
-                    }
-                )
+                captureScannerPhoto(context, scope, capture) { bytes ->
+                    isCapturing = false
+                    if (bytes != null) onImageCaptured(bytes)
+                }
             },
             onFinishBatch = onFinishBatch,
             modifier = Modifier.align(Alignment.BottomCenter)

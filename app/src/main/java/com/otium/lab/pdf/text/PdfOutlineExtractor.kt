@@ -14,10 +14,9 @@ object PdfOutlineExtractor {
         extractor: PdfTextExtractor,
         uri: Uri
     ): List<PdfOutlineItem> = withContext(Dispatchers.IO) {
-        val list = mutableListOf<PdfOutlineItem>()
-        try {
-            val doc = extractor.getOrLoadDocument(uri) ?: return@withContext list
-            val outline = doc.documentCatalog.documentOutline ?: return@withContext list
+        extractor.withDocument(uri) { doc ->
+            val list = mutableListOf<PdfOutlineItem>()
+            val outline = doc.documentCatalog.documentOutline ?: return@withDocument list
 
             fun traverse(item: PDOutlineItem?, level: Int) {
                 var current = item
@@ -43,7 +42,7 @@ object PdfOutlineExtractor {
                 }
             }
             traverse(outline.firstChild, 0)
-        } catch (_: Exception) {}
-        list
+            list
+        } ?: emptyList()
     }
 }

@@ -106,12 +106,17 @@ fun DocumentCropOverlay(
             val cropH = (boxHalf * 2).coerceAtMost(previewBitmap.height - cropTop)
 
             if (cropW > 0 && cropH > 0) {
-                val subBmp = Bitmap.createBitmap(previewBitmap, cropLeft, cropTop, cropW, cropH)
+                val imgBitmap = previewBitmap.asImageBitmap()
                 drawContext.canvas.save()
                 drawContext.canvas.clipPath(Path().apply { addOval(Rect(loupeCenter, loupeRadius)) })
-                drawImage(subBmp.asImageBitmap(), IntOffset((loupeCenter.x - loupeRadius).toInt(), (loupeCenter.y - loupeRadius).toInt()), IntSize((loupeRadius * 2).toInt(), (loupeRadius * 2).toInt()))
+                drawImage(
+                    image = imgBitmap,
+                    srcOffset = IntOffset(cropLeft, cropTop),
+                    srcSize = IntSize(cropW, cropH),
+                    dstOffset = IntOffset((loupeCenter.x - loupeRadius).toInt(), (loupeCenter.y - loupeRadius).toInt()),
+                    dstSize = IntSize((loupeRadius * 2).toInt(), (loupeRadius * 2).toInt())
+                )
                 drawContext.canvas.restore()
-                subBmp.recycle()
             }
 
             drawCircle(color = Color.White, radius = loupeRadius, center = loupeCenter, style = Stroke(width = 3.dp.toPx()))

@@ -3,9 +3,7 @@ package com.otium.lab.core.database
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import android.net.Uri
 import org.json.JSONArray
-import java.io.File
 
 class OtiumDbHelper(private val context: Context) :
     SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
@@ -35,10 +33,21 @@ class OtiumDbHelper(private val context: Context) :
         @Volatile
         private var instance: OtiumDbHelper? = null
 
-        fun getInstance(context: Context): OtiumDbHelper =
-            instance ?: synchronized(this) {
-                instance ?: OtiumDbHelper(context.applicationContext).also { instance = it }
+        fun getInstance(context: Context): OtiumDbHelper {
+            val appCtx = context.applicationContext
+            val current = instance
+            if (current != null && current.context === appCtx) return current
+            return synchronized(this) {
+                val synced = instance
+                if (synced != null && synced.context === appCtx) synced
+                else OtiumDbHelper(appCtx).also { instance = it }
             }
+        }
+    }
+
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        db.enableWriteAheadLogging()
     }
 
     override fun onCreate(db: SQLiteDatabase) {

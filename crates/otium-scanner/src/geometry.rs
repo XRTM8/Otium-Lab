@@ -1,6 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point2D {
     pub x: f32,
     pub y: f32,
@@ -14,7 +12,7 @@ impl Point2D {
 
 /// A quadrilateral defined by 4 corner points in clockwise order:
 /// [Top-Left, Top-Right, Bottom-Right, Bottom-Left]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadCorners {
     pub top_left: Point2D,
     pub top_right: Point2D,

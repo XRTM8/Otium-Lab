@@ -39,12 +39,53 @@ pub fn bridge_arabic_stem(word: String) -> String {
 
 #[uniffi::export]
 pub fn bridge_find_arabic_matches(text: String, query: String) -> Vec<ArabicMatchRecord> {
-    let matches = otium_core::search::find_arabic_stemmed_matches(&text, &query);
-    matches
+    let trimmed = query.trim();
+    if trimmed.is_empty() || text.is_empty() {
+        return Vec::new();
+    }
+
+    let utf8_matches = if trimmed.chars().any(char::is_whitespace) {
+        otium_core::search::find_arabic_matches(&text, trimmed)
+    } else {
+        let stemmed = otium_core::search::find_arabic_stemmed_matches(&text, trimmed);
+        if stemmed.is_empty() {
+            otium_core::search::find_arabic_matches(&text, trimmed)
+        } else {
+            stemmed
+        }
+    };
+
+    if utf8_matches.is_empty() {
+        return Vec::new();
+    }
+
+    // Convert UTF-8 byte offsets into UTF-16 code unit indices in a single linear pass
+    // so JVM/Kotlin String.substring(start, end) slices accurately for Arabic & emoji text.
+    let mut utf16_pos = 0u32;
+    let mut byte_cursor = 0usize;
+    let mut char_iter = text.char_indices().peekable();
+    let mut advance_to = |target_byte: usize| -> u32 {
+        while let Some(&(b_idx, ch)) = char_iter.peek() {
+            if b_idx >= target_byte {
+                break;
+            }
+            char_iter.next();
+            utf16_pos += ch.len_utf16() as u32;
+            byte_cursor = b_idx + ch.len_utf8();
+        }
+        let _ = byte_cursor;
+        utf16_pos
+    };
+
+    utf8_matches
         .into_iter()
-        .map(|m| ArabicMatchRecord {
-            start_offset: m.start_offset as u32,
-            end_offset: m.end_offset as u32,
+        .map(|m| {
+            let start_u16 = advance_to(m.start_offset);
+            let end_u16 = advance_to(m.end_offset);
+            ArabicMatchRecord {
+                start_offset: start_u16,
+                end_offset: end_u16,
+            }
         })
         .collect()
 }
@@ -135,8 +176,25 @@ mod tests {
     #[test]
     fn test_bridge_find_arabic_matches() {
         let text = "هذا الكتاب مفيد جداً وكتابهم رائع".to_string();
-        let matches = bridge_find_arabic_matches(text, "كتاب".to_string());
+        let matches = bridge_find_arabic_matches(text.clone(), "كتاب".to_string());
         assert_eq!(matches.len(), 2);
+
+        let utf16: Vec<u16> = text.encode_utf16().collect();
+        let s0 = String::from_utf16(&utf16[matches[0].start_offset as usize..matches[0].end_offset as usize]).unwrap();
+        let s1 = String::from_utf16(&utf16[matches[1].start_offset as usize..matches[1].end_offset as usize]).unwrap();
+        assert_eq!(s0, "الكتاب");
+        assert_eq!(s1, "وكتابهم");
+    }
+
+    #[test]
+    fn test_bridge_find_arabic_phrase_and_utf16_surrogates() {
+        let text = "📖 قراءة الكِتَابِ المُفِيدِ في المساء".to_string();
+        let matches = bridge_find_arabic_matches(text.clone(), "الكتاب المفيد".to_string());
+        assert_eq!(matches.len(), 1);
+
+        let utf16: Vec<u16> = text.encode_utf16().collect();
+        let slice = String::from_utf16(&utf16[matches[0].start_offset as usize..matches[0].end_offset as usize]).unwrap();
+        assert_eq!(slice, "الكِتَابِ المُفِيدِ");
     }
 
     #[test]

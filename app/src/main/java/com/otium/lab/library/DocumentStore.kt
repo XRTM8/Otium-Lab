@@ -68,7 +68,17 @@ class DocumentStore(private val context: Context) {
             files.sortedByDescending { it.lastModified() }.forEach { f ->
                 val uriStr = Uri.fromFile(f).toString()
                 val saved = recentMap[uriStr]
-                list.add(StoredDocument(uriStr, f.nameWithoutExtension, true, f.lastModified(), saved?.lastPage ?: 1, saved?.totalPages ?: 0, saved?.scrollOffset ?: 0))
+                list.add(
+                    StoredDocument(
+                        uriString = uriStr,
+                        title = saved?.title?.ifBlank { f.nameWithoutExtension } ?: f.nameWithoutExtension,
+                        isScanned = true,
+                        timestamp = saved?.timestamp ?: f.lastModified(),
+                        lastPage = saved?.lastPage ?: 1,
+                        totalPages = saved?.totalPages ?: 0,
+                        scrollOffset = saved?.scrollOffset ?: 0
+                    )
+                )
             }
         }
 
@@ -142,19 +152,60 @@ class DocumentStore(private val context: Context) {
             try {
                 val oldFile = File(doc.uri.path ?: "")
                 if (oldFile.exists()) {
-                    val safeName = "${cleanTitle.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")}.pdf"
-                    val newFile = File(oldFile.parentFile, safeName)
-                    if (oldFile.renameTo(newFile)) Uri.fromFile(newFile) else doc.uri
+                    val baseSanitized = cleanTitle.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")
+                        .ifBlank { "document" }
+                    var candidate = File(oldFile.parentFile, "$baseSanitized.pdf")
+                    var suffix = 1
+                    while (candidate.exists() && candidate.absolutePath != oldFile.absolutePath) {
+                        candidate = File(oldFile.parentFile, "${baseSanitized}_$suffix.pdf")
+                        suffix++
+                    }
+                    if (candidate.absolutePath == oldFile.absolutePath || oldFile.renameTo(candidate)) {
+                        Uri.fromFile(candidate)
+                    } else {
+                        doc.uri
+                    }
                 } else doc.uri
             } catch (_: Exception) { doc.uri }
         } else doc.uri
 
         val db = dbHelper.writableDatabase
-        val values = ContentValues().apply {
-            put(OtiumDbHelper.COL_DOC_TITLE, cleanTitle)
-            put(OtiumDbHelper.COL_DOC_URI, newUri.toString())
+        var updatedRows = 0
+        db.beginTransaction()
+        try {
+            val values = ContentValues().apply {
+                put(OtiumDbHelper.COL_DOC_TITLE, cleanTitle)
+                put(OtiumDbHelper.COL_DOC_URI, newUri.toString())
+            }
+            updatedRows = db.update(OtiumDbHelper.TABLE_DOCUMENTS, values, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(doc.uriString))
+            if (updatedRows == 0) {
+                val insertValues = ContentValues().apply {
+                    put(OtiumDbHelper.COL_DOC_URI, newUri.toString())
+                    put(OtiumDbHelper.COL_DOC_TITLE, cleanTitle)
+                    put(OtiumDbHelper.COL_DOC_IS_SCANNED, if (doc.isScanned) 1 else 0)
+                    put(OtiumDbHelper.COL_DOC_TIMESTAMP, doc.timestamp)
+                    put(OtiumDbHelper.COL_DOC_LAST_PAGE, doc.lastPage)
+                    put(OtiumDbHelper.COL_DOC_TOTAL_PAGES, doc.totalPages)
+                    put(OtiumDbHelper.COL_DOC_SCROLL_OFFSET, doc.scrollOffset)
+                }
+                if (db.insertWithOnConflict(OtiumDbHelper.TABLE_DOCUMENTS, null, insertValues, SQLiteDatabase.CONFLICT_REPLACE) != -1L) {
+                    updatedRows = 1
+                }
+            }
+            if (newUri.toString() != doc.uriString) {
+                val hlValues = ContentValues().apply {
+                    put(OtiumDbHelper.COL_HL_URI, newUri.toString())
+                }
+                db.update(OtiumDbHelper.TABLE_HIGHLIGHTS, hlValues, "${OtiumDbHelper.COL_HL_URI} = ?", arrayOf(doc.uriString))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
         }
-        return db.update(OtiumDbHelper.TABLE_DOCUMENTS, values, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(doc.uriString)) > 0
+        if (updatedRows > 0 && newUri != doc.uri) {
+            PdfThumbnailLoader.migrateThumbnail(context, doc.uri, newUri)
+        }
+        return updatedRows > 0
     }
 
     fun exportToDownloads(doc: StoredDocument): Boolean =

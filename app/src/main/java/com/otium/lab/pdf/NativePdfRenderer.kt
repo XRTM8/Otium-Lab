@@ -62,8 +62,9 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
     }
 
     suspend fun renderPage(pageIndex: Int, targetWidth: Int = 1080): Bitmap = withContext(renderDispatcher) {
+        val clampedWidth = targetWidth.coerceIn(300, 2400)
         val cached = pageCache.get(pageIndex)
-        if (cached != null && !cached.isRecycled) {
+        if (cached != null && !cached.isRecycled && cached.width >= (clampedWidth * 0.85f).toInt()) {
             return@withContext cached
         }
 
@@ -75,7 +76,7 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
         val page = r.openPage(pageIndex)
         try {
             val aspect = page.height.toFloat() / page.width.toFloat()
-            val width = targetWidth.coerceIn(300, 2400)
+            val width = clampedWidth
             val height = (width * aspect).toInt().coerceIn(300, 4000)
 
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
