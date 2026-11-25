@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import com.otium.lab.scanner.util.ImageProcessingUtils
+import com.otium.lab.scanner.util.DocumentEdgeDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,11 +20,21 @@ class CropFilterState(
     var croppedBaseBytes by mutableStateOf(rawImageBytes)
     var previewRawBitmap by mutableStateOf<Bitmap?>(null)
     var cropQuad by mutableStateOf(NormalizedQuad())
-    var selectedFilter by mutableStateOf(ScanFilter.MAGIC_COLOR)
+    var hasDetectedBounds by mutableStateOf(false)
+    var selectedFilter by mutableStateOf(ScanFilter.ORIGINAL)
     var displayedBitmap by mutableStateOf<Bitmap?>(null)
     var isProcessing by mutableStateOf(false)
     var showSaveDialog by mutableStateOf(false)
-    val filterCache = mutableMapOf<ScanFilter, Bitmap>()
+    val filterCache = mutableMapOf<ScanFilter, ByteArray>()
+
+    fun redetect(scope: CoroutineScope) {
+        val preview = previewRawBitmap ?: return
+        scope.launch {
+            val detection = withContext(Dispatchers.Default) { DocumentEdgeDetector.detect(preview) }
+            hasDetectedBounds = detection != null
+            if (detection != null) cropQuad = detection.quad
+        }
+    }
 
     fun rotate90Cw(scope: CoroutineScope) {
         if (isProcessing) return
@@ -59,10 +70,11 @@ class CropFilterState(
     }
 
     fun confirmCrop(scope: CoroutineScope) {
-        val rawBmp = previewRawBitmap ?: return
+        if (isProcessing || !cropQuad.isValid()) return
+        val dimensions = ImageProcessingUtils.imageDimensions(activeBytes) ?: return
         isProcessing = true
         scope.launch(Dispatchers.Default) {
-            val warped = ImageProcessingUtils.warpDocument(activeBytes, cropQuad, rawBmp.width, rawBmp.height)
+            val warped = ImageProcessingUtils.warpDocument(activeBytes, cropQuad, dimensions.first, dimensions.second)
             withContext(Dispatchers.Main) {
                 filterCache.clear()
                 croppedBaseBytes = warped
@@ -74,28 +86,26 @@ class CropFilterState(
 
     suspend fun applySelectedFilter() {
         if (isCropping) return
-        filterCache[selectedFilter]?.let {
-            displayedBitmap = it
-            return
-        }
+        val filter = selectedFilter
+        val baseBytes = croppedBaseBytes
+        val cachedBytes = filterCache[filter]
         isProcessing = true
-        withContext(Dispatchers.Default) {
+        val result = withContext(Dispatchers.Default) {
             try {
-                val processed = if (selectedFilter == ScanFilter.ORIGINAL) croppedBaseBytes else {
-                    try { bridgeApplyScanFilter(croppedBaseBytes, selectedFilter.mode) }
-                    catch (_: Throwable) { ImageProcessingUtils.applyFallbackFilter(croppedBaseBytes, selectedFilter) }
+                val processed = cachedBytes ?: if (filter == ScanFilter.ORIGINAL) baseBytes else {
+                    try { bridgeApplyScanFilter(baseBytes, filter.mode) }
+                    catch (_: Throwable) { ImageProcessingUtils.applyFallbackFilter(baseBytes, filter) }
                 }
-                ImageProcessingUtils.decodeSampledBitmap(processed)?.let { bmp ->
-                    filterCache[selectedFilter] = bmp
-                    displayedBitmap = bmp
-                }
+                processed to ImageProcessingUtils.decodeSampledBitmap(processed)
             } catch (_: Throwable) {
-                ImageProcessingUtils.decodeSampledBitmap(croppedBaseBytes)?.let { fallback ->
-                    filterCache[selectedFilter] = fallback
-                    displayedBitmap = fallback
-                }
+                baseBytes to ImageProcessingUtils.decodeSampledBitmap(baseBytes)
             }
         }
+        val (processedBytes, bitmap) = result
+        if (bitmap != null && filter == selectedFilter && baseBytes === croppedBaseBytes) {
+            filterCache[filter] = processedBytes
+            displayedBitmap = bitmap
+        } else bitmap?.recycle()
         isProcessing = false
     }
 }

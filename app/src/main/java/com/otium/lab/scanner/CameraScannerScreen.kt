@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
-import android.view.MotionEvent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
@@ -30,12 +30,15 @@ import com.otium.lab.scanner.components.ScannerPermissionGate
 import com.otium.lab.scanner.components.ScannerTopBar
 import com.otium.lab.scanner.components.ScannerViewfinder
 import com.otium.lab.scanner.util.ImageProcessingUtils
+import com.otium.lab.scanner.util.DocumentEdgeDetector
+import com.otium.lab.scanner.util.ScannerLiveAnalyzer
 import com.otium.lab.scanner.util.captureScannerPhoto
+import com.otium.lab.scanner.util.installScannerTapToFocus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
 
 @Composable
 fun CameraScannerScreen(
@@ -83,6 +86,9 @@ fun CameraScannerScreen(
     var isFlashOn by remember { mutableStateOf(false) }
     var isCapturing by remember { mutableStateOf(false) }
     var showShutterFlash by remember { mutableStateOf(false) }
+    var liveDetection by remember { mutableStateOf<DocumentEdgeDetector.Detection?>(null) }
+    var analysisSize by remember { mutableStateOf(Pair(1, 1)) }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -94,50 +100,60 @@ fun CameraScannerScreen(
     LaunchedEffect(hasCameraPermission, lifecycleOwner) {
         if (!hasCameraPermission) return@LaunchedEffect
         try {
+            while (previewView.width == 0 || previewView.height == 0) withFrameNanos { }
             val provider = withContext(Dispatchers.IO) { ProcessCameraProvider.getInstance(context).get() }
             cameraProvider = provider
             provider.unbindAll()
 
             val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-            val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
+            val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            analysis.setAnalyzer(analysisExecutor, ScannerLiveAnalyzer { result, size ->
+                scope.launch(Dispatchers.Main) {
+                    liveDetection = result
+                    analysisSize = size
+                }
+            })
             val cameraSelector = when {
                 provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
                 provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
-                else -> return@LaunchedEffect
+                else -> throw IllegalStateException("لا توجد كاميرا متاحة")
             }
-            camera = provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, capture)
+            val group = UseCaseGroup.Builder().addUseCase(preview).addUseCase(capture).addUseCase(analysis)
+            previewView.viewPort?.let { group.setViewPort(it) }
+            camera = provider.bindToLifecycle(lifecycleOwner, cameraSelector, group.build())
             imageCapture = capture
         } catch (t: Throwable) {
             Log.e("CameraScanner", "Failed to bind camera lifecycle", t)
+            Toast.makeText(context, "تعذر تشغيل الكاميرا: ${t.localizedMessage ?: ""}", Toast.LENGTH_LONG).show()
         }
     }
 
     DisposableEffect(lifecycleOwner) {
-        onDispose { try { cameraProvider?.unbindAll() } catch (_: Throwable) {} }
+        onDispose {
+            try { cameraProvider?.unbindAll() } catch (_: Throwable) {}
+            analysisExecutor.shutdown()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = {
-                previewView.setOnTouchListener { view, event ->
-                    if (event.action == MotionEvent.ACTION_UP) {
-                        runCatching {
-                            camera?.let { cam ->
-                                val pt = previewView.meteringPointFactory.createPoint(event.x, event.y)
-                                val act = FocusMeteringAction.Builder(pt, FocusMeteringAction.FLAG_AF).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
-                                cam.cameraControl.startFocusAndMetering(act)
-                            }
-                        }
-                        view.performClick()
-                    }
-                    true
-                }
+                installScannerTapToFocus(previewView) { camera }
                 previewView
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        ScannerViewfinder(primaryColor = primaryColor, modifier = Modifier.fillMaxSize())
+        ScannerViewfinder(
+            primaryColor = primaryColor,
+            detectedQuad = liveDetection?.quad,
+            analysisWidth = analysisSize.first,
+            analysisHeight = analysisSize.second,
+            modifier = Modifier.fillMaxSize()
+        )
 
         AnimatedVisibility(
             visible = showShutterFlash,

@@ -35,7 +35,8 @@ object PdfExporter {
 
         try {
             for (file in pageFiles) {
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: continue
+                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    ?: throw IllegalStateException("تعذر قراءة الصفحة ${writtenPages + 1}")
                 writtenPages++
                 try {
                     val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, writtenPages).create()
@@ -75,13 +76,19 @@ object PdfExporter {
             val safeName = "${title.replace(Regex("[^a-zA-Z0-9_\\-\\u0600-\\u06FF]"), "_")}.pdf"
 
             val docsDir = File(context.filesDir, "scans").apply { if (!exists()) mkdirs() }
-            val outputFile = File(docsDir, safeName)
-            FileOutputStream(outputFile).use { out ->
-                pdfDocument.writeTo(out)
+            var outputFile = File(docsDir, safeName)
+            var suffix = 2
+            while (outputFile.exists()) {
+                outputFile = File(docsDir, "${safeName.removeSuffix(".pdf")}_$suffix.pdf")
+                suffix++
             }
-
-            // Cleanup temp files
-            pageFiles.forEach { runCatching { it.delete() } }
+            val stagingFile = File(docsDir, ".${outputFile.name}.partial")
+            try {
+                FileOutputStream(stagingFile).use { out -> pdfDocument.writeTo(out) }
+                if (!stagingFile.renameTo(outputFile)) throw IllegalStateException("تعذر إتمام حفظ PDF")
+            } finally {
+                if (stagingFile.exists()) stagingFile.delete()
+            }
 
             outputFile
         } finally {
@@ -100,6 +107,10 @@ object PdfExporter {
             FileOutputStream(f).use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 90, out) }
             f
         }
-        exportImageFilesToPdf(context, tempFiles, customTitle)
+        try {
+            exportImageFilesToPdf(context, tempFiles, customTitle)
+        } finally {
+            tempFiles.forEach { it.delete() }
+        }
     }
 }

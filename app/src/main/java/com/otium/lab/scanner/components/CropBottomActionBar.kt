@@ -44,7 +44,7 @@ fun CropBottomActionBar(
             ) {
                 Icon(Icons.Rounded.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("التقاط ذكي", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("كشف الحدود", fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
 
             OutlinedButton(

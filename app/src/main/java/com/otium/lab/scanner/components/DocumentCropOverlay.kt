@@ -29,6 +29,7 @@ fun DocumentCropOverlay(
     previewBitmap: Bitmap? = null
 ) {
     var activeHandle by remember { mutableIntStateOf(-1) }
+    val currentQuad by rememberUpdatedState(quad)
 
     Canvas(
         modifier = modifier.fillMaxSize().pointerInput(imageWidth, imageHeight) {
@@ -36,10 +37,10 @@ fun DocumentCropOverlay(
                 onDragStart = { touchOffset ->
                     val (offsetX, offsetY, dispW, dispH) = calculateBounds(size.width, size.height, imageWidth, imageHeight)
                     val pts = listOf(
-                        toScreen(quad.topLeft, offsetX, offsetY, dispW, dispH),
-                        toScreen(quad.topRight, offsetX, offsetY, dispW, dispH),
-                        toScreen(quad.bottomRight, offsetX, offsetY, dispW, dispH),
-                        toScreen(quad.bottomLeft, offsetX, offsetY, dispW, dispH)
+                        toScreen(currentQuad.topLeft, offsetX, offsetY, dispW, dispH),
+                        toScreen(currentQuad.topRight, offsetX, offsetY, dispW, dispH),
+                        toScreen(currentQuad.bottomRight, offsetX, offsetY, dispW, dispH),
+                        toScreen(currentQuad.bottomLeft, offsetX, offsetY, dispW, dispH)
                     )
                     activeHandle = pts.indexOfFirst { (it - touchOffset).getDistance() <= 36.dp.toPx() }
                 },
@@ -48,14 +49,14 @@ fun DocumentCropOverlay(
                         change.consume()
                         val (_, _, dispW, dispH) = calculateBounds(size.width, size.height, imageWidth, imageHeight)
                         if (dispW > 0 && dispH > 0) {
-                            val cur = when (activeHandle) { 0 -> quad.topLeft; 1 -> quad.topRight; 2 -> quad.bottomRight; else -> quad.bottomLeft }
+                            val cur = when (activeHandle) { 0 -> currentQuad.topLeft; 1 -> currentQuad.topRight; 2 -> currentQuad.bottomRight; else -> currentQuad.bottomLeft }
                             val updated = Offset((cur.x + dragAmount.x / dispW).coerceIn(0f, 1f), (cur.y + dragAmount.y / dispH).coerceIn(0f, 1f))
                             onQuadChange(
                                 when (activeHandle) {
-                                    0 -> quad.copy(topLeft = updated)
-                                    1 -> quad.copy(topRight = updated)
-                                    2 -> quad.copy(bottomRight = updated)
-                                    else -> quad.copy(bottomLeft = updated)
+                                    0 -> currentQuad.copy(topLeft = updated)
+                                    1 -> currentQuad.copy(topRight = updated)
+                                    2 -> currentQuad.copy(bottomRight = updated)
+                                    else -> currentQuad.copy(bottomLeft = updated)
                                 }
                             )
                         }

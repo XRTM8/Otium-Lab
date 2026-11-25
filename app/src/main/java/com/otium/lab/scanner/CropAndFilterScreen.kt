@@ -21,6 +21,7 @@ import com.otium.lab.scanner.components.*
 import com.otium.lab.scanner.model.CropFilterState
 import com.otium.lab.scanner.model.NormalizedQuad
 import com.otium.lab.scanner.util.ImageProcessingUtils
+import com.otium.lab.scanner.util.DocumentEdgeDetector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -39,11 +40,15 @@ fun CropAndFilterScreen(
     val state = remember(rawImageBytes) { CropFilterState(rawImageBytes) }
 
     LaunchedEffect(rawImageBytes) {
-        withContext(Dispatchers.Default) {
+        val result = withContext(Dispatchers.Default) {
             ImageProcessingUtils.decodeSampledBitmap(rawImageBytes)?.let { bmp ->
-                state.previewRawBitmap = bmp
-                state.cropQuad = ImageProcessingUtils.detectDocumentCorners(bmp)
+                bmp to DocumentEdgeDetector.detect(bmp)
             }
+        }
+        result?.let { (bmp, detection) ->
+            state.previewRawBitmap = bmp
+            state.hasDetectedBounds = detection != null
+            state.cropQuad = detection?.quad ?: NormalizedQuad()
         }
     }
 
@@ -65,7 +70,7 @@ fun CropAndFilterScreen(
             if (state.isCropping) {
                 CropBottomActionBar(
                     isProcessing = state.isProcessing,
-                    onAutoDetect = { state.previewRawBitmap?.let { state.cropQuad = ImageProcessingUtils.detectDocumentCorners(it) } },
+                    onAutoDetect = { state.redetect(scope) },
                     onResetFull = {
                         state.cropQuad = NormalizedQuad(Offset(0.01f, 0.01f), Offset(0.99f, 0.01f), Offset(0.99f, 0.99f), Offset(0.01f, 0.99f))
                     },
@@ -107,6 +112,16 @@ fun CropAndFilterScreen(
                         )
                     }
                 }
+            }
+            if (state.isCropping && bmpToShow != null && !state.hasDetectedBounds) {
+                Text(
+                    "لم تُحدَّد حدود الورقة تلقائياً؛ اضبط الزوايا يدوياً",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                        .background(Color.Black.copy(alpha = .72f), RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                )
             }
             if (state.isProcessing) {
                 Box(

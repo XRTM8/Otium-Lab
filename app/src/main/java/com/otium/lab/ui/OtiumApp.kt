@@ -26,6 +26,7 @@ import com.otium.lab.pdf.PdfViewerScreen
 import com.otium.lab.scanner.CameraScannerScreen
 import com.otium.lab.scanner.CropAndFilterScreen
 import com.otium.lab.scanner.ScanSessionState
+import com.otium.lab.scanner.ScanReviewScreen
 import com.otium.lab.ui.components.AppDestination
 import com.otium.lab.ui.components.AppNavigationShell
 import com.otium.lab.ui.theme.ThemePreferences
@@ -62,9 +63,13 @@ fun OtiumApp(
 
     BackHandler(enabled = activePdfUri != null) { activePdfUri = null }
     BackHandler(enabled = activePdfUri == null && scanSession.capturedImageBytes != null) {
-        scanSession.capturedImageBytes = null
+        if (!scanSession.isStagingPage) scanSession.capturedImageBytes = null
     }
-    BackHandler(enabled = activePdfUri == null && scanSession.capturedImageBytes == null && currentDestination == AppDestination.SCANNER) {
+    BackHandler(enabled = activePdfUri == null && scanSession.isReviewingBatch) {
+        scanSession.closeReview()
+    }
+    BackHandler(enabled = activePdfUri == null && scanSession.capturedImageBytes == null &&
+        !scanSession.isReviewingBatch && currentDestination == AppDestination.SCANNER) {
         scanSession.clearSession()
         currentDestination = AppDestination.LIBRARY
     }
@@ -100,18 +105,25 @@ fun OtiumApp(
                             currentDestination = AppDestination.LIBRARY
                         }
                     },
-                    onCancel = { scanSession.capturedImageBytes = null }
+                    onCancel = { if (!scanSession.isStagingPage) scanSession.capturedImageBytes = null }
                 )
-                currentDestination == AppDestination.SCANNER -> CameraScannerScreen(
-                    pageCount = scanSession.accumulatedPageFiles.size,
-                    onImageCaptured = { bytes -> scanSession.capturedImageBytes = bytes },
-                    onFinishBatch = {
-                        scanSession.finishBatch { uri, savedTitle ->
+                scanSession.isReviewingBatch -> ScanReviewScreen(
+                    pages = scanSession.accumulatedPageFiles.toList(),
+                    onBack = { scanSession.closeReview() },
+                    onMove = scanSession::movePage,
+                    onDelete = scanSession::removePage,
+                    onSave = { title ->
+                        scanSession.saveBatch(title) { uri, savedTitle ->
                             activePdfUri = uri
                             activePdfTitle = savedTitle
                             currentDestination = AppDestination.LIBRARY
                         }
-                    },
+                    }
+                )
+                currentDestination == AppDestination.SCANNER -> CameraScannerScreen(
+                    pageCount = scanSession.accumulatedPageFiles.size,
+                    onImageCaptured = { bytes -> scanSession.capturedImageBytes = bytes },
+                    onFinishBatch = { scanSession.reviewBatch() },
                     onClose = {
                         scanSession.clearSession()
                         currentDestination = AppDestination.LIBRARY
@@ -146,7 +158,7 @@ fun OtiumApp(
                 }
             }
 
-            if (scanSession.isExportingPdf) {
+            if (scanSession.isExportingPdf || scanSession.isStagingPage) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -165,7 +177,10 @@ fun OtiumApp(
                         ) {
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(14.dp))
-                            Text("جارٍ إنشاء ملف PDF...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(
+                                if (scanSession.isExportingPdf) "جارٍ إنشاء ملف PDF..." else "جارٍ حفظ الصفحة...",
+                                fontWeight = FontWeight.Bold, fontSize = 14.sp
+                            )
                         }
                     }
                 }

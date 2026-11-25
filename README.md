@@ -8,7 +8,7 @@
 
 - مكتبة محلية لإضافة ملفات PDF والبحث عنها وإعادة تسميتها وحذفها وتصديرها، مع استئناف القراءة.
 - قارئ PDF يعرض الصفحات عبر `PdfRenderer`، ويدعم البحث في النص، الفهرس، التحديد والتظليل، تغيير طريقة العرض وألوان القراءة، والتنقل بأزرار الصوت.
-- ماسح مستندات عبر CameraX مع تحديد زوايا الصفحة، تصحيح المنظور، مرشحات الصورة، وتصدير الصفحات إلى PDF.
+- ماسح مستندات عبر CameraX مع كشف حدود الصفحة أثناء المعاينة، وتصحيح القص والمنظور، ومراجعة الصفحات وترتيبها قبل تصدير PDF.
 - حزم Rust في `crates/` للبحث وتطبيع النص العربي، حسابات المنظور ومعالجة الصور، مع جسر UniFFI إلى تطبيق أندرويد.
 - إعدادات للمظهر والقراءة والتخزين، وفحص تحديثات التطبيق.
 
@@ -32,7 +32,7 @@ Otium Mobile is an Android PDF reader and document scanner. Its interface uses K
 
 - A local PDF library for adding, searching, renaming, deleting, and exporting documents, with reading position saved.
 - A PDF reader using Android `PdfRenderer`, with text search, outlines, selection and highlights, reading layouts and color modes, and volume-key navigation.
-- A CameraX scanner with page-corner selection, perspective correction, image filters, and PDF export.
+- A CameraX scanner with live page-edge detection, crop and perspective correction, image filters, page review and ordering, and PDF export.
 - Rust crates under `crates/` for Arabic text normalization and search, perspective calculations, image processing, and a UniFFI bridge to Android.
 - Appearance, reading, and storage settings, plus an in-app update check.
 

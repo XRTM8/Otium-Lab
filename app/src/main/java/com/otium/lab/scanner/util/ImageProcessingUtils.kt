@@ -12,7 +12,6 @@ import android.graphics.Paint
 import android.net.Uri
 import android.util.Log
 import androidx.camera.core.ImageProxy
-import androidx.compose.ui.geometry.Offset
 import com.otium.lab.scanner.model.NormalizedQuad
 import com.otium.lab.scanner.model.ScanFilter
 import uniffi.otium_bridge.CornerPoints
@@ -23,8 +22,8 @@ import java.io.InputStream
 object ImageProcessingUtils {
 
     private const val TAG = "ImageProcessingUtils"
-    private const val DEFAULT_MAX_DIM = 1920
-    private const val JPEG_QUALITY = 85
+    private const val DEFAULT_MAX_DIM = 4096
+    private const val JPEG_QUALITY = 95
 
     fun processImageProxy(imageProxy: ImageProxy, targetMaxDim: Int = DEFAULT_MAX_DIM): ByteArray? {
         return try {
@@ -118,12 +117,7 @@ object ImageProcessingUtils {
 
             var inSampleSize = 1
             val maxDim = maxOf(width, height)
-            if (maxDim > targetMaxDim) {
-                val halfDim = maxDim / 2
-                while (halfDim / inSampleSize >= targetMaxDim) {
-                    inSampleSize *= 2
-                }
-            }
+            while (maxDim / inSampleSize > targetMaxDim) inSampleSize *= 2
 
             val decodeOptions = BitmapFactory.Options().apply {
                 this.inSampleSize = inSampleSize
@@ -136,92 +130,10 @@ object ImageProcessingUtils {
         }
     }
 
-    fun detectDocumentCorners(bmp: Bitmap): NormalizedQuad {
-        return try {
-            val w = bmp.width
-            val h = bmp.height
-            if (w < 50 || h < 50) return NormalizedQuad()
-
-            // 1. Downscale to a clean 200x200 analysis grid for instant 2ms execution
-            val gridDim = 200
-            val thumb = Bitmap.createScaledBitmap(bmp, gridDim, gridDim, true)
-            val pixels = IntArray(gridDim * gridDim)
-            thumb.getPixels(pixels, 0, gridDim, 0, 0, gridDim, gridDim)
-            thumb.recycle()
-
-            // 2. Grayscale luminance calculation
-            val luma = IntArray(gridDim * gridDim)
-            for (i in pixels.indices) {
-                val p = pixels[i]
-                val r = (p shr 16) and 0xFF
-                val g = (p shr 8) and 0xFF
-                val b = p and 0xFF
-                luma[i] = (r * 77 + g * 150 + b * 29) shr 8
-            }
-
-            // 3. Fast Sobel gradient magnitude calculation
-            val grad = IntArray(gridDim * gridDim)
-            for (y in 1 until gridDim - 1) {
-                val rowOffset = y * gridDim
-                for (x in 1 until gridDim - 1) {
-                    val gx = (luma[rowOffset - gridDim + x + 1] + 2 * luma[rowOffset + x + 1] + luma[rowOffset + gridDim + x + 1]) -
-                             (luma[rowOffset - gridDim + x - 1] + 2 * luma[rowOffset + x - 1] + luma[rowOffset + gridDim + x - 1])
-                    val gy = (luma[rowOffset + gridDim + x - 1] + 2 * luma[rowOffset + gridDim + x] + luma[rowOffset + gridDim + x + 1]) -
-                             (luma[rowOffset - gridDim + x - 1] + 2 * luma[rowOffset - gridDim + x] + luma[rowOffset - gridDim + x + 1])
-                    grad[rowOffset + x] = kotlin.math.abs(gx) + kotlin.math.abs(gy)
-                }
-            }
-
-            // 4. Center of image space
-            val cx = gridDim / 2f
-            val cy = gridDim / 2f
-
-            // 5. Ray search outward from center towards corner quadrants
-            fun findCorner(targetX: Float, targetY: Float): Offset {
-                val dx = targetX - cx
-                val dy = targetY - cy
-                val steps = 80
-                var bestGrad = 0
-                var bestPt = Offset(targetX / gridDim, targetY / gridDim)
-
-                for (s in 15..steps) {
-                    val t = s.toFloat() / steps.toFloat()
-                    val px = (cx + dx * t).toInt().coerceIn(1, gridDim - 2)
-                    val py = (cy + dy * t).toInt().coerceIn(1, gridDim - 2)
-                    val gVal = grad[py * gridDim + px]
-                    if (gVal > bestGrad && gVal > 55) {
-                        bestGrad = gVal
-                        bestPt = Offset(px.toFloat() / gridDim, py.toFloat() / gridDim)
-                    }
-                }
-                return bestPt
-            }
-
-            val tl = findCorner(gridDim * 0.04f, gridDim * 0.04f)
-            val tr = findCorner(gridDim * 0.96f, gridDim * 0.04f)
-            val br = findCorner(gridDim * 0.96f, gridDim * 0.96f)
-            val bl = findCorner(gridDim * 0.04f, gridDim * 0.96f)
-
-            // Validate that quadrilateral is topologically sound (TL left of TR, BL left of BR, TL above BL, TR above BR)
-            val isValid = (tl.x < tr.x) && (bl.x < br.x) && (tl.y < bl.y) && (tr.y < br.y)
-            if (isValid) {
-                NormalizedQuad(
-                    topLeft = Offset(tl.x.coerceIn(0.01f, 0.45f), tl.y.coerceIn(0.01f, 0.45f)),
-                    topRight = Offset(tr.x.coerceIn(0.55f, 0.99f), tr.y.coerceIn(0.01f, 0.45f)),
-                    bottomRight = Offset(br.x.coerceIn(0.55f, 0.99f), br.y.coerceIn(0.55f, 0.99f)),
-                    bottomLeft = Offset(bl.x.coerceIn(0.01f, 0.45f), bl.y.coerceIn(0.55f, 0.99f))
-                )
-            } else {
-                NormalizedQuad(
-                    topLeft = Offset(0.05f, 0.05f),
-                    topRight = Offset(0.95f, 0.05f),
-                    bottomRight = Offset(0.95f, 0.95f),
-                    bottomLeft = Offset(0.05f, 0.95f)
-                )
-            }
-        } catch (_: Throwable) {
-            NormalizedQuad()
-        }
+    fun imageDimensions(data: ByteArray): Pair<Int, Int>? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(data, 0, data.size, options)
+        return if (options.outWidth > 0 && options.outHeight > 0) options.outWidth to options.outHeight else null
     }
 
     fun warpDocument(rawBytes: ByteArray, quad: NormalizedQuad, origW: Int, origH: Int): ByteArray {
