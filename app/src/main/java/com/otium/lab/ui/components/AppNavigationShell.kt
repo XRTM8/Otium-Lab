@@ -2,7 +2,6 @@ package com.otium.lab.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
@@ -15,7 +14,6 @@ import androidx.compose.ui.unit.sp
 
 enum class AppDestination(val labelAr: String, val icon: ImageVector) {
     LIBRARY("المكتبة", Icons.Rounded.FolderOpen),
-    SCANNER("الماسح", Icons.Rounded.CameraAlt),
     SETTINGS("الإعدادات", Icons.Rounded.Settings)
 }
 

@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.otium.lab.library.components.*
-import com.otium.lab.scanner.PdfExporter
+import com.otium.lab.library.util.PdfMerger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,8 +35,7 @@ import java.io.File
 @Composable
 fun LibraryScreen(
     documentStore: DocumentStore,
-    onOpenPdf: (Uri, String) -> Unit,
-    onNavigateToScanner: () -> Unit
+    onOpenPdf: (Uri, String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -121,7 +120,7 @@ fun LibraryScreen(
                                     isMerging = true
                                     scope.launch {
                                         try {
-                                            val merged = PdfExporter.mergePdfUris(context, targets.map { it.uri })
+                                            val merged = PdfMerger.mergePdfUris(context, targets.map { it.uri })
                                             val mergedUri = Uri.fromFile(merged)
                                             withContext(Dispatchers.IO) {
                                                 documentStore.addOrUpdateDocument(mergedUri, merged.nameWithoutExtension, isScanned = true)

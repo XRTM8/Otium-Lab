@@ -39,12 +39,12 @@ fun AboutOtiumCard(
 
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "قارئ PDF أصيل وكام سكانر احترافي عالي السرعة",
+                text = "قارئ PDF أصيل وعالي السرعة بدون تتبع",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "محرك أندرويد نيتف (Kotlin + Jetpack Compose) مع معالجة صور بـ Rust",
+                text = "محرك أندرويد نيتف (Kotlin + Jetpack Compose) مع بحث عربي بـ Rust",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )

@@ -36,7 +36,7 @@ fun EmptyLibraryState(
             Spacer(modifier = Modifier.height(12.dp))
             Text("لا توجد مستندات بعد", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("اضغط على زر (فتح ملف PDF) أو افتح الكاميرا للمسح", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("اضغط على زر (فتح ملف PDF) لاستعراض مستنداتك", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
