@@ -10,7 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.otium.lab.pdf.model.PageColorMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,9 +29,8 @@ fun PdfTopOverlay(
     pageCount: Int,
     barBg: Color,
     textColor: Color,
-    pageColorMode: PageColorMode,
     isSelectionModeActive: Boolean = false,
-    onOpenSearch: () -> Unit = {},
+    onToggleSelectionMode: () -> Unit = {},
     onOpenToc: () -> Unit = {},
     onOpenDisplayOptions: () -> Unit = {},
     onClose: () -> Unit,
@@ -80,32 +78,32 @@ fun PdfTopOverlay(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onOpenSearch) {
+                    IconButton(
+                        onClick = onToggleSelectionMode,
+                        modifier = if (isSelectionModeActive) {
+                            Modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        } else Modifier
+                    ) {
                         Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = "بحث في المستند",
-                            tint = textColor
+                            imageVector = Icons.Rounded.Highlight,
+                            contentDescription = if (isSelectionModeActive) "إيقاف التظليل" else "تفعيل التظليل",
+                            tint = if (isSelectionModeActive) MaterialTheme.colorScheme.onPrimaryContainer else textColor
                         )
                     }
 
                     IconButton(onClick = onOpenToc) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.MenuBook,
-                            contentDescription = "فهرس المحتويات والتظليلات",
+                            contentDescription = "الفهرس والتظليلات والبحث",
                             tint = textColor
                         )
                     }
 
-                    IconButton(
-                        onClick = onOpenDisplayOptions,
-                        modifier = if (isSelectionModeActive) {
-                            Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), CircleShape)
-                        } else Modifier
-                    ) {
+                    IconButton(onClick = onOpenDisplayOptions) {
                         Icon(
                             imageVector = Icons.Rounded.Tune,
                             contentDescription = "خيارات العرض والقراءة",
-                            tint = if (isSelectionModeActive) MaterialTheme.colorScheme.primary else textColor
+                            tint = textColor
                         )
                     }
                 },

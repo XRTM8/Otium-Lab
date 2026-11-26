@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ fun PdfTableOfContentsDialog(
     highlights: List<PdfHighlight> = emptyList(),
     documentTitle: String = "",
     onDeleteHighlight: (PdfHighlight) -> Unit = {},
+    onOpenSearch: () -> Unit = {},
     onSelectPage: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -79,6 +81,15 @@ fun PdfTableOfContentsDialog(
                             )
                         }
                     )
+                }
+                IconButton(
+                    onClick = {
+                        onDismiss()
+                        onOpenSearch()
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(Icons.Rounded.Search, contentDescription = "بحث في المستند", tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Rounded.Close, contentDescription = "إغلاق")

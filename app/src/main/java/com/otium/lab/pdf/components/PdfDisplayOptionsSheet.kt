@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Highlight
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ fun PdfDisplayOptionsSheet(
     onSelectColorMode: (PageColorMode) -> Unit,
     onSelectReadingLayout: (ReadingLayout) -> Unit,
     onToggleSelectionMode: () -> Unit,
+    onOpenSearch: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -207,6 +209,45 @@ fun PdfDisplayOptionsSheet(
                             onDismiss()
                         }
                     )
+                }
+            }
+
+            // 4. Search inside Document
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable {
+                        onDismiss()
+                        onOpenSearch()
+                    }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "البحث في المستند",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "بحث صرفي ذكي داخل صفحات الملف",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

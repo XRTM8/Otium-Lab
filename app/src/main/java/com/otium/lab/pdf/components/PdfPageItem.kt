@@ -116,6 +116,7 @@ fun PdfPageItem(
                     selectedHighlight = selectedHighlight,
                     searchMatchedSpans = searchMatchedSpans,
                     isSelectionModeActive = isSelectionModeActive,
+                    isDarkPage = pageColorMode == PageColorMode.AMOLED_BLACK,
                     onSelectSpans = onSelectSpans,
                     onTapHighlight = onTapHighlight,
                     onClearSelection = onClearSelection,

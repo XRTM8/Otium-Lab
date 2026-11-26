@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -34,6 +35,8 @@ fun PdfBottomScrubber(
     isDraggingSlider: Boolean,
     barBg: Color,
     textColor: Color,
+    isSelectionModeActive: Boolean = false,
+    onToggleSelectionMode: () -> Unit = {},
     onSliderValueChange: (Float) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     onOpenJumpDialog: () -> Unit,
@@ -42,7 +45,7 @@ fun PdfBottomScrubber(
     val interactionSource = remember { MutableInteractionSource() }
 
     AnimatedVisibility(
-        visible = visible && pageCount > 1,
+        visible = visible,
         enter = fadeIn(tween(160)),
         exit = fadeOut(tween(160)),
         modifier = modifier
@@ -55,7 +58,7 @@ fun PdfBottomScrubber(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AnimatedVisibility(
-                visible = isDraggingSlider,
+                visible = isDraggingSlider && pageCount > 1,
                 enter = fadeIn(tween(100)),
                 exit = fadeOut(tween(100)),
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -89,7 +92,7 @@ fun PdfBottomScrubber(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
@@ -97,7 +100,7 @@ fun PdfBottomScrubber(
                         color = textColor.copy(alpha = 0.08f),
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable(onClick = onOpenJumpDialog)
+                            .clickable(enabled = pageCount > 1, onClick = onOpenJumpDialog)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -110,55 +113,78 @@ fun PdfBottomScrubber(
                                 fontWeight = FontWeight.Bold,
                                 color = textColor
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Rounded.UnfoldMore,
-                                contentDescription = "انتقال سريع",
-                                tint = textColor.copy(alpha = 0.7f),
-                                modifier = Modifier.size(16.dp)
-                            )
+                            if (pageCount > 1) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.UnfoldMore,
+                                    contentDescription = "انتقال سريع",
+                                    tint = textColor.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Slider(
-                        value = sliderValue,
-                        onValueChange = onSliderValueChange,
-                        onValueChangeFinished = onSliderValueChangeFinished,
-                        valueRange = 1f..pageCount.toFloat().coerceAtLeast(1f),
-                        steps = 0,
-                        interactionSource = interactionSource,
-                        thumb = {
-                            Box(
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .shadow(2.dp, CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
-                            )
-                        },
-                        track = { sliderState ->
-                            val fraction = ((sliderState.value - sliderState.valueRange.start) /
-                                (sliderState.valueRange.endInclusive - sliderState.valueRange.start).coerceAtLeast(1f))
-                                .coerceIn(0f, 1f)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(5.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(textColor.copy(alpha = 0.18f))
-                            ) {
+                    if (pageCount > 1) {
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Slider(
+                            value = sliderValue,
+                            onValueChange = onSliderValueChange,
+                            onValueChangeFinished = onSliderValueChangeFinished,
+                            valueRange = 1f..pageCount.toFloat().coerceAtLeast(1f),
+                            steps = 0,
+                            interactionSource = interactionSource,
+                            thumb = {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth(fraction)
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(MaterialTheme.colorScheme.primary)
+                                        .size(16.dp)
+                                        .shadow(2.dp, CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
                                 )
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
+                            },
+                            track = { sliderState ->
+                                val fraction = ((sliderState.value - sliderState.valueRange.start) /
+                                    (sliderState.valueRange.endInclusive - sliderState.valueRange.start).coerceAtLeast(1f))
+                                    .coerceIn(0f, 1f)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(5.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(textColor.copy(alpha = 0.18f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(fraction)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+
+                    // Fast Thumb-Zone Highlighter Toggle
+                    Surface(
+                        onClick = onToggleSelectionMode,
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelectionModeActive) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.08f),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.Highlight,
+                                contentDescription = if (isSelectionModeActive) "إيقاف التظليل" else "تفعيل التظليل",
+                                tint = if (isSelectionModeActive) MaterialTheme.colorScheme.onPrimary else textColor,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

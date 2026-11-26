@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -39,6 +40,7 @@ fun LibraryScreen(
 
     var documents by remember { mutableStateOf<List<StoredDocument>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchExpanded by remember { mutableStateOf(false) }
     var documentToRename by remember { mutableStateOf<StoredDocument?>(null) }
     var documentToDelete by remember { mutableStateOf<StoredDocument?>(null) }
     var isInitialLoading by remember { mutableStateOf(true) }
@@ -235,11 +237,17 @@ fun LibraryScreen(
                     LibraryHeader(
                         documentCount = documents.size,
                         isLandscape = true,
+                        showSearchButton = documents.isNotEmpty(),
+                        isSearchExpanded = isSearchExpanded,
+                        onToggleSearch = {
+                            isSearchExpanded = !isSearchExpanded
+                            if (!isSearchExpanded) searchQuery = ""
+                        },
                         onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) },
                         onOpenSettings = onOpenSettings,
                         modifier = Modifier.weight(1f)
                     )
-                    if (documents.isNotEmpty()) {
+                    if (documents.isNotEmpty() && isSearchExpanded) {
                         DocumentSearchBar(
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
@@ -315,6 +323,12 @@ fun LibraryScreen(
                     LibraryHeader(
                         documentCount = documents.size,
                         isLandscape = false,
+                        showSearchButton = documents.isNotEmpty(),
+                        isSearchExpanded = isSearchExpanded,
+                        onToggleSearch = {
+                            isSearchExpanded = !isSearchExpanded
+                            if (!isSearchExpanded) searchQuery = ""
+                        },
                         onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) },
                         onOpenSettings = onOpenSettings
                     )
@@ -322,10 +336,12 @@ fun LibraryScreen(
 
                 if (documents.isNotEmpty()) {
                     item {
-                        DocumentSearchBar(
-                            query = searchQuery,
-                            onQueryChange = { searchQuery = it }
-                        )
+                        AnimatedVisibility(visible = isSearchExpanded) {
+                            DocumentSearchBar(
+                                query = searchQuery,
+                                onQueryChange = { searchQuery = it }
+                            )
+                        }
                     }
                 }
 

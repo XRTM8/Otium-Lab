@@ -29,6 +29,7 @@ fun PdfTextSelectionOverlay(
     selectedHighlight: PdfHighlight?,
     searchMatchedSpans: List<PdfTextSpan> = emptyList(),
     isSelectionModeActive: Boolean,
+    isDarkPage: Boolean = false,
     onSelectSpans: (List<PdfTextSpan>) -> Unit,
     onTapHighlight: (PdfHighlight) -> Unit,
     onClearSelection: () -> Unit,
@@ -105,15 +106,19 @@ fun PdfTextSelectionOverlay(
             val canvasWidth = size.width
             val canvasHeight = size.height
 
-            // 1. Draw saved highlights (SrcOver alpha works on both Light/Sepia and AMOLED Black pages)
+            // 1. Draw saved highlights (boost gold brightness on dark AMOLED pages so yellow stays golden)
             highlights.forEach { highlight ->
-                val color = Color(highlight.colorArgb).copy(alpha = 0.34f)
+                val resolvedColor = if (isDarkPage && highlight.colorArgb == 0xFFFACC15L) {
+                    Color(0xFFFDE047L).copy(alpha = 0.42f)
+                } else {
+                    Color(highlight.colorArgb).copy(alpha = if (isDarkPage) 0.38f else 0.34f)
+                }
                 highlight.bounds.forEach { b ->
                     val left = b.left * canvasWidth; val top = b.top * canvasHeight
                     val width = (b.right - b.left) * canvasWidth; val height = (b.bottom - b.top) * canvasHeight
 
                     drawRoundRect(
-                        color = color, topLeft = Offset(left, top), size = Size(width, height),
+                        color = resolvedColor, topLeft = Offset(left, top), size = Size(width, height),
                         cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                     )
                 }

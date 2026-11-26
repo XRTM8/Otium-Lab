@@ -67,6 +67,24 @@ fun PdfViewerScreen(
         }
     }
 
+    LaunchedEffect(state.listState.isScrollInProgress, state.pagerState.isScrollInProgress) {
+        val scrolling = state.listState.isScrollInProgress || state.pagerState.isScrollInProgress
+        if (
+            scrolling &&
+            state.hasRestoredPosition &&
+            !state.isDraggingSlider &&
+            state.showControls &&
+            !state.showSearch &&
+            !state.showDisplaySheet &&
+            !state.showTocDialog &&
+            !state.isSelectionModeActive &&
+            state.selectedSpans.isEmpty() &&
+            state.selectedHighlight == null
+        ) {
+            state.showControls = false
+        }
+    }
+
     LaunchedEffect(currentPage, state.isDraggingSlider) { if (!state.isDraggingSlider) state.sliderValue = currentPage.toFloat() }
     LaunchedEffect(state.isLoaded, state.renderer.pageCount) {
         if (state.isLoaded && state.renderer.pageCount > 0 && !state.hasRestoredPosition) {

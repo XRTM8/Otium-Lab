@@ -59,9 +59,8 @@ fun PdfViewerOverlays(
             pageCount = pageCount,
             barBg = barBg,
             textColor = textColor,
-            pageColorMode = pageColorMode,
             isSelectionModeActive = isSelectionModeActive,
-            onOpenSearch = onOpenSearch,
+            onToggleSelectionMode = onToggleSelectionMode,
             onOpenToc = onOpenToc,
             onOpenDisplayOptions = onOpenDisplayOptions,
             onClose = onClose,
@@ -117,6 +116,8 @@ fun PdfViewerOverlays(
             isDraggingSlider = isDraggingSlider,
             barBg = barBg,
             textColor = textColor,
+            isSelectionModeActive = isSelectionModeActive,
+            onToggleSelectionMode = onToggleSelectionMode,
             onSliderValueChange = onSliderValueChange,
             onSliderValueChangeFinished = onSliderValueChangeFinished,
             onOpenJumpDialog = onOpenJumpDialog,
@@ -139,6 +140,7 @@ fun PdfViewerOverlays(
                 highlights = allHighlights,
                 documentTitle = title,
                 onDeleteHighlight = onDeleteHighlightItem,
+                onOpenSearch = onOpenSearch,
                 onSelectPage = onSelectTocPage,
                 onDismiss = onDismissToc
             )
@@ -152,6 +154,7 @@ fun PdfViewerOverlays(
                 onSelectColorMode = onSelectColorMode,
                 onSelectReadingLayout = onSelectReadingLayout,
                 onToggleSelectionMode = onToggleSelectionMode,
+                onOpenSearch = onOpenSearch,
                 onDismiss = onDismissDisplayOptions
             )
         }

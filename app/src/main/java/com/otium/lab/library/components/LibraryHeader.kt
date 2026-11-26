@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -17,6 +19,9 @@ import androidx.compose.ui.unit.dp
 fun LibraryHeader(
     documentCount: Int,
     isLandscape: Boolean,
+    showSearchButton: Boolean,
+    isSearchExpanded: Boolean,
+    onToggleSearch: () -> Unit,
     onOpenPdfPicker: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -24,19 +29,19 @@ fun LibraryHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(top = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "مكتبة المستندات",
+                text = "المكتبة",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = if (documentCount == 0) "جاهز للقراءة المحلية" else "$documentCount مستند متوفر محلياً",
+                text = if (documentCount == 0) "جاهز للقراءة المحلية" else "$documentCount مستند محلي",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -46,6 +51,29 @@ fun LibraryHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (showSearchButton) {
+                Surface(
+                    onClick = onToggleSearch,
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSearchExpanded) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSearchExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        else MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isSearchExpanded) Icons.Rounded.Close else Icons.Rounded.Search,
+                            contentDescription = if (isSearchExpanded) "إغلاق البحث" else "بحث في المستندات",
+                            tint = if (isSearchExpanded) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
             Button(
                 onClick = onOpenPdfPicker,
                 colors = ButtonDefaults.buttonColors(

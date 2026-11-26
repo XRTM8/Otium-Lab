@@ -17,6 +17,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.otium.lab.library.DocumentStore
 import kotlinx.coroutines.Dispatchers
@@ -84,10 +85,11 @@ fun StorageCacheCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "$formattedSize · ملفات مؤقتة فقط",
+                        text = "$formattedSize · قابلة للتفريغ",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
