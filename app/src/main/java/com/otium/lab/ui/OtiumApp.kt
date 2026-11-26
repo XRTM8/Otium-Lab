@@ -29,6 +29,7 @@ import com.otium.lab.ui.components.AppNavigationShell
 import com.otium.lab.ui.theme.OtiumShapes
 import com.otium.lab.ui.theme.OtiumTypography
 import com.otium.lab.ui.theme.ThemePreferences
+import com.otium.lab.ui.theme.animated
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -89,7 +90,7 @@ fun OtiumApp(
     }
 
     MaterialTheme(
-        colorScheme = themePreferences.getColorScheme(),
+        colorScheme = themePreferences.getColorScheme().animated(),
         typography = OtiumTypography,
         shapes = OtiumShapes
     ) {

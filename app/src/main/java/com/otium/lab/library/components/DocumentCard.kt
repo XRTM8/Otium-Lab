@@ -1,12 +1,16 @@
 package com.otium.lab.library.components
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.otium.lab.library.StoredDocument
 import com.otium.lab.library.util.PdfThumbnailLoader
+import com.otium.lab.ui.theme.pressScale
+import com.otium.lab.ui.theme.rememberPressScale
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -44,6 +51,8 @@ fun DocumentCard(
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     var thumbnail by remember(doc.uriString) { mutableStateOf<Bitmap?>(null) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale by rememberPressScale(interactionSource)
     val dateStr = remember(doc.timestamp) {
         SimpleDateFormat("d MMM · hh:mm a", Locale.getDefault()).format(Date(doc.timestamp))
     }
@@ -55,7 +64,7 @@ fun DocumentCard(
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         } else {
             MaterialTheme.colorScheme.surface
         },
@@ -65,8 +74,14 @@ fun DocumentCard(
         ),
         modifier = modifier
             .fillMaxWidth()
+            .pressScale(scale)
             .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -74,8 +89,9 @@ fun DocumentCard(
                     modifier = Modifier
                         .width(44.dp)
                         .height(60.dp)
+                        .shadow(2.dp, RoundedCornerShape(8.dp))
                         .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .background(MaterialTheme.colorScheme.primaryContainer)
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -92,7 +108,7 @@ fun DocumentCard(
                         Icon(
                             imageVector = if (doc.isScanned) Icons.Rounded.CameraAlt else Icons.Rounded.PictureAsPdf,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -118,12 +134,12 @@ fun DocumentCard(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainer
+                            color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             Text(
                                 text = if (doc.isScanned) "ممسوح" else "PDF",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 maxLines = 1
@@ -194,14 +210,19 @@ fun DocumentCard(
 
             if (doc.totalPages > 0 && doc.lastPage > 1) {
                 Spacer(modifier = Modifier.height(10.dp))
-                val progress = (doc.lastPage.toFloat() / doc.totalPages.toFloat()).coerceIn(0f, 1f)
+                val targetProgress = (doc.lastPage.toFloat() / doc.totalPages.toFloat()).coerceIn(0f, 1f)
+                val animatedProgress by animateFloatAsState(
+                    targetValue = targetProgress,
+                    animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                    label = "doc_progress"
+                )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth().padding(start = 58.dp)
                 ) {
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = { animatedProgress },
                         modifier = Modifier
                             .weight(1f)
                             .height(3.dp)

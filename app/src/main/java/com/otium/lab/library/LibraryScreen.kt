@@ -116,11 +116,12 @@ fun LibraryScreen(
     }
 
     @Composable
-    fun RenderDocumentCard(doc: StoredDocument) {
+    fun RenderDocumentCard(doc: StoredDocument, modifier: Modifier = Modifier) {
         val isSelected = doc.uriString in selectedUris
         DocumentCard(
             doc = doc,
             isSelected = isSelected,
+            modifier = modifier,
             onClick = {
                 if (selectedUris.isNotEmpty()) {
                     selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
@@ -292,7 +293,7 @@ fun LibraryScreen(
                                         verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         items(listDocuments, key = { it.uriString }) { doc ->
-                                            RenderDocumentCard(doc)
+                                            RenderDocumentCard(doc, Modifier.animateItem())
                                         }
                                     }
                                 }
@@ -374,7 +375,7 @@ fun LibraryScreen(
                             }
                         }
                         items(listDocuments, key = { it.uriString }) { doc ->
-                            RenderDocumentCard(doc)
+                            RenderDocumentCard(doc, Modifier.animateItem())
                         }
                     }
                 }

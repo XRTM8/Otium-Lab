@@ -1,11 +1,15 @@
 package com.otium.lab.library.components
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -25,6 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.otium.lab.library.StoredDocument
 import com.otium.lab.library.util.PdfThumbnailLoader
+import com.otium.lab.ui.theme.pressScale
+import com.otium.lab.ui.theme.rememberPressScale
 
 @Composable
 fun ContinueReadingHero(
@@ -34,30 +42,63 @@ fun ContinueReadingHero(
 ) {
     val context = LocalContext.current
     var thumbnail by remember(mostRecent.uriString) { mutableStateOf<Bitmap?>(null) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale by rememberPressScale(interactionSource)
 
     LaunchedEffect(mostRecent.uriString) {
         thumbnail = PdfThumbnailLoader.loadThumbnail(context, mostRecent.uri, targetWidth = 220)
     }
 
+    val targetProgress = if (mostRecent.totalPages > 0) {
+        (mostRecent.lastPage.toFloat() / mostRecent.totalPages.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+        label = "hero_progress"
+    )
+
+    val cardBrush = Brush.linearGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.surfaceContainer,
+            MaterialTheme.colorScheme.surface
+        )
+    )
+    val borderBrush = Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+            MaterialTheme.colorScheme.outlineVariant
+        )
+    )
+
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(1.dp, borderBrush),
         modifier = modifier
             .fillMaxWidth()
+            .pressScale(scale)
             .clip(RoundedCornerShape(18.dp))
-            .clickable { onOpenPdf(mostRecent) }
+            .background(cardBrush)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = { onOpenPdf(mostRecent) }
+            )
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier
+                .background(cardBrush)
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .width(52.dp)
-                    .height(72.dp)
+                    .height(74.dp)
+                    .shadow(4.dp, RoundedCornerShape(10.dp))
                     .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -74,7 +115,7 @@ fun ContinueReadingHero(
                     Icon(
                         imageVector = Icons.Rounded.PictureAsPdf,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -124,9 +165,8 @@ fun ContinueReadingHero(
 
                 if (mostRecent.totalPages > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    val progress = (mostRecent.lastPage.toFloat() / mostRecent.totalPages.toFloat()).coerceIn(0f, 1f)
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = { animatedProgress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp)
@@ -136,7 +176,7 @@ fun ContinueReadingHero(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -154,21 +194,26 @@ fun ContinueReadingHero(
                         Spacer(modifier = Modifier.width(1.dp))
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Button(
+                        onClick = { onOpenPdf(mostRecent) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
                         Text(
-                            text = "استئناف",
+                            text = "متابعة",
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                     }
                 }

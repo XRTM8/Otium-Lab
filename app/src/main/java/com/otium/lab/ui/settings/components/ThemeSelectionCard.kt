@@ -41,16 +41,16 @@ fun ThemeSelectionCard(
     val specs = listOf(
         ThemePreviewSpec(
             mode = AppThemeMode.LIGHT,
-            bg = Color(0xFFF8FAFC),
+            bg = Color(0xFFFAF8F9),
             cardBg = Color(0xFFFFFFFF),
-            border = Color(0xFFE2E8F0),
-            textLine = Color(0xFF0F172A),
+            border = Color(0xFFDFCFD5),
+            textLine = Color(0xFF140D10),
             accent = Color(0xFF881337)
         ),
         ThemePreviewSpec(
             mode = AppThemeMode.CREAM,
             bg = Color(0xFFFBF7EE),
-            cardBg = Color(0xFFF3ECE0),
+            cardBg = Color(0xFFF5EFE2),
             border = Color(0xFFDFD3BD),
             textLine = Color(0xFF231815),
             accent = Color(0xFF881337)
@@ -58,9 +58,9 @@ fun ThemeSelectionCard(
         ThemePreviewSpec(
             mode = AppThemeMode.AMOLED,
             bg = Color(0xFF000000),
-            cardBg = Color(0xFF141419),
-            border = Color(0xFF2C2C35),
-            textLine = Color(0xFFF4F4F5),
+            cardBg = Color(0xFF1C1116),
+            border = Color(0xFF422530),
+            textLine = Color(0xFFF5F2F3),
             accent = Color(0xFFBE123C)
         )
     )
