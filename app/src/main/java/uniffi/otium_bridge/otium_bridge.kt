@@ -723,6 +723,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -741,6 +743,8 @@ internal interface UniffiLib : Library {
     fun uniffi_otium_bridge_fn_func_bridge_apply_scan_filter(`imageBytes`: RustBuffer.ByValue,`filterMode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_arabic_stem(`word`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_otium_bridge_fn_func_bridge_deskew_and_clean(`imageBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_detect_document_edges(`imageBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -866,6 +870,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_arabic_stem(
     ): Short
+    fun uniffi_otium_bridge_checksum_func_bridge_deskew_and_clean(
+    ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_detect_document_edges(
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches(
@@ -895,6 +901,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_arabic_stem() != 24451.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_otium_bridge_checksum_func_bridge_deskew_and_clean() != 50013.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_detect_document_edges() != 39879.toShort()) {
@@ -1362,6 +1371,16 @@ public object FfiConverterSequenceTypeArabicMatchRecord: FfiConverterRustBuffer<
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_arabic_stem(
         FfiConverterString.lower(`word`),_status)
+}
+    )
+    }
+    
+
+    @Throws(BridgeException::class) fun `bridgeDeskewAndClean`(`imageBytes`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BridgeException) { _status ->
+    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_deskew_and_clean(
+        FfiConverterByteArray.lower(`imageBytes`),_status)
 }
     )
     }

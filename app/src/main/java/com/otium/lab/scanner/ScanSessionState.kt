@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.otium_bridge.CornerPoints
 import uniffi.otium_bridge.bridgeApplyScanFilter
+import uniffi.otium_bridge.bridgeDeskewAndClean
 import uniffi.otium_bridge.bridgeWarpAndFilter
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -474,6 +475,74 @@ class ScanSessionState(
             } catch (t: Throwable) {
                 Log.e("ScanSession", "Failed to rotate page", t)
                 Toast.makeText(context, "تعذر تدوير الصفحة", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
+    fun deskewAndCleanPage(index: Int) {
+        if (index !in accumulatedPageFiles.indices || isStagingPage || isExportingPdf) return
+        val file = accumulatedPageFiles[index]
+        isStagingPage = true
+        scope.launch {
+            try {
+                val updatedFile = withContext(Dispatchers.Default) {
+                    val raw = file.readBytes()
+                    val processed = bridgeDeskewAndClean(raw)
+                    withContext(Dispatchers.IO) {
+                        val nextFile = File(file.parentFile, "page_${UUID.randomUUID()}.jpg")
+                        FileOutputStream(nextFile).use { it.write(processed) }
+                        file.delete()
+                        nextFile
+                    }
+                }
+                if (index in accumulatedPageFiles.indices) {
+                    accumulatedPageFiles[index] = updatedFile
+                }
+                Toast.makeText(context, "تم تعديل الميلان وتنظيف الحواف", Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to deskew page", t)
+                Toast.makeText(context, "تعذر تعديل ميلان الصفحة", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
+    fun stampSignatureOnPage(index: Int, signatureBitmap: Bitmap) {
+        if (index !in accumulatedPageFiles.indices || isStagingPage || isExportingPdf) return
+        val file = accumulatedPageFiles[index]
+        isStagingPage = true
+        scope.launch {
+            try {
+                val updatedFile = withContext(Dispatchers.Default) {
+                    val pageBmp = BitmapFactory.decodeFile(file.absolutePath)
+                        ?: return@withContext null
+                    val mutable = pageBmp.copy(Bitmap.Config.ARGB_8888, true)
+                    pageBmp.recycle()
+                    val canvas = Canvas(mutable)
+                    val sigW = (mutable.width * 0.28f).toInt().coerceAtLeast(80)
+                    val sigH = (sigW * (signatureBitmap.height.toFloat() / signatureBitmap.width.coerceAtLeast(1))).toInt().coerceAtLeast(30)
+                    val left = (mutable.width - sigW - (mutable.width * 0.08f).toInt()).coerceAtLeast(0)
+                    val top = (mutable.height - sigH - (mutable.height * 0.06f).toInt()).coerceAtLeast(0)
+                    canvas.drawBitmap(signatureBitmap, null, Rect(left, top, left + sigW, top + sigH), null)
+                    val bytes = compressBitmapToBytes(mutable)
+                    mutable.recycle()
+                    withContext(Dispatchers.IO) {
+                        val nextFile = File(file.parentFile, "page_${UUID.randomUUID()}.jpg")
+                        FileOutputStream(nextFile).use { it.write(bytes) }
+                        file.delete()
+                        nextFile
+                    }
+                }
+                if (updatedFile != null && index in accumulatedPageFiles.indices) {
+                    accumulatedPageFiles[index] = updatedFile
+                    Toast.makeText(context, "تم إدراج التوقيع", Toast.LENGTH_SHORT).show()
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to stamp signature", t)
+                Toast.makeText(context, "تعذر إدراج التوقيع", Toast.LENGTH_SHORT).show()
             } finally {
                 isStagingPage = false
             }

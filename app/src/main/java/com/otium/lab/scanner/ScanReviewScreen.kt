@@ -21,6 +21,8 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.otium.lab.scanner.components.DocumentSaveNameDialog
+import com.otium.lab.scanner.components.SignaturePadDialog
 import com.otium.lab.scanner.model.ScanFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,6 +53,8 @@ fun ScanReviewScreen(
     onBack: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onRotate: (Int) -> Unit,
+    onDeskew: (Int) -> Unit = {},
+    onStampSignature: (Int, Bitmap) -> Unit = { _, _ -> },
     onEditPage: (Int) -> Unit = {},
     onDelete: (Int) -> Unit,
     onApplyFilterAll: (ScanFilter) -> Unit = {},
@@ -58,6 +63,7 @@ fun ScanReviewScreen(
 ) {
     var showNameDialog by remember { mutableStateOf(false) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
+    var signingPageIndex by remember { mutableStateOf<Int?>(null) }
     var activeBatchFilter by remember { mutableStateOf<ScanFilter?>(null) }
     Scaffold(
         topBar = {
@@ -138,11 +144,23 @@ fun ScanReviewScreen(
                             Text("الصفحة ${index + 1}", style = MaterialTheme.typography.titleSmall)
                             Text("اضغط للمعاينة والتكبير", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = { onEditPage(index) }, enabled = !isBusy) {
-                            Icon(Icons.Rounded.Crop, contentDescription = "قص وفلتر")
-                        }
-                        IconButton(onClick = { onRotate(index) }, enabled = !isBusy) {
-                            Icon(Icons.AutoMirrored.Rounded.RotateRight, contentDescription = "تدوير 90 درجة")
+                        Column {
+                            Row {
+                                IconButton(onClick = { onEditPage(index) }, enabled = !isBusy) {
+                                    Icon(Icons.Rounded.Crop, contentDescription = "قص وفلتر")
+                                }
+                                IconButton(onClick = { onRotate(index) }, enabled = !isBusy) {
+                                    Icon(Icons.AutoMirrored.Rounded.RotateRight, contentDescription = "تدوير 90 درجة")
+                                }
+                            }
+                            Row {
+                                IconButton(onClick = { onDeskew(index) }, enabled = !isBusy) {
+                                    Icon(Icons.Rounded.Straighten, contentDescription = "تعديل الميلان وتنظيف الحواف")
+                                }
+                                IconButton(onClick = { signingPageIndex = index }, enabled = !isBusy) {
+                                    Icon(Icons.Rounded.Draw, contentDescription = "توقيع إلكتروني")
+                                }
+                            }
                         }
                         Column {
                             IconButton(onClick = { onMove(index, index - 1) }, enabled = index > 0) {
@@ -221,6 +239,15 @@ fun ScanReviewScreen(
                 }
             }
         }
+    }
+    signingPageIndex?.let { idx ->
+        SignaturePadDialog(
+            onConfirm = { bmp ->
+                signingPageIndex = null
+                onStampSignature(idx, bmp)
+            },
+            onDismiss = { signingPageIndex = null }
+        )
     }
     if (showNameDialog) {
         val defaultName = remember {

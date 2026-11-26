@@ -110,6 +110,8 @@ fun OtiumApp(
                     onBack = { scanSession.closeReview() },
                     onMove = scanSession::movePage,
                     onRotate = scanSession::rotatePage,
+                    onDeskew = scanSession::deskewAndCleanPage,
+                    onStampSignature = scanSession::stampSignatureOnPage,
                     onEditPage = scanSession::startReEditPage,
                     onDelete = scanSession::removePage,
                     onApplyFilterAll = scanSession::applyFilterToAllPages,

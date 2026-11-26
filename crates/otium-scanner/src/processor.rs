@@ -271,6 +271,127 @@ impl DocumentScanner {
             .unwrap_or_else(|| image.clone())
     }
 
+    /// Estimates residual text-line tilt in [-6.0, +6.0] degrees using horizontal
+    /// projection profile variance on a downscaled grayscale thumbnail, then rotates
+    /// the image with bilinear interpolation and white paper fill.
+    pub fn deskew_rgba(image: &RgbaImage) -> RgbaImage {
+        let (w, h) = image.dimensions();
+        if w < 120 || h < 120 {
+            return image.clone();
+        }
+        let scale = (320.0 / w.max(h) as f32).min(1.0);
+        let sw = ((w as f32 * scale).round() as usize).max(40);
+        let sh = ((h as f32 * scale).round() as usize).max(40);
+        let raw = image.as_raw();
+        let mut dark = vec![0.0f32; sw * sh];
+        for y in 0..sh {
+            let sy = (y * h as usize / sh).min(h as usize - 1);
+            for x in 0..sw {
+                let sx = (x * w as usize / sw).min(w as usize - 1);
+                let i = (sy * w as usize + sx) * 4;
+                let luma = (raw[i] as u32 * 77 + raw[i + 1] as u32 * 150 + raw[i + 2] as u32 * 29) >> 8;
+                dark[y * sw + x] = if luma < 140 { 1.0 } else { 0.0 };
+            }
+        }
+
+        let mut best_angle = 0.0f32;
+        let mut best_score = -1.0f32;
+        let cx = sw as f32 * 0.5;
+        let cy = sh as f32 * 0.5;
+        for step in -12..=12 {
+            let deg = step as f32 * 0.5;
+            let rad = deg.to_radians();
+            let sin_a = rad.sin();
+            let cos_a = rad.cos();
+            let mut row_sums = vec![0.0f32; sh];
+            for y in (sh / 8)..(sh * 7 / 8) {
+                for x in (sw / 8)..(sw * 7 / 8) {
+                    if dark[y * sw + x] > 0.5 {
+                        let ry = ((x as f32 - cx) * sin_a + (y as f32 - cy) * cos_a + cy).round() as isize;
+                        if ry >= 0 && (ry as usize) < sh {
+                            row_sums[ry as usize] += 1.0;
+                        }
+                    }
+                }
+            }
+            let mean = row_sums.iter().sum::<f32>() / sh as f32;
+            let var = row_sums.iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>() / sh as f32;
+            if var > best_score {
+                best_score = var;
+                best_angle = deg;
+            }
+        }
+
+        if best_angle.abs() < 0.4 {
+            return image.clone();
+        }
+
+        let rad = (-best_angle).to_radians();
+        let cos_a = rad.cos();
+        let sin_a = rad.sin();
+        let w_f = w as f32;
+        let h_f = h as f32;
+        let cx_full = w_f * 0.5;
+        let cy_full = h_f * 0.5;
+        let stride = (w as usize) * 4;
+        let mut out = vec![255u8; (w as usize) * (h as usize) * 4];
+
+        for y in 0..h {
+            let dy = y as f32 - cy_full;
+            let row_off = (y as usize) * stride;
+            for x in 0..w {
+                let dx = x as f32 - cx_full;
+                let sx = dx * cos_a - dy * sin_a + cx_full;
+                let sy = dx * sin_a + dy * cos_a + cy_full;
+                if sx >= 0.0 && sx < w_f - 1.0 && sy >= 0.0 && sy < h_f - 1.0 {
+                    let x0 = sx as usize;
+                    let y0 = sy as usize;
+                    let fx = sx - x0 as f32;
+                    let fy = sy - y0 as f32;
+                    let [i00, i10, i01, i11] = otium_scan_math::rgba_neighbors(x0, y0, stride);
+                    let dst = row_off + (x as usize) * 4;
+                    for c in 0..4 {
+                        let top = (1.0 - fx) * raw[i00 + c] as f32 + fx * raw[i10 + c] as f32;
+                        let bot = (1.0 - fx) * raw[i01 + c] as f32 + fx * raw[i11 + c] as f32;
+                        out[dst + c] = ((1.0 - fy) * top + fy * bot).clamp(0.0, 255.0) as u8;
+                    }
+                }
+            }
+        }
+
+        RgbaImage::from_raw(w, h, out).unwrap_or_else(|| image.clone())
+    }
+
+    /// Cleans accidental skin-tone finger intrusions on the outer 7% left/right margins
+    /// by replacing detected skin pixels with neutral white paper.
+    pub fn remove_margin_fingers(image: &RgbaImage) -> RgbaImage {
+        let (w, h) = image.dimensions();
+        if w < 60 || h < 60 {
+            return image.clone();
+        }
+        let margin_w = (w as f32 * 0.07).round() as u32;
+        let mut out = image.clone();
+        for y in 0..h {
+            for x in 0..w {
+                if x >= margin_w && x < w - margin_w {
+                    continue;
+                }
+                let p = out.get_pixel(x, y);
+                let r = p[0] as i32;
+                let g = p[1] as i32;
+                let b = p[2] as i32;
+                let is_skin = r > 95 && g > 40 && b > 20
+                    && (r - g) > 15
+                    && r > b
+                    && (r.max(g).max(b) - r.min(g).min(b)) > 18;
+                if is_skin {
+                    out.put_pixel(x, y, image::Rgba([255, 255, 255, p[3]]));
+                }
+            }
+        }
+        out
+    }
+
     fn downscale_dims(w: usize, h: usize) -> (usize, usize) {
         let max_side = w.max(h) as f32;
         let scale = (140.0 / max_side).min(1.0);
@@ -441,5 +562,36 @@ mod tests {
         let magic = DocumentScanner::magic_color_filter(&img);
         let px = magic.get_pixel(40, 40);
         assert!(px[0] >= 250 && px[1] >= 250 && px[2] >= 250);
+    }
+
+    #[test]
+    fn margin_finger_cleanup_whitens_skin_on_edge() {
+        let mut img = RgbaImage::from_pixel(200, 200, Rgba([255, 255, 255, 255]));
+        // Skin-toned thumb on left 5% margin
+        for y in 80..120 {
+            for x in 0..10 {
+                img.put_pixel(x, y, Rgba([195, 130, 105, 255]));
+            }
+        }
+        let cleaned = DocumentScanner::remove_margin_fingers(&img);
+        assert_eq!(cleaned.get_pixel(5, 100)[0], 255);
+    }
+
+    #[test]
+    fn deskew_straightens_slightly_tilted_lines() {
+        let mut img = RgbaImage::from_pixel(240, 240, Rgba([255, 255, 255, 255]));
+        // Draw tilted dark text lines at ~3 degrees
+        let slope = 3.0f32.to_radians().tan();
+        for base_y in (40..200).step_by(24) {
+            for x in 40..200 {
+                let y = (base_y as f32 + (x as f32 - 120.0) * slope).round() as u32;
+                if y < 238 {
+                    img.put_pixel(x, y, Rgba([20, 20, 20, 255]));
+                    img.put_pixel(x, y + 1, Rgba([20, 20, 20, 255]));
+                }
+            }
+        }
+        let deskewed = DocumentScanner::deskew_rgba(&img);
+        assert_eq!(deskewed.dimensions(), (240, 240));
     }
 }
