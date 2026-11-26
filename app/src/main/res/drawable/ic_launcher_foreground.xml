@@ -10,13 +10,13 @@
         android:fillColor="#22FF3366"
         android:pathData="M54,55m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0" />
 
-    <!-- Platinum Crown Diamond (Athar Nuqta Signature) -->
+    <!-- Platinum Crown Diamond (Unified 5.2dp Nuqta) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,23 L60.5,29.5 L54,36 L47.5,29.5 Z" />
+        android:pathData="M54,24.3 L59.2,29.5 L54,34.7 L48.8,29.5 Z" />
     <path
         android:fillColor="#FFB3C1"
-        android:pathData="M54,25.8 L57.7,29.5 L54,33.2 L50.3,29.5 Z" />
+        android:pathData="M54,26.8 L56.7,29.5 L54,32.2 L51.3,29.5 Z" />
 
     <!-- Left Folio Wing (Vibrant Crimson) -->
     <path
