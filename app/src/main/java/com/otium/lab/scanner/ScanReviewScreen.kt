@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,6 +50,7 @@ fun ScanReviewScreen(
     onBack: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onRotate: (Int) -> Unit,
+    onEditPage: (Int) -> Unit = {},
     onDelete: (Int) -> Unit,
     onApplyFilterAll: (ScanFilter) -> Unit = {},
     onSave: (String) -> Unit
@@ -134,6 +136,9 @@ fun ScanReviewScreen(
                         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                             Text("الصفحة ${index + 1}", style = MaterialTheme.typography.titleSmall)
                             Text("اضغط للمعاينة والتكبير", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { onEditPage(index) }, enabled = !isBusy) {
+                            Icon(Icons.Rounded.Crop, contentDescription = "قص وفلتر")
                         }
                         IconButton(onClick = { onRotate(index) }, enabled = !isBusy) {
                             Icon(Icons.AutoMirrored.Rounded.RotateRight, contentDescription = "تدوير 90 درجة")

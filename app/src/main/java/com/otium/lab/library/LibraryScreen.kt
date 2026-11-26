@@ -13,6 +13,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -23,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.otium.lab.library.components.*
+import com.otium.lab.scanner.PdfExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,6 +49,8 @@ fun LibraryScreen(
     var isInitialLoading by remember { mutableStateOf(true) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
     var sortByName by remember { mutableStateOf(false) }
+    var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isMerging by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         documents = withContext(Dispatchers.IO) { documentStore.getDocuments() }
@@ -96,6 +102,62 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        topBar = {
+            if (selectedUris.isNotEmpty()) {
+                Surface(tonalElevation = 4.dp, color = MaterialTheme.colorScheme.primaryContainer) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { selectedUris = emptySet() }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "إلغاء التحديد")
+                        }
+                        Text("${selectedUris.size} محدد", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        if (selectedUris.size >= 2) {
+                            TextButton(
+                                enabled = !isMerging,
+                                onClick = {
+                                    val targets = documents.filter { it.uriString in selectedUris }
+                                    isMerging = true
+                                    scope.launch {
+                                        try {
+                                            val merged = PdfExporter.mergePdfUris(context, targets.map { it.uri })
+                                            val mergedUri = Uri.fromFile(merged)
+                                            withContext(Dispatchers.IO) {
+                                                documentStore.addOrUpdateDocument(mergedUri, merged.nameWithoutExtension, isScanned = true)
+                                            }
+                                            val updated = withContext(Dispatchers.IO) { documentStore.getDocuments() }
+                                            documents = updated
+                                            selectedUris = emptySet()
+                                            Toast.makeText(context, "تم دمج الملفات بنجاح", Toast.LENGTH_SHORT).show()
+                                        } catch (t: Throwable) {
+                                            Toast.makeText(context, "تعذر الدمج: ${t.localizedMessage ?: ""}", Toast.LENGTH_LONG).show()
+                                        } finally {
+                                            isMerging = false
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Rounded.LibraryAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("دمج PDF")
+                            }
+                        }
+                        IconButton(onClick = {
+                            val targets = documents.filter { it.uriString in selectedUris }
+                            selectedUris = emptySet()
+                            scope.launch(Dispatchers.IO) {
+                                targets.forEach { documentStore.deleteDocument(it) }
+                                val updated = documentStore.getDocuments()
+                                withContext(Dispatchers.Main) { documents = updated }
+                            }
+                        }) {
+                            Icon(Icons.Rounded.Delete, contentDescription = "حذف المحدد")
+                        }
+                    }
+                }
+            }
+        },
         floatingActionButton = {
             if (!isLandscape) {
                 ExtendedFloatingActionButton(
@@ -154,9 +216,20 @@ fun LibraryScreen(
                     item { EmptyLibraryState() }
                 } else {
                     items(filtered, key = { it.uriString }) { doc ->
+                        val isSelected = doc.uriString in selectedUris
                         DocumentCard(
                             doc = doc,
-                            onClick = { onOpenPdf(doc.uri, doc.title) },
+                            isSelected = isSelected,
+                            onClick = {
+                                if (selectedUris.isNotEmpty()) {
+                                    selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
+                                } else {
+                                    onOpenPdf(doc.uri, doc.title)
+                                }
+                            },
+                            onLongClick = {
+                                selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
+                            },
                             onShare = { shareDoc(doc) },
                             onRename = { documentToRename = doc },
                             onExport = {

@@ -2,6 +2,10 @@ package com.otium.lab.scanner
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Rect
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -37,6 +41,8 @@ class ScanSessionState(
         private set
     var isReviewingBatch by mutableStateOf(false)
         private set
+    var editingPageIndex by mutableStateOf<Int?>(null)
+        private set
     private var sessionGeneration = 0
     private val rawOriginals = mutableMapOf<String, File>()
 
@@ -47,6 +53,7 @@ class ScanSessionState(
         accumulatedPageFiles.clear()
         rawOriginals.clear()
         capturedImageBytes = null
+        editingPageIndex = null
         isReviewingBatch = false
         scope.launch(Dispatchers.IO) {
             snapshot.forEach { runCatching { it.delete() } }
@@ -64,6 +71,7 @@ class ScanSessionState(
         if (isStagingPage || isExportingPdf) return
         isStagingPage = true
         val generation = sessionGeneration
+        val replaceIdx = editingPageIndex
         scope.launch {
             try {
                 val tempFile = withContext(Dispatchers.IO) {
@@ -74,12 +82,185 @@ class ScanSessionState(
                     }
                 }
                 if (generation == sessionGeneration) {
-                    accumulatedPageFiles.add(tempFile)
-                    capturedImageBytes = null
+                    if (replaceIdx != null && replaceIdx in accumulatedPageFiles.indices) {
+                        val old = accumulatedPageFiles[replaceIdx]
+                        rawOriginals[old.absolutePath]?.let { raw ->
+                            rawOriginals.remove(old.absolutePath)
+                            rawOriginals[tempFile.absolutePath] = raw
+                        }
+                        old.delete()
+                        accumulatedPageFiles[replaceIdx] = tempFile
+                        editingPageIndex = null
+                        capturedImageBytes = null
+                        isReviewingBatch = true
+                    } else {
+                        accumulatedPageFiles.add(tempFile)
+                        capturedImageBytes = null
+                    }
                 } else tempFile.delete()
             } catch (t: Throwable) {
                 Log.e("ScanSession", "Failed to stage scanned page", t)
                 Toast.makeText(context, "تعذر حفظ الصفحة المؤقتة", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
+    fun startReEditPage(index: Int) {
+        if (index !in accumulatedPageFiles.indices || isStagingPage || isExportingPdf) return
+        val currentFile = accumulatedPageFiles[index]
+        val sourceFile = rawOriginals[currentFile.absolutePath]?.takeIf { it.exists() } ?: currentFile
+        scope.launch {
+            val bytes = withContext(Dispatchers.IO) { runCatching { sourceFile.readBytes() }.getOrNull() }
+            if (bytes != null) {
+                editingPageIndex = index
+                isReviewingBatch = false
+                capturedImageBytes = bytes
+            } else {
+                Toast.makeText(context, "تعذر قراءة الصفحة للتعديل", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun cancelCropOrEdit() {
+        if (isStagingPage) return
+        capturedImageBytes = null
+        if (editingPageIndex != null) {
+            editingPageIndex = null
+            if (accumulatedPageFiles.isNotEmpty()) isReviewingBatch = true
+        }
+    }
+
+    fun importGalleryImages(uris: List<Uri>) {
+        if (uris.isEmpty() || isStagingPage || isExportingPdf) return
+        if (uris.size == 1) {
+            scope.launch(Dispatchers.IO) {
+                val processed = ImageProcessingUtils.processUriImage(context, uris.first())
+                if (processed != null) withContext(Dispatchers.Main) { capturedImageBytes = processed }
+            }
+            return
+        }
+        val generation = sessionGeneration
+        isStagingPage = true
+        scope.launch {
+            try {
+                val staged = withContext(Dispatchers.Default) {
+                    val tempDir = File(context.cacheDir, "scan_session").apply { if (!exists()) mkdirs() }
+                    uris.mapNotNull { uri ->
+                        val raw = ImageProcessingUtils.processUriImage(context, uri) ?: return@mapNotNull null
+                        val dims = ImageProcessingUtils.imageDimensions(raw)
+                        val det = DocumentEdgeDetector.detectBytes(raw)
+                        val outBytes = if (det != null && dims != null) {
+                            val q = det.quad
+                            val corners = CornerPoints(
+                                q.topLeft.x * dims.first, q.topLeft.y * dims.second,
+                                q.topRight.x * dims.first, q.topRight.y * dims.second,
+                                q.bottomRight.x * dims.first, q.bottomRight.y * dims.second,
+                                q.bottomLeft.x * dims.first, q.bottomLeft.y * dims.second
+                            )
+                            runCatching { bridgeWarpAndFilter(raw, corners, ScanFilter.MAGIC_COLOR.mode) }
+                                .getOrElse { ImageProcessingUtils.applyFallbackFilter(raw, ScanFilter.MAGIC_COLOR) }
+                        } else {
+                            runCatching { bridgeApplyScanFilter(raw, ScanFilter.MAGIC_COLOR.mode) }
+                                .getOrElse { ImageProcessingUtils.applyFallbackFilter(raw, ScanFilter.MAGIC_COLOR) }
+                        }
+                        val pFile = File(tempDir, "page_${UUID.randomUUID()}.jpg").also { f ->
+                            FileOutputStream(f).use { it.write(outBytes) }
+                        }
+                        val rFile = File(tempDir, "raw_${UUID.randomUUID()}.jpg").also { f ->
+                            FileOutputStream(f).use { it.write(raw) }
+                        }
+                        pFile to rFile
+                    }
+                }
+                if (generation == sessionGeneration && staged.isNotEmpty()) {
+                    staged.forEach { (p, r) ->
+                        rawOriginals[p.absolutePath] = r
+                        accumulatedPageFiles.add(p)
+                    }
+                    isReviewingBatch = true
+                } else {
+                    staged.forEach { (p, r) -> p.delete(); r.delete() }
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed multi-gallery import", t)
+                Toast.makeText(context, "تعذر استيراد الصور", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
+    fun stitchIdCardAndStage(frontBytes: ByteArray, backBytes: ByteArray) {
+        if (isStagingPage || isExportingPdf) return
+        val generation = sessionGeneration
+        isStagingPage = true
+        scope.launch {
+            try {
+                val stagedFile = withContext(Dispatchers.Default) {
+                    fun processSide(raw: ByteArray): Bitmap? {
+                        val dims = ImageProcessingUtils.imageDimensions(raw)
+                        val det = DocumentEdgeDetector.detectBytes(raw)
+                        val processed = if (det != null && dims != null) {
+                            val q = det.quad
+                            val corners = CornerPoints(
+                                q.topLeft.x * dims.first, q.topLeft.y * dims.second,
+                                q.topRight.x * dims.first, q.topRight.y * dims.second,
+                                q.bottomRight.x * dims.first, q.bottomRight.y * dims.second,
+                                q.bottomLeft.x * dims.first, q.bottomLeft.y * dims.second
+                            )
+                            runCatching { bridgeWarpAndFilter(raw, corners, ScanFilter.MAGIC_COLOR.mode) }
+                                .getOrElse { ImageProcessingUtils.applyFallbackFilter(raw, ScanFilter.MAGIC_COLOR) }
+                        } else {
+                            runCatching { bridgeApplyScanFilter(raw, ScanFilter.MAGIC_COLOR.mode) }
+                                .getOrElse { ImageProcessingUtils.applyFallbackFilter(raw, ScanFilter.MAGIC_COLOR) }
+                        }
+                        return BitmapFactory.decodeByteArray(processed, 0, processed.size)
+                    }
+
+                    val frontBmp = processSide(frontBytes) ?: return@withContext null
+                    val backBmp = processSide(backBytes) ?: run { frontBmp.recycle(); return@withContext null }
+
+                    val pageW = 1654
+                    val pageH = 2339
+                    val canvasBmp = Bitmap.createBitmap(pageW, pageH, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(canvasBmp)
+                    canvas.drawColor(Color.WHITE)
+
+                    fun drawCentered(bmp: Bitmap, topY: Int, slotH: Int) {
+                        val maxW = (pageW * 0.78f).toInt()
+                        val maxH = (slotH * 0.84f).toInt()
+                        val scale = minOf(maxW.toFloat() / bmp.width, maxH.toFloat() / bmp.height)
+                        val dw = (bmp.width * scale).toInt().coerceAtLeast(1)
+                        val dh = (bmp.height * scale).toInt().coerceAtLeast(1)
+                        val left = (pageW - dw) / 2
+                        val top = topY + (slotH - dh) / 2
+                        canvas.drawBitmap(bmp, null, Rect(left, top, left + dw, top + dh), null)
+                    }
+
+                    drawCentered(frontBmp, 80, 1060)
+                    drawCentered(backBmp, 1180, 1060)
+                    frontBmp.recycle()
+                    backBmp.recycle()
+
+                    val jpeg = compressBitmapToBytes(canvasBmp)
+                    canvasBmp.recycle()
+
+                    val tempDir = File(context.cacheDir, "scan_session").apply { if (!exists()) mkdirs() }
+                    File(tempDir, "idcard_${UUID.randomUUID()}.jpg").also { f ->
+                        FileOutputStream(f).use { it.write(jpeg) }
+                    }
+                }
+                if (stagedFile != null && generation == sessionGeneration) {
+                    accumulatedPageFiles.add(stagedFile)
+                    isReviewingBatch = true
+                } else {
+                    stagedFile?.delete()
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to stitch ID card", t)
+                Toast.makeText(context, "تعذر دمج وجهي البطاقة", Toast.LENGTH_SHORT).show()
             } finally {
                 isStagingPage = false
             }

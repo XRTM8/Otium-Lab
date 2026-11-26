@@ -93,7 +93,7 @@ fun OtiumApp(
                 )
                 scanSession.capturedImageBytes != null -> CropAndFilterScreen(
                     rawImageBytes = scanSession.capturedImageBytes!!,
-                    pageNumber = scanSession.accumulatedPageFiles.size + 1,
+                    pageNumber = (scanSession.editingPageIndex ?: scanSession.accumulatedPageFiles.size) + 1,
                     onAddMore = { bmp -> scanSession.addPageAndContinue(bmp) },
                     onSavePdf = { bmp, title ->
                         scanSession.saveWithLastPage(bmp, title) { uri, savedTitle ->
@@ -102,7 +102,7 @@ fun OtiumApp(
                             currentDestination = AppDestination.LIBRARY
                         }
                     },
-                    onCancel = { if (!scanSession.isStagingPage) scanSession.capturedImageBytes = null }
+                    onCancel = { scanSession.cancelCropOrEdit() }
                 )
                 scanSession.isReviewingBatch -> ScanReviewScreen(
                     pages = scanSession.accumulatedPageFiles.toList(),
@@ -110,6 +110,7 @@ fun OtiumApp(
                     onBack = { scanSession.closeReview() },
                     onMove = scanSession::movePage,
                     onRotate = scanSession::rotatePage,
+                    onEditPage = scanSession::startReEditPage,
                     onDelete = scanSession::removePage,
                     onApplyFilterAll = scanSession::applyFilterToAllPages,
                     onSave = { title ->
@@ -124,6 +125,8 @@ fun OtiumApp(
                     pageCount = scanSession.accumulatedPageFiles.size,
                     onImageCaptured = { bytes -> scanSession.capturedImageBytes = bytes },
                     onQuickBatchCapture = { bytes -> scanSession.quickProcessAndStagePage(bytes) },
+                    onMultipleGallerySelected = { uris -> scanSession.importGalleryImages(uris) },
+                    onIdCardCaptured = { front, back -> scanSession.stitchIdCardAndStage(front, back) },
                     onFinishBatch = { scanSession.reviewBatch() },
                     onClose = {
                         scanSession.clearSession()

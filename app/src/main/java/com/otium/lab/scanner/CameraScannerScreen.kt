@@ -58,6 +58,8 @@ fun CameraScannerScreen(
     pageCount: Int = 0,
     onImageCaptured: (ByteArray) -> Unit,
     onQuickBatchCapture: (ByteArray) -> Unit = onImageCaptured,
+    onMultipleGallerySelected: (List<Uri>) -> Unit = {},
+    onIdCardCaptured: (ByteArray, ByteArray) -> Unit = { front, _ -> onImageCaptured(front) },
     onFinishBatch: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -78,13 +80,10 @@ fun CameraScannerScreen(
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch(Dispatchers.IO) {
-                val processed = ImageProcessingUtils.processUriImage(context, uri)
-                if (processed != null) withContext(Dispatchers.Main) { onImageCaptured(processed) }
-            }
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            onMultipleGallerySelected(uris)
         }
     }
 
@@ -104,6 +103,8 @@ fun CameraScannerScreen(
     var showShutterFlash by remember { mutableStateOf(false) }
     var autoCaptureEnabled by remember { mutableStateOf(true) }
     var quickBatchEnabled by remember { mutableStateOf(false) }
+    var idCardModeEnabled by remember { mutableStateOf(false) }
+    var idCardFrontBytes by remember { mutableStateOf<ByteArray?>(null) }
     var smoothedQuad by remember { mutableStateOf<NormalizedQuad?>(null) }
     var stabilityProgress by remember { mutableFloatStateOf(0f) }
     var lastAutoCaptureTime by remember { mutableLongStateOf(0L) }
@@ -120,8 +121,19 @@ fun CameraScannerScreen(
         captureScannerPhoto(context, scope, capture) { bytes ->
             isCapturing = false
             if (bytes != null) {
-                if (quickBatchEnabled) onQuickBatchCapture(bytes)
-                else onImageCaptured(bytes)
+                when {
+                    idCardModeEnabled -> {
+                        val front = idCardFrontBytes
+                        if (front == null) {
+                            idCardFrontBytes = bytes
+                        } else {
+                            idCardFrontBytes = null
+                            onIdCardCaptured(front, bytes)
+                        }
+                    }
+                    quickBatchEnabled -> onQuickBatchCapture(bytes)
+                    else -> onImageCaptured(bytes)
+                }
             }
         }
     }
@@ -224,6 +236,8 @@ fun CameraScannerScreen(
 
         val liveStatus = when {
             isCapturing -> "جارٍ الالتقاط..."
+            idCardModeEnabled && idCardFrontBytes == null -> "صوّر الوجه الأمامي للبطاقة"
+            idCardModeEnabled && idCardFrontBytes != null -> "تم الوجه الأمامي · صوّر الوجه الخلفي"
             autoCaptureEnabled && stabilityProgress > 0.35f -> "ثبّت الجهاز... جارٍ الالتقاط التلقائي"
             else -> null
         }
@@ -280,15 +294,21 @@ fun CameraScannerScreen(
                     Row(modifier = Modifier.padding(4.dp)) {
                         CaptureModeChip(
                             label = "صفحة",
-                            selected = !quickBatchEnabled,
+                            selected = !quickBatchEnabled && !idCardModeEnabled,
                             primaryColor = primaryColor,
-                            onClick = { quickBatchEnabled = false }
+                            onClick = { quickBatchEnabled = false; idCardModeEnabled = false; idCardFrontBytes = null }
                         )
                         CaptureModeChip(
                             label = "مسح سريع",
-                            selected = quickBatchEnabled,
+                            selected = quickBatchEnabled && !idCardModeEnabled,
                             primaryColor = primaryColor,
-                            onClick = { quickBatchEnabled = true }
+                            onClick = { quickBatchEnabled = true; idCardModeEnabled = false; idCardFrontBytes = null }
+                        )
+                        CaptureModeChip(
+                            label = "بطاقة",
+                            selected = idCardModeEnabled,
+                            primaryColor = primaryColor,
+                            onClick = { idCardModeEnabled = true; quickBatchEnabled = false; idCardFrontBytes = null }
                         )
                     }
                 }

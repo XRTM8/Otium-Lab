@@ -1,10 +1,11 @@
 package com.otium.lab.library.components
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,10 +27,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DocumentCard(
     doc: StoredDocument,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onShare: () -> Unit,
     onRename: () -> Unit,
     onExport: () -> Unit,
@@ -47,9 +51,10 @@ fun DocumentCard(
 
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
         tonalElevation = 1.dp,
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
