@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.otium.lab.library.components.*
+import com.otium.lab.library.util.DocumentExporter
 import com.otium.lab.library.util.PdfMerger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,9 +46,11 @@ fun LibraryScreen(
     var documents by remember { mutableStateOf<List<StoredDocument>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var documentToRename by remember { mutableStateOf<StoredDocument?>(null) }
+    var documentToFolder by remember { mutableStateOf<StoredDocument?>(null) }
     var documentToDelete by remember { mutableStateOf<StoredDocument?>(null) }
     var isInitialLoading by remember { mutableStateOf(true) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
+    var selectedFolder by remember { mutableStateOf<String?>(null) }
     var sortByName by remember { mutableStateOf(false) }
     var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isMerging by remember { mutableStateOf(false) }
@@ -70,33 +74,49 @@ fun LibraryScreen(
         }
     }
 
+    val folders = remember(documents) { documents.map { it.folder }.filter { it.isNotBlank() }.distinct().sorted() }
     val mostRecent = documents.firstOrNull()
     val filtered = documents
         .filter { doc ->
             val matchesCategory = when (selectedFilterIndex) { 1 -> doc.isScanned; 2 -> !doc.isScanned; else -> true }
+            val matchesFolder = selectedFolder == null || doc.folder == selectedFolder
             val matchesSearch = if (searchQuery.isBlank()) true else doc.title.contains(searchQuery.trim(), ignoreCase = true)
-            matchesCategory && matchesSearch
+            matchesCategory && matchesFolder && matchesSearch
         }
         .let { list -> if (sortByName) list.sortedBy { it.title.lowercase() } else list }
 
     fun shareDoc(doc: StoredDocument) {
-        try {
-            val shareUri = if (doc.uri.scheme == "file") {
-                val file = File(doc.uri.path ?: "")
-                if (!file.exists()) {
-                    Toast.makeText(context, "الملف غير موجود للمشاركة", Toast.LENGTH_SHORT).show()
-                    return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val annotatedCopy = DocumentExporter.createAnnotatedCopyIfNeeded(context, doc.uri, doc.title)
+                val shareUri = when {
+                    annotatedCopy != null && annotatedCopy.exists() ->
+                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", annotatedCopy)
+                    doc.uri.scheme == "file" -> {
+                        val file = File(doc.uri.path ?: "")
+                        if (!file.exists()) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "الملف غير موجود للمشاركة", Toast.LENGTH_SHORT).show()
+                            }
+                            return@launch
+                        }
+                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    }
+                    else -> doc.uri
                 }
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            } else doc.uri
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/pdf"
-                putExtra(Intent.EXTRA_STREAM, shareUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                withContext(Dispatchers.Main) {
+                    context.startActivity(Intent.createChooser(intent, "مشاركة المستند"))
+                }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "تعذر مشاركة المستند", Toast.LENGTH_SHORT).show()
+                }
             }
-            context.startActivity(Intent.createChooser(intent, "مشاركة المستند"))
-        } catch (_: Exception) {
-            Toast.makeText(context, "تعذر مشاركة المستند", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -210,6 +230,26 @@ fun LibraryScreen(
                     }
                 }
             }
+            if (folders.isNotEmpty()) {
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            FilterChip(
+                                selected = selectedFolder == null,
+                                onClick = { selectedFolder = null },
+                                label = { Text("كل المجلدات", fontSize = 12.sp) }
+                            )
+                        }
+                        items(folders) { folder ->
+                            FilterChip(
+                                selected = selectedFolder == folder,
+                                onClick = { selectedFolder = if (selectedFolder == folder) null else folder },
+                                label = { Text(folder, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                }
+            }
             if (!isInitialLoading) {
                 if (filtered.isEmpty()) {
                     item { EmptyLibraryState() }
@@ -231,6 +271,7 @@ fun LibraryScreen(
                             },
                             onShare = { shareDoc(doc) },
                             onRename = { documentToRename = doc },
+                            onAssignFolder = { documentToFolder = doc },
                             onExport = {
                                 scope.launch(Dispatchers.IO) {
                                     val ok = documentStore.exportToDownloads(doc)
@@ -259,6 +300,23 @@ fun LibraryScreen(
                     }
                 },
                 onDismiss = { documentToRename = null }
+            )
+        }
+
+        if (documentToFolder != null) {
+            DocumentFolderDialog(
+                initialFolder = documentToFolder!!.folder,
+                existingFolders = folders,
+                onConfirm = { newFolder ->
+                    val doc = documentToFolder!!
+                    documentToFolder = null
+                    scope.launch(Dispatchers.IO) {
+                        documentStore.updateFolder(doc.uri, newFolder)
+                        val updated = documentStore.getDocuments()
+                        withContext(Dispatchers.Main) { documents = updated }
+                    }
+                },
+                onDismiss = { documentToFolder = null }
             )
         }
 
