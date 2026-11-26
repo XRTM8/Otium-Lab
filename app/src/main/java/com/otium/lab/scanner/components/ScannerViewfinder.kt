@@ -19,6 +19,7 @@ fun ScannerViewfinder(
     detectedQuad: NormalizedQuad? = null,
     analysisWidth: Int = 1,
     analysisHeight: Int = 1,
+    stabilityProgress: Float = 0f,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "viewfinder")
@@ -47,8 +48,14 @@ fun ScannerViewfinder(
                 points.drop(1).forEach { lineTo(it.x, it.y) }
                 close()
             }
-            drawPath(path, primaryColor.copy(alpha = .95f), style = Stroke(3.dp.toPx()))
-            points.forEach { drawCircle(primaryColor, 5.dp.toPx(), it) }
+            val fillAlpha = 0.12f + (stabilityProgress.coerceIn(0f, 1f) * 0.22f)
+            val strokeColor = if (stabilityProgress > 0.65f) Color(0xFF4ADE80) else primaryColor
+            drawPath(path, strokeColor.copy(alpha = fillAlpha))
+            drawPath(path, strokeColor.copy(alpha = .95f), style = Stroke((3f + stabilityProgress * 1.5f).dp.toPx()))
+            points.forEach {
+                drawCircle(Color.White, 6.dp.toPx(), it)
+                drawCircle(strokeColor, 4.dp.toPx(), it)
+            }
             return@Canvas
         }
         val insetX = 24.dp.toPx()

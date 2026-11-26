@@ -21,7 +21,7 @@ class CropFilterState(
     var previewRawBitmap by mutableStateOf<Bitmap?>(null)
     var cropQuad by mutableStateOf(NormalizedQuad())
     var hasDetectedBounds by mutableStateOf(false)
-    var selectedFilter by mutableStateOf(ScanFilter.ORIGINAL)
+    var selectedFilter by mutableStateOf(ScanFilter.MAGIC_COLOR)
     var displayedBitmap by mutableStateOf<Bitmap?>(null)
     var isProcessing by mutableStateOf(false)
     var showSaveDialog by mutableStateOf(false)

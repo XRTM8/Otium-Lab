@@ -7,8 +7,8 @@ plugins {
 }
 
 val versionMajor = 2
-val versionMinor = 6
-val versionPatch = 3
+val versionMinor = 7
+val versionPatch = 0
 val baseVersionCode = (versionMajor * 1_000_000) + (versionMinor * 10_000) + (versionPatch * 100)
 val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
 
@@ -127,7 +127,6 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    implementation(libs.mlkit.document.scanner)
 
     // Native Bridge UniFFI (JNA)
     implementation(libs.jna)

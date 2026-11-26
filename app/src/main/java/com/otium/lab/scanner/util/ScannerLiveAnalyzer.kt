@@ -14,7 +14,7 @@ class ScannerLiveAnalyzer(
     override fun analyze(proxy: ImageProxy) {
         try {
             val now = System.currentTimeMillis()
-            if (now - lastAnalysis < 350L) return
+            if (now - lastAnalysis < 180L) return
             lastAnalysis = now
             val bitmap = proxy.toBitmap()
             var cropped: Bitmap = bitmap

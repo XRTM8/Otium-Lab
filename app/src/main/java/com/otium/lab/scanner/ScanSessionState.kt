@@ -148,6 +148,33 @@ class ScanSessionState(
         accumulatedPageFiles.add(to, accumulatedPageFiles.removeAt(from))
     }
 
+    fun rotatePage(index: Int) {
+        if (index !in accumulatedPageFiles.indices || isStagingPage || isExportingPdf) return
+        val file = accumulatedPageFiles[index]
+        isStagingPage = true
+        scope.launch {
+            try {
+                val rotatedFile = withContext(Dispatchers.IO) {
+                    val raw = file.readBytes()
+                    val rotatedBytes = com.otium.lab.scanner.util.ImageProcessingUtils.rotateJpegBytes90Cw(raw)
+                        ?: return@withContext null
+                    val nextFile = File(file.parentFile, "page_${UUID.randomUUID()}.jpg")
+                    FileOutputStream(nextFile).use { it.write(rotatedBytes) }
+                    file.delete()
+                    nextFile
+                }
+                if (rotatedFile != null && index in accumulatedPageFiles.indices) {
+                    accumulatedPageFiles[index] = rotatedFile
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to rotate page", t)
+                Toast.makeText(context, "تعذر تدوير الصفحة", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
     fun removePage(index: Int) {
         if (index !in accumulatedPageFiles.indices || isExportingPdf) return
         val file = accumulatedPageFiles.removeAt(index)

@@ -81,9 +81,9 @@ impl DocumentScanner {
             .ok_or_else(|| OtiumError::ImageProcessing("Failed to construct image buffer".into()))
     }
 
-    /// High-performance document clean filter:
-    /// Fast integer-based luminance calculations and Otsu adaptive thresholding
-    /// to eliminate shadows and whiten paper while preserving crisp text.
+    /// High-performance document clean filter with local illumination normalization:
+    /// Removes phone/hand shadows via 1/8-scale morphological background estimation,
+    /// sharpens text strokes, and whitens paper while preserving crisp Arabic/Latin glyphs.
     pub fn clean_document_filter(image: &RgbaImage, contrast_boost: f32) -> GrayImage {
         let (width, height) = image.dimensions();
         let total_pixels = (width as usize) * (height as usize);
@@ -92,79 +92,74 @@ impl DocumentScanner {
         }
 
         let raw = image.as_raw();
-        let mut histogram = [0u32; 256];
-        let mut luma_buffer = Vec::with_capacity(total_pixels);
+        let w = width as usize;
+        let h = height as usize;
 
-        // 1. Fast Integer Luminance pass + histogram collection
+        // 1. Fast integer luminance pass
+        let mut luma = Vec::with_capacity(total_pixels);
         for i in (0..raw.len()).step_by(4) {
             let r = raw[i] as u32;
             let g = raw[i + 1] as u32;
             let b = raw[i + 2] as u32;
-            // ITU-R BT.601 integer approximation: (r*77 + g*150 + b*29) >> 8
-            let luma = ((r * 77 + g * 150 + b * 29) >> 8) as u8;
-            histogram[luma as usize] += 1;
-            luma_buffer.push(luma);
+            luma.push(((r * 77 + g * 150 + b * 29) >> 8) as u8);
         }
 
-        // 2. Otsu threshold calculation
-        let mut sum = 0f64;
-        for (i, &count) in histogram.iter().enumerate() {
-            sum += (i as f64) * (count as f64);
-        }
+        // 2. Estimate smooth local paper background (removes shadows & uneven lighting)
+        let (bg_w, bg_h, bg_luma) = Self::estimate_luma_background(&luma, w, h);
 
-        let total = total_pixels as f64;
-        let mut sum_b = 0f64;
-        let mut w_b = 0f64;
-        let mut max_variance = 0f64;
-        let mut optimal_threshold = 128u8;
-
-        for (i, &count) in histogram.iter().enumerate() {
-            w_b += count as f64;
-            if w_b == 0.0 {
-                continue;
-            }
-            let w_f = total - w_b;
-            if w_f == 0.0 {
-                break;
-            }
-
-            sum_b += (i as f64) * (count as f64);
-            let m_b = sum_b / w_b;
-            let m_f = (sum - sum_b) / w_f;
-
-            let between_variance = w_b * w_f * (m_b - m_f) * (m_b - m_f);
-            if between_variance > max_variance {
-                max_variance = between_variance;
-                optimal_threshold = i as u8;
+        // 3. Illumination normalization: divide pixel luminance by local background
+        let mut norm = vec![0u8; total_pixels];
+        for y in 0..h {
+            let row_off = y * w;
+            for x in 0..w {
+                let bg = Self::sample_bg_scalar(&bg_luma, bg_w, bg_h, x, y, w, h).max(24.0);
+                let val = (luma[row_off + x] as f32) * 255.0 / bg;
+                norm[row_off + x] = val.clamp(0.0, 255.0) as u8;
             }
         }
 
-        // Clamp threshold to reasonable text document bounds
-        let threshold = (optimal_threshold as f32).clamp(70.0, 185.0);
+        // 4. Subtle 3x3 unsharp mask + adaptive tone curve
+        let is_bw = contrast_boost >= 1.8;
+        let white_cut = if is_bw { 188.0 } else { 205.0 };
+        let black_cut = if is_bw { 115.0 } else { 55.0 };
+        let sharp_amount = if is_bw { 0.45 } else { 0.30 };
 
-        // 3. Precomputed 256-entry Look-Up Table (LUT) for instant contrast stretch & binarization (0ms)
-        let mut lut = [255u8; 256];
-        for luma in 0..256 {
-            let luma_f = luma as f32;
-            if luma_f < threshold {
-                let ratio = (luma_f / threshold).powf(contrast_boost);
-                lut[luma] = (ratio * 110.0).clamp(0.0, 255.0) as u8;
-            } else {
-                lut[luma] = 255u8;
+        let mut out_gray = vec![255u8; total_pixels];
+        for y in 0..h {
+            let row_off = y * w;
+            for x in 0..w {
+                let idx = row_off + x;
+                let center = norm[idx] as f32;
+                let sharpened = if x > 0 && x + 1 < w && y > 0 && y + 1 < h {
+                    let avg = (norm[idx - w] as f32
+                        + norm[idx + w] as f32
+                        + norm[idx - 1] as f32
+                        + norm[idx + 1] as f32)
+                        * 0.25;
+                    (center + sharp_amount * (center - avg)).clamp(0.0, 255.0)
+                } else {
+                    center
+                };
+
+                out_gray[idx] = if sharpened >= white_cut {
+                    255
+                } else if sharpened <= black_cut {
+                    if is_bw { 0 } else { (sharpened * 0.55) as u8 }
+                } else {
+                    let t = ((sharpened - black_cut) / (white_cut - black_cut)).clamp(0.0, 1.0);
+                    let curved = t.powf(contrast_boost);
+                    (curved * 255.0).clamp(0.0, 255.0) as u8
+                };
             }
-        }
-
-        let mut out_gray = Vec::with_capacity(total_pixels);
-        for luma in luma_buffer {
-            out_gray.push(lut[luma as usize]);
         }
 
         GrayImage::from_raw(width, height, out_gray)
             .unwrap_or_else(|| GrayImage::new(width, height))
     }
 
-    /// Professional Magic Color filter: whitens paper background while preserving and boosting color vibrance
-    /// Accelerated with precomputed 256-entry Look-Up Table (LUT) - 100x faster than floating point powf
+    /// Professional Magic Color filter:
+    /// Removes shadows and auto-white-balances uneven indoor lighting per channel,
+    /// whitens paper cleanly, and boosts color vibrance for stamps, signatures, and ink.
     pub fn magic_color_filter(image: &RgbaImage) -> RgbaImage {
         let (width, height) = image.dimensions();
         let total_pixels = (width as usize) * (height as usize);
@@ -172,43 +167,231 @@ impl DocumentScanner {
             return RgbaImage::new(0, 0);
         }
 
-        // Precompute 256-entry LUT for luminance difference
-        let mut diff_lut = [0.0f32; 256];
-        for l in 0..256 {
-            let luma = l as f32;
-            let whitened_luma = if luma > 135.0 {
-                let factor = ((luma - 135.0) / 120.0).clamp(0.0, 1.0);
-                luma + (255.0 - luma) * factor.powf(0.75)
-            } else {
-                luma * 0.88
-            };
-            diff_lut[l] = whitened_luma - luma;
-        }
-
         let raw = image.as_raw();
+        let w = width as usize;
+        let h = height as usize;
+
+        let (bg_w, bg_h, bg_rgb) = Self::estimate_rgb_background(raw, w, h);
         let mut out_buffer = Vec::with_capacity(total_pixels * 4);
 
-        for i in (0..raw.len()).step_by(4) {
-            let r = raw[i];
-            let g = raw[i + 1];
-            let b = raw[i + 2];
-            let a = raw[i + 3];
+        for y in 0..h {
+            let row_off = y * w;
+            for x in 0..w {
+                let i = (row_off + x) * 4;
+                let r = raw[i] as f32;
+                let g = raw[i + 1] as f32;
+                let b = raw[i + 2] as f32;
+                let a = raw[i + 3];
 
-            // Integer ITU-R BT.601 luminance: (r*77 + g*150 + b*29) >> 8
-            let luma = ((r as u32 * 77 + g as u32 * 150 + b as u32 * 29) >> 8) as usize;
-            let diff = diff_lut[luma.min(255)];
+                let (bg_r, bg_g, bg_b) = Self::sample_bg_rgb(&bg_rgb, bg_w, bg_h, x, y, w, h);
+                let nr = (r * 255.0 / bg_r.max(24.0)).clamp(0.0, 255.0);
+                let ng = (g * 255.0 / bg_g.max(24.0)).clamp(0.0, 255.0);
+                let nb = (b * 255.0 / bg_b.max(24.0)).clamp(0.0, 255.0);
 
-            let nr = ((r as f32 + diff) * 1.05).clamp(0.0, 255.0) as u8;
-            let ng = ((g as f32 + diff) * 1.05).clamp(0.0, 255.0) as u8;
-            let nb = ((b as f32 + diff) * 1.05).clamp(0.0, 255.0) as u8;
+                let min_c = nr.min(ng).min(nb);
+                let max_c = nr.max(ng).max(nb);
+                let chroma = max_c - min_c;
 
-            out_buffer.push(nr);
-            out_buffer.push(ng);
-            out_buffer.push(nb);
-            out_buffer.push(a);
+                // Cleanly snap neutral near-white paper to pure white
+                if min_c > 210.0 && chroma < 28.0 {
+                    out_buffer.push(255);
+                    out_buffer.push(255);
+                    out_buffer.push(255);
+                    out_buffer.push(a);
+                } else {
+                    // Boost color vibrance & deepen ink contrast
+                    let luma = 0.299 * nr + 0.587 * ng + 0.114 * nb;
+                    let contrast_luma = if luma < 175.0 {
+                        (luma * 0.90).clamp(0.0, 255.0)
+                    } else {
+                        luma
+                    };
+                    let delta_l = contrast_luma - luma;
+                    let sat = 1.25f32;
+                    let fr = (contrast_luma + (nr - luma) * sat + delta_l * 0.2).clamp(0.0, 255.0) as u8;
+                    let fg = (contrast_luma + (ng - luma) * sat + delta_l * 0.2).clamp(0.0, 255.0) as u8;
+                    let fb = (contrast_luma + (nb - luma) * sat + delta_l * 0.2).clamp(0.0, 255.0) as u8;
+                    out_buffer.push(fr);
+                    out_buffer.push(fg);
+                    out_buffer.push(fb);
+                    out_buffer.push(a);
+                }
+            }
         }
 
         RgbaImage::from_raw(width, height, out_buffer)
             .unwrap_or_else(|| image.clone())
+    }
+
+    fn downscale_dims(w: usize, h: usize) -> (usize, usize) {
+        let max_side = w.max(h) as f32;
+        let scale = (140.0 / max_side).min(1.0);
+        let bw = ((w as f32 * scale).round() as usize).max(4);
+        let bh = ((h as f32 * scale).round() as usize).max(4);
+        (bw, bh)
+    }
+
+    fn estimate_luma_background(luma: &[u8], w: usize, h: usize) -> (usize, usize, Vec<f32>) {
+        let (bw, bh) = Self::downscale_dims(w, h);
+        let mut grid = vec![0.0f32; bw * bh];
+        for by in 0..bh {
+            let sy = (by * h / bh).min(h - 1);
+            for bx in 0..bw {
+                let sx = (bx * w / bw).min(w - 1);
+                grid[by * bw + bx] = luma[sy * w + sx] as f32;
+            }
+        }
+        let dilated = Self::separable_max_filter(&grid, bw, bh, 5);
+        let smoothed = Self::separable_box_blur(&dilated, bw, bh, 5);
+        (bw, bh, smoothed)
+    }
+
+    fn estimate_rgb_background(raw: &[u8], w: usize, h: usize) -> (usize, usize, Vec<[f32; 3]>) {
+        let (bw, bh) = Self::downscale_dims(w, h);
+        let mut r_grid = vec![0.0f32; bw * bh];
+        let mut g_grid = vec![0.0f32; bw * bh];
+        let mut b_grid = vec![0.0f32; bw * bh];
+        for by in 0..bh {
+            let sy = (by * h / bh).min(h - 1);
+            for bx in 0..bw {
+                let sx = (bx * w / bw).min(w - 1);
+                let idx = (sy * w + sx) * 4;
+                let g_idx = by * bw + bx;
+                r_grid[g_idx] = raw[idx] as f32;
+                g_grid[g_idx] = raw[idx + 1] as f32;
+                b_grid[g_idx] = raw[idx + 2] as f32;
+            }
+        }
+        let r_s = Self::separable_box_blur(&Self::separable_max_filter(&r_grid, bw, bh, 5), bw, bh, 5);
+        let g_s = Self::separable_box_blur(&Self::separable_max_filter(&g_grid, bw, bh, 5), bw, bh, 5);
+        let b_s = Self::separable_box_blur(&Self::separable_max_filter(&b_grid, bw, bh, 5), bw, bh, 5);
+        let merged = (0..bw * bh).map(|i| [r_s[i], g_s[i], b_s[i]]).collect();
+        (bw, bh, merged)
+    }
+
+    fn separable_max_filter(src: &[f32], w: usize, h: usize, radius: usize) -> Vec<f32> {
+        let mut horiz = vec![0.0f32; w * h];
+        for y in 0..h {
+            let row = y * w;
+            for x in 0..w {
+                let x0 = x.saturating_sub(radius);
+                let x1 = (x + radius).min(w - 1);
+                let mut m = 0.0f32;
+                for xx in x0..=x1 {
+                    m = m.max(src[row + xx]);
+                }
+                horiz[row + x] = m;
+            }
+        }
+        let mut out = vec![0.0f32; w * h];
+        for y in 0..h {
+            let y0 = y.saturating_sub(radius);
+            let y1 = (y + radius).min(h - 1);
+            for x in 0..w {
+                let mut m = 0.0f32;
+                for yy in y0..=y1 {
+                    m = m.max(horiz[yy * w + x]);
+                }
+                out[y * w + x] = m;
+            }
+        }
+        out
+    }
+
+    fn separable_box_blur(src: &[f32], w: usize, h: usize, radius: usize) -> Vec<f32> {
+        let mut horiz = vec![0.0f32; w * h];
+        for y in 0..h {
+            let row = y * w;
+            for x in 0..w {
+                let x0 = x.saturating_sub(radius);
+                let x1 = (x + radius).min(w - 1);
+                let mut sum = 0.0f32;
+                for xx in x0..=x1 {
+                    sum += src[row + xx];
+                }
+                horiz[row + x] = sum / ((x1 - x0 + 1) as f32);
+            }
+        }
+        let mut out = vec![0.0f32; w * h];
+        for y in 0..h {
+            let y0 = y.saturating_sub(radius);
+            let y1 = (y + radius).min(h - 1);
+            let count = (y1 - y0 + 1) as f32;
+            for x in 0..w {
+                let mut sum = 0.0f32;
+                for yy in y0..=y1 {
+                    sum += horiz[yy * w + x];
+                }
+                out[y * w + x] = sum / count;
+            }
+        }
+        out
+    }
+
+    fn sample_bg_scalar(bg: &[f32], bw: usize, bh: usize, x: usize, y: usize, w: usize, h: usize) -> f32 {
+        let fx = (x as f32 / w.max(1) as f32) * (bw - 1) as f32;
+        let fy = (y as f32 / h.max(1) as f32) * (bh - 1) as f32;
+        let x0 = (fx as usize).min(bw - 1);
+        let y0 = (fy as usize).min(bh - 1);
+        let x1 = (x0 + 1).min(bw - 1);
+        let y1 = (y0 + 1).min(bh - 1);
+        let tx = fx - x0 as f32;
+        let ty = fy - y0 as f32;
+        let top = bg[y0 * bw + x0] * (1.0 - tx) + bg[y0 * bw + x1] * tx;
+        let bot = bg[y1 * bw + x0] * (1.0 - tx) + bg[y1 * bw + x1] * tx;
+        top * (1.0 - ty) + bot * ty
+    }
+
+    fn sample_bg_rgb(bg: &[[f32; 3]], bw: usize, bh: usize, x: usize, y: usize, w: usize, h: usize) -> (f32, f32, f32) {
+        let fx = (x as f32 / w.max(1) as f32) * (bw - 1) as f32;
+        let fy = (y as f32 / h.max(1) as f32) * (bh - 1) as f32;
+        let x0 = (fx as usize).min(bw - 1);
+        let y0 = (fy as usize).min(bh - 1);
+        let x1 = (x0 + 1).min(bw - 1);
+        let y1 = (y0 + 1).min(bh - 1);
+        let tx = fx - x0 as f32;
+        let ty = fy - y0 as f32;
+        let p00 = bg[y0 * bw + x0];
+        let p10 = bg[y0 * bw + x1];
+        let p01 = bg[y1 * bw + x0];
+        let p11 = bg[y1 * bw + x1];
+        let r = (p00[0] * (1.0 - tx) + p10[0] * tx) * (1.0 - ty) + (p01[0] * (1.0 - tx) + p11[0] * tx) * ty;
+        let g = (p00[1] * (1.0 - tx) + p10[1] * tx) * (1.0 - ty) + (p01[1] * (1.0 - tx) + p11[1] * tx) * ty;
+        let b = (p00[2] * (1.0 - tx) + p10[2] * tx) * (1.0 - ty) + (p01[2] * (1.0 - tx) + p11[2] * tx) * ty;
+        (r, g, b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::Rgba;
+
+    #[test]
+    fn clean_filter_removes_shadow_while_preserving_text() {
+        let mut img = RgbaImage::new(120, 120);
+        for y in 0..120 {
+            for x in 0..120 {
+                // Left half bright paper (220), right half shadowed paper (105)
+                let paper = if x < 60 { 220 } else { 105 };
+                let is_text = (x == 30 || x == 90) && (40..80).contains(&y);
+                let v = if is_text { 25 } else { paper };
+                img.put_pixel(x, y, Rgba([v, v, v, 255]));
+            }
+        }
+        let cleaned = DocumentScanner::clean_document_filter(&img, 1.2);
+        // Both bright and shadowed paper should be whitened
+        assert!(cleaned.get_pixel(15, 60)[0] >= 245);
+        assert!(cleaned.get_pixel(105, 60)[0] >= 240);
+        // Text in shadowed area should remain dark
+        assert!(cleaned.get_pixel(90, 60)[0] < 110);
+    }
+
+    #[test]
+    fn magic_color_white_balances_warm_paper() {
+        let img = RgbaImage::from_pixel(80, 80, Rgba([220, 195, 145, 255]));
+        let magic = DocumentScanner::magic_color_filter(&img);
+        let px = magic.get_pixel(40, 40);
+        assert!(px[0] >= 250 && px[1] >= 250 && px[2] >= 250);
     }
 }

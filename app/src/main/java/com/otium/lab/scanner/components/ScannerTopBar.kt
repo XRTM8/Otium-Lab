@@ -22,6 +22,7 @@ fun ScannerTopBar(
     pageCount: Int,
     isFlashOn: Boolean,
     primaryColor: Color,
+    statusText: String? = null,
     onClose: () -> Unit,
     onToggleFlash: () -> Unit,
     modifier: Modifier = Modifier
@@ -54,8 +55,8 @@ fun ScannerTopBar(
             border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
         ) {
             Text(
-                text = if (pageCount > 0) "تم التقاط $pageCount صفحة" else "وجه الكاميرا نحو المستند واضغط للتركيز",
-                color = if (pageCount > 0) primaryColor else Color.White,
+                text = statusText ?: if (pageCount > 0) "تم التقاط $pageCount صفحة" else "وجه الكاميرا نحو المستند واضغط للتركيز",
+                color = if (statusText != null || pageCount > 0) primaryColor else Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
