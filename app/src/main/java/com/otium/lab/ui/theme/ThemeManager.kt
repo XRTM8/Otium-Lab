@@ -168,11 +168,11 @@ class ThemePreferences(context: Context) {
         private set
 
     private fun loadTheme(): AppThemeMode {
-        val name = prefs.getString("theme_mode", AppThemeMode.LIGHT.name)
+        val name = prefs.getString("theme_mode", AppThemeMode.AMOLED.name)
         return try {
-            AppThemeMode.valueOf(name ?: AppThemeMode.LIGHT.name)
+            AppThemeMode.valueOf(name ?: AppThemeMode.AMOLED.name)
         } catch (_: Exception) {
-            AppThemeMode.LIGHT
+            AppThemeMode.AMOLED
         }
     }
 

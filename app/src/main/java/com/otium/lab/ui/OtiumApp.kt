@@ -18,7 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import com.otium.lab.core.extensions.findActivity
 import com.otium.lab.library.DocumentStore
@@ -90,11 +92,12 @@ fun OtiumApp(
         }
     }
 
-    MaterialTheme(
-        colorScheme = themePreferences.getColorScheme().animated(),
-        typography = OtiumTypography,
-        shapes = OtiumShapes
-    ) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        MaterialTheme(
+            colorScheme = themePreferences.getColorScheme().animated(),
+            typography = OtiumTypography,
+            shapes = OtiumShapes
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -150,5 +153,6 @@ fun OtiumApp(
                 }
             }
         }
+    }
     }
 }
