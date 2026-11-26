@@ -86,7 +86,7 @@ fun PdfViewerOverlays(
         PdfHighlightBanner(
             visible = isSelectionModeActive && selectedSpans.isEmpty() && selectedHighlight == null,
             onCancel = onToggleSelectionMode,
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp)
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp)
         )
 
         PdfSelectionActionBar(
@@ -97,7 +97,7 @@ fun PdfViewerOverlays(
             onHighlight = onApplyHighlight,
             onDeleteHighlight = onDeleteHighlight,
             onClear = onClearSelection,
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp)
         )
 
         PdfResumePill(

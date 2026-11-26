@@ -138,7 +138,7 @@ fun DocumentCard(
                                 maxLines = 1
                             )
                             Text(
-                                text = "•",
+                                text = "·",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.outline
                             )

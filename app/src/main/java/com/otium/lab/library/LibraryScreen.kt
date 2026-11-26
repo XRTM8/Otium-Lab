@@ -115,6 +115,36 @@ fun LibraryScreen(
         }
     }
 
+    @Composable
+    fun RenderDocumentCard(doc: StoredDocument) {
+        val isSelected = doc.uriString in selectedUris
+        DocumentCard(
+            doc = doc,
+            isSelected = isSelected,
+            onClick = {
+                if (selectedUris.isNotEmpty()) {
+                    selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
+                } else {
+                    onOpenPdf(doc.uri, doc.title)
+                }
+            },
+            onLongClick = {
+                selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
+            },
+            onShare = { shareDoc(doc) },
+            onRename = { documentToRename = doc },
+            onExport = {
+                scope.launch(Dispatchers.IO) {
+                    val ok = documentStore.exportToDownloads(doc)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, if (ok) "تم حفظ نسخة في التنزيلات" else "تعذر التصدير", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onDelete = { documentToDelete = doc }
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -188,104 +218,164 @@ fun LibraryScreen(
             }
         }
     ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = if (isLandscape) 32.dp else 20.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            item {
-                LibraryHeader(
-                    documentCount = documents.size,
-                    isLandscape = isLandscape,
-                    onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) },
-                    onOpenSettings = onOpenSettings
-                )
-            }
-
-            if (documents.isNotEmpty()) {
-                item {
-                    DocumentSearchBar(
-                        query = searchQuery,
-                        onQueryChange = { searchQuery = it }
+        if (isLandscape) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LibraryHeader(
+                        documentCount = documents.size,
+                        isLandscape = true,
+                        onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) },
+                        onOpenSettings = onOpenSettings,
+                        modifier = Modifier.weight(1f)
                     )
+                    if (documents.isNotEmpty()) {
+                        DocumentSearchBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            modifier = Modifier.weight(0.9f)
+                        )
+                    }
                 }
-            }
 
-            if (heroDoc != null) {
-                item {
-                    ContinueReadingHero(
-                        mostRecent = heroDoc,
-                        onOpenPdf = { doc -> onOpenPdf(doc.uri, doc.title) }
-                    )
-                }
-            }
-
-            if (documents.isNotEmpty()) {
-                item {
-                    DocumentFilterChips(
-                        selectedFilterIndex = selectedFilterIndex,
-                        totalCount = documents.size,
-                        sortByName = sortByName,
-                        showSortChip = documents.size > 1,
-                        onSelectFilter = { selectedFilterIndex = it },
-                        onToggleSort = { sortByName = !sortByName }
-                    )
-                }
-            }
-
-            if (!isInitialLoading) {
-                if (documents.isEmpty()) {
-                    item {
+                if (!isInitialLoading) {
+                    if (documents.isEmpty()) {
                         EmptyLibraryState(
                             isFilteredEmpty = false,
                             onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) }
                         )
-                    }
-                } else if (filtered.isEmpty()) {
-                    item {
-                        EmptyLibraryState(isFilteredEmpty = true)
-                    }
-                } else if (listDocuments.isNotEmpty()) {
-                    if (heroDoc != null) {
-                        item {
-                            Text(
-                                text = "مستندات أخرى (${listDocuments.size})",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                    }
-                    items(listDocuments, key = { it.uriString }) { doc ->
-                        val isSelected = doc.uriString in selectedUris
-                        DocumentCard(
-                            doc = doc,
-                            isSelected = isSelected,
-                            onClick = {
-                                if (selectedUris.isNotEmpty()) {
-                                    selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
-                                } else {
-                                    onOpenPdf(doc.uri, doc.title)
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            if (heroDoc != null) {
+                                Column(
+                                    modifier = Modifier.weight(0.42f),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    ContinueReadingHero(
+                                        mostRecent = heroDoc,
+                                        onOpenPdf = { doc -> onOpenPdf(doc.uri, doc.title) }
+                                    )
                                 }
-                            },
-                            onLongClick = {
-                                selectedUris = if (isSelected) selectedUris - doc.uriString else selectedUris + doc.uriString
-                            },
-                            onShare = { shareDoc(doc) },
-                            onRename = { documentToRename = doc },
-                            onExport = {
-                                scope.launch(Dispatchers.IO) {
-                                    val ok = documentStore.exportToDownloads(doc)
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, if (ok) "تم حفظ نسخة في التنزيلات" else "تعذر التصدير", Toast.LENGTH_SHORT).show()
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(if (heroDoc != null) 0.58f else 1f),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                DocumentFilterChips(
+                                    selectedFilterIndex = selectedFilterIndex,
+                                    totalCount = documents.size,
+                                    sortByName = sortByName,
+                                    showSortChip = documents.size > 1,
+                                    onSelectFilter = { selectedFilterIndex = it },
+                                    onToggleSort = { sortByName = !sortByName }
+                                )
+
+                                if (filtered.isEmpty()) {
+                                    EmptyLibraryState(isFilteredEmpty = true)
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(bottom = 16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        items(listDocuments, key = { it.uriString }) { doc ->
+                                            RenderDocumentCard(doc)
+                                        }
                                     }
                                 }
-                            },
-                            onDelete = { documentToDelete = doc }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 20.dp),
+                contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    LibraryHeader(
+                        documentCount = documents.size,
+                        isLandscape = false,
+                        onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) },
+                        onOpenSettings = onOpenSettings
+                    )
+                }
+
+                if (documents.isNotEmpty()) {
+                    item {
+                        DocumentSearchBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it }
                         )
+                    }
+                }
+
+                if (heroDoc != null) {
+                    item {
+                        ContinueReadingHero(
+                            mostRecent = heroDoc,
+                            onOpenPdf = { doc -> onOpenPdf(doc.uri, doc.title) }
+                        )
+                    }
+                }
+
+                if (documents.isNotEmpty()) {
+                    item {
+                        DocumentFilterChips(
+                            selectedFilterIndex = selectedFilterIndex,
+                            totalCount = documents.size,
+                            sortByName = sortByName,
+                            showSortChip = documents.size > 1,
+                            onSelectFilter = { selectedFilterIndex = it },
+                            onToggleSort = { sortByName = !sortByName }
+                        )
+                    }
+                }
+
+                if (!isInitialLoading) {
+                    if (documents.isEmpty()) {
+                        item {
+                            EmptyLibraryState(
+                                isFilteredEmpty = false,
+                                onOpenPdfPicker = { openPdfLauncher.launch(arrayOf("application/pdf")) }
+                            )
+                        }
+                    } else if (filtered.isEmpty()) {
+                        item {
+                            EmptyLibraryState(isFilteredEmpty = true)
+                        }
+                    } else if (listDocuments.isNotEmpty()) {
+                        if (heroDoc != null) {
+                            item {
+                                Text(
+                                    text = "مستندات أخرى (${listDocuments.size})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                        items(listDocuments, key = { it.uriString }) { doc ->
+                            RenderDocumentCard(doc)
+                        }
                     }
                 }
             }

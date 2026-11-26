@@ -83,9 +83,10 @@ fun StorageCacheCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "$formattedSize مستخدمة · لا يحذف ملفاتك",
+                        text = "$formattedSize · ملفات مؤقتة فقط",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 }
             }

@@ -46,6 +46,13 @@ class UpdateManager(private val context: Context) {
     private val feedUrl = "https://github.com/XRTM8/Otium-Mobile/releases/latest/download/latest.json"
     private val apiFallbackUrl = "https://api.github.com/repos/XRTM8/Otium-Mobile/releases/latest"
 
+    fun cleanupStaleUpdateApk() {
+        try {
+            val apkFile = File(context.cacheDir, "Otium-update.apk")
+            if (apkFile.exists()) apkFile.delete()
+        } catch (_: Exception) {}
+    }
+
     fun checkForUpdates(silentOnNetworkError: Boolean = true): Flow<UpdateState> = flow {
         if (!silentOnNetworkError) emit(UpdateState.Checking)
         val current = BuildConfig.VERSION_NAME

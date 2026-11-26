@@ -108,7 +108,9 @@ fun PdfContentCanvas(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY),
-                        horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(0.dp)
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(0.dp)
                     ) {
                         items(renderer.pageCount, key = { "${uri}_$it" }) { pageIndex -> pageItemContent(pageIndex) }
                     }

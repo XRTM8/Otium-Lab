@@ -48,6 +48,12 @@ fun OtiumApp(
 
     val currentTheme = themePreferences.currentTheme.value
 
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            com.otium.lab.update.UpdateManager(context).cleanupStaleUpdateApk()
+        }
+    }
+
     if (!view.isInEditMode) {
         SideEffect {
             val window = context.findActivity()?.window ?: return@SideEffect

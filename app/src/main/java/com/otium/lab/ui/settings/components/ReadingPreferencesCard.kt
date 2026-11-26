@@ -39,7 +39,7 @@ fun ReadingPreferencesCard(
         Column(modifier = Modifier.padding(vertical = 6.dp)) {
             PreferenceToggleRow(
                 title = "إبقاء الشاشة مضاءة",
-                subtitle = "منع قفل الشاشة أثناء قراءة المستندات",
+                subtitle = "منع قفل الشاشة أثناء القراءة",
                 icon = Icons.Rounded.LightMode,
                 checked = keepScreenOn,
                 onCheckedChange = {
@@ -55,7 +55,7 @@ fun ReadingPreferencesCard(
 
             PreferenceToggleRow(
                 title = "تقليب أفقي افتراضياً",
-                subtitle = "فتح المستندات بنمط تقليب الصفحات بدلاً من التمرير",
+                subtitle = "فتح المستندات بتقليب الصفحات",
                 icon = Icons.Rounded.SwapHoriz,
                 checked = defaultHorizontal,
                 onCheckedChange = {
@@ -71,7 +71,7 @@ fun ReadingPreferencesCard(
 
             PreferenceToggleRow(
                 title = "التقليب بأزرار الصوت",
-                subtitle = "الانتقال بين الصفحات بأزرار رفع وخفض الصوت",
+                subtitle = "التنقل بين الصفحات بأزرار الصوت",
                 icon = Icons.AutoMirrored.Rounded.VolumeUp,
                 checked = volumeKeysPageTurn,
                 onCheckedChange = {

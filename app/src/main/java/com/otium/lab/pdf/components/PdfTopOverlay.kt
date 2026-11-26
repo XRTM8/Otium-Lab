@@ -15,7 +15,6 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,18 +44,10 @@ fun PdfTopOverlay(
         exit = fadeOut(tween(160)),
         modifier = modifier
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            barBg.copy(alpha = 0.98f),
-                            barBg.copy(alpha = 0.90f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(barBg.copy(alpha = 0.96f))
                 .statusBarsPadding()
         ) {
             TopAppBar(
@@ -107,8 +98,8 @@ fun PdfTopOverlay(
 
                     IconButton(
                         onClick = onOpenDisplayOptions,
-                        modifier = if (isSelectionModeActive || pageColorMode != PageColorMode.ORIGINAL) {
-                            Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), CircleShape)
+                        modifier = if (isSelectionModeActive) {
+                            Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), CircleShape)
                         } else Modifier
                     ) {
                         Icon(
@@ -122,6 +113,7 @@ fun PdfTopOverlay(
                     containerColor = Color.Transparent
                 )
             )
+            HorizontalDivider(thickness = 0.5.dp, color = textColor.copy(alpha = 0.12f))
         }
     }
 }

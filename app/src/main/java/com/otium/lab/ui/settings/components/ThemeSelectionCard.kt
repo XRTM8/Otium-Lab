@@ -115,7 +115,7 @@ private fun ThemeOptionItem(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(86.dp)
+                .height(72.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 // Miniature UI Wireframe

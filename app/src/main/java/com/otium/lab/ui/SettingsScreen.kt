@@ -33,13 +33,13 @@ fun SettingsScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = if (isLandscape) 32.dp else 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = if (isLandscape) 32.dp else 20.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 4.dp),
+                .padding(top = 4.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -49,14 +49,14 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "العودة للمكتبة",
                             tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
@@ -73,19 +73,16 @@ fun SettingsScreen(
         SettingsSectionLabel(text = "المظهر")
         ThemeSelectionCard(themePreferences = themePreferences)
 
-        Spacer(modifier = Modifier.height(2.dp))
         SettingsSectionLabel(text = "تجربة القراءة")
         ReadingPreferencesCard(themePreferences = themePreferences)
 
-        Spacer(modifier = Modifier.height(2.dp))
         SettingsSectionLabel(text = "التخزين")
         StorageCacheCard(documentStore = documentStore)
 
-        Spacer(modifier = Modifier.height(2.dp))
         SettingsSectionLabel(text = "عن التطبيق")
         AboutOtiumCard()
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(10.dp))
     }
 }
 
@@ -95,6 +92,6 @@ private fun SettingsSectionLabel(text: String) {
         text = text,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 4.dp)
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
     )
 }
