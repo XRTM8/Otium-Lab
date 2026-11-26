@@ -138,7 +138,9 @@ class UpdateManager(private val context: Context) {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(context, "تعذر فتح مثبّت التحديث", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun fetchFeed(): UpdateInfo? {

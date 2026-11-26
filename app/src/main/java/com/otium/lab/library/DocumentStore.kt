@@ -34,8 +34,16 @@ class DocumentStore(private val context: Context) {
 
     fun clearTemporaryCache() {
         try {
-            context.cacheDir.deleteRecursively()
-            context.cacheDir.mkdirs()
+            val cutoff = System.currentTimeMillis() - 60 * 60 * 1000L
+            context.cacheDir.listFiles()?.forEach { entry ->
+                if (entry.name == "scan_session" && entry.isDirectory) {
+                    entry.listFiles()?.forEach { f ->
+                        if (f.lastModified() < cutoff) f.delete()
+                    }
+                } else {
+                    entry.deleteRecursively()
+                }
+            }
         } catch (_: Exception) {}
     }
 

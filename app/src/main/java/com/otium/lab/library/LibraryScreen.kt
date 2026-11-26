@@ -44,6 +44,7 @@ fun LibraryScreen(
     var documentToDelete by remember { mutableStateOf<StoredDocument?>(null) }
     var isInitialLoading by remember { mutableStateOf(true) }
     var selectedFilterIndex by remember { mutableIntStateOf(0) }
+    var sortByName by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         documents = withContext(Dispatchers.IO) { documentStore.getDocuments() }
@@ -54,9 +55,9 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-            val resolvedTitle = DocumentStore.resolveDisplayName(context, uri)
             scope.launch(Dispatchers.IO) {
+                try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                val resolvedTitle = DocumentStore.resolveDisplayName(context, uri)
                 documentStore.addOrUpdateDocument(uri, resolvedTitle, isScanned = false)
                 val updated = documentStore.getDocuments()
                 withContext(Dispatchers.Main) { documents = updated; onOpenPdf(uri, resolvedTitle) }
@@ -65,16 +66,23 @@ fun LibraryScreen(
     }
 
     val mostRecent = documents.firstOrNull()
-    val filtered = documents.filter { doc ->
-        val matchesCategory = when (selectedFilterIndex) { 1 -> doc.isScanned; 2 -> !doc.isScanned; else -> true }
-        val matchesSearch = if (searchQuery.isBlank()) true else doc.title.contains(searchQuery.trim(), ignoreCase = true)
-        matchesCategory && matchesSearch
-    }
+    val filtered = documents
+        .filter { doc ->
+            val matchesCategory = when (selectedFilterIndex) { 1 -> doc.isScanned; 2 -> !doc.isScanned; else -> true }
+            val matchesSearch = if (searchQuery.isBlank()) true else doc.title.contains(searchQuery.trim(), ignoreCase = true)
+            matchesCategory && matchesSearch
+        }
+        .let { list -> if (sortByName) list.sortedBy { it.title.lowercase() } else list }
 
     fun shareDoc(doc: StoredDocument) {
         try {
             val shareUri = if (doc.uri.scheme == "file") {
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(doc.uri.path ?: ""))
+                val file = File(doc.uri.path ?: "")
+                if (!file.exists()) {
+                    Toast.makeText(context, "الملف غير موجود للمشاركة", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             } else doc.uri
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
@@ -82,7 +90,9 @@ fun LibraryScreen(
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(intent, "مشاركة المستند"))
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            Toast.makeText(context, "تعذر مشاركة المستند", Toast.LENGTH_SHORT).show()
+        }
     }
 
     Scaffold(
@@ -115,15 +125,29 @@ fun LibraryScreen(
             if (documents.isNotEmpty()) {
                 item { DocumentSearchBar(query = searchQuery, onQueryChange = { searchQuery = it }) }
             }
-            if (mostRecent != null && searchQuery.isBlank()) {
+            if (mostRecent != null && selectedFilterIndex == 0 && searchQuery.isBlank()) {
                 item { ContinueReadingHero(mostRecent = mostRecent, onOpenPdf = { doc -> onOpenPdf(doc.uri, doc.title) }) }
             }
             item {
-                DocumentFilterChips(
-                    selectedFilterIndex = selectedFilterIndex,
-                    totalCount = documents.size,
-                    onSelectFilter = { selectedFilterIndex = it }
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        DocumentFilterChips(
+                            selectedFilterIndex = selectedFilterIndex,
+                            totalCount = documents.size,
+                            onSelectFilter = { selectedFilterIndex = it }
+                        )
+                    }
+                    if (documents.size > 1) {
+                        FilterChip(
+                            selected = sortByName,
+                            onClick = { sortByName = !sortByName },
+                            label = { Text(if (sortByName) "أبجدي" else "الأحدث", fontSize = 12.sp) }
+                        )
+                    }
+                }
             }
             if (!isInitialLoading) {
                 if (filtered.isEmpty()) {
