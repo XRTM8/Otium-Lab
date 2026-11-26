@@ -83,7 +83,7 @@ fun TocHighlightsList(
                 items(highlights, key = { it.id }) { h ->
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onSelectPage(h.pageIndex) }
                     ) {
                         Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
@@ -107,7 +107,12 @@ fun TocHighlightsList(
                                 )
                             }
                             IconButton(onClick = { onDeleteHighlight(h) }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = "حذف",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
                     }

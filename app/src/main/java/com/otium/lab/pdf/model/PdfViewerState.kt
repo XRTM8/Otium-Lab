@@ -69,6 +69,7 @@ class PdfViewerState(
 
     var showSearch by mutableStateOf(false)
     var showTocDialog by mutableStateOf(false)
+    var showDisplaySheet by mutableStateOf(false)
     var searchQuery by mutableStateOf("")
     var searchMatches by mutableStateOf<List<PdfSearchMatch>>(emptyList())
     var currentMatchIndex by mutableIntStateOf(0)
@@ -82,7 +83,9 @@ class PdfViewerState(
     }
 
     fun handleBack(onClose: () -> Unit) {
-        if (showSearch) {
+        if (showDisplaySheet) {
+            showDisplaySheet = false
+        } else if (showSearch) {
             closeSearch()
         } else if (showTocDialog) {
             showTocDialog = false

@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +19,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun PdfHighlightBanner(
@@ -34,31 +34,30 @@ fun PdfHighlightBanner(
     ) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF1E293B).copy(alpha = 0.95f),
-            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.96f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
             modifier = Modifier.shadow(8.dp, RoundedCornerShape(20.dp))
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    Icons.Rounded.Highlight,
+                    imageVector = Icons.Rounded.Highlight,
                     contentDescription = null,
                     tint = Color(0xFFFACC15),
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
                     text = "اسحب فوق النص للتظليل",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    style = MaterialTheme.typography.labelLarge
                 )
                 Text(
                     text = "إلغاء",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 13.sp,
+                    color = Color(0xFFFDA4AF),
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clickable(onClick = onCancel)

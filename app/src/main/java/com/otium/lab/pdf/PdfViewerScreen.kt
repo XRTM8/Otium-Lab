@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import com.otium.lab.core.extensions.findActivity
 import com.otium.lab.pdf.components.PdfContentCanvas
 import com.otium.lab.pdf.components.PdfViewerOverlays
 import com.otium.lab.pdf.model.*
@@ -48,6 +52,18 @@ fun PdfViewerScreen(
         scope.launch {
             if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.animateScrollToItem(target)
             else state.pagerState.animateScrollToPage(target)
+        }
+    }
+
+    var pendingLayoutRestorePage by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(state.readingLayout, state.isLoaded) {
+        val restorePage = pendingLayoutRestorePage
+        if (state.isLoaded && restorePage != null && state.renderer.pageCount > 0) {
+            val idx = (restorePage - 1).coerceIn(0, state.renderer.pageCount - 1)
+            if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.scrollToItem(idx)
+            else state.pagerState.scrollToPage(idx)
+            pendingLayoutRestorePage = null
         }
     }
 
@@ -92,6 +108,17 @@ fun PdfViewerScreen(
     )
 
     val mode = state.pageColorMode
+    val view = LocalView.current
+    val context = LocalContext.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = context.findActivity()?.window ?: return@SideEffect
+            val insetsController = WindowCompat.getInsetsController(window, view)
+            val isLightPage = mode != PageColorMode.AMOLED_BLACK
+            insetsController.isAppearanceLightStatusBars = isLightPage
+            insetsController.isAppearanceLightNavigationBars = isLightPage
+        }
+    }
     Box(modifier = Modifier.fillMaxSize().background(mode.containerBg)) {
         PdfContentCanvas(
             renderer = state.renderer, uri = uri, isLoaded = state.isLoaded, errorMessage = state.errorMessage,
@@ -124,6 +151,7 @@ fun PdfViewerScreen(
             isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans, selectedHighlight = state.selectedHighlight,
             showResumePill = state.showResumePill, resumedPage = state.savedPage, sliderValue = state.sliderValue,
             isDraggingSlider = state.isDraggingSlider, showJumpDialog = state.showJumpDialog,
+            showDisplaySheet = state.showDisplaySheet,
             showSearch = state.showSearch, searchQuery = state.searchQuery, searchMatchCount = state.searchMatches.size,
             currentSearchMatchIndex = state.currentMatchIndex, isSearching = state.isSearching, showTocDialog = state.showTocDialog,
             outline = state.outline, allHighlights = state.allHighlights,
@@ -144,22 +172,21 @@ fun PdfViewerScreen(
             },
             onOpenToc = { state.showTocDialog = true }, onDismissToc = { state.showTocDialog = false },
             onSelectTocPage = { p -> scrollTo(p) },
+            onOpenDisplayOptions = { state.showDisplaySheet = true },
+            onDismissDisplayOptions = { state.showDisplaySheet = false },
+            onSelectReadingLayout = { newLayout ->
+                if (state.readingLayout != newLayout) {
+                    pendingLayoutRestorePage = currentPage
+                    state.readingLayout = newLayout
+                }
+            },
+            onSelectColorMode = { newMode ->
+                state.pageColorMode = newMode
+            },
             onToggleSelectionMode = {
                 state.isSelectionModeActive = !state.isSelectionModeActive
                 if (!state.isSelectionModeActive) state.clearSelection()
                 else Toast.makeText(state.context, "وضع التظليل مفعّل: اسحب فوق النص للتظليل", Toast.LENGTH_SHORT).show()
-            },
-            onToggleLayout = {
-                val target = currentPage
-                state.readingLayout = if (state.readingLayout == ReadingLayout.VERTICAL) ReadingLayout.HORIZONTAL else ReadingLayout.VERTICAL
-                scrollTo(target - 1)
-            },
-            onToggleColorMode = {
-                state.pageColorMode = when (state.pageColorMode) {
-                    PageColorMode.ORIGINAL -> PageColorMode.AMOLED_BLACK
-                    PageColorMode.AMOLED_BLACK -> PageColorMode.SEPIA
-                    PageColorMode.SEPIA -> PageColorMode.ORIGINAL
-                }
             },
             onClose = onClose,
             onCopyText = {

@@ -74,4 +74,26 @@ class DocumentStoreAndAnnotationsTest {
         assertFalse(File(renamedDoc.uri.path!!).exists())
         assertTrue(annotationStore.getAllHighlights(renamedDoc.uri).isEmpty())
     }
+
+    @Test
+    fun cacheUsageExcludesPermanentScansAndPreservesScannedFlag() {
+        val scansDir = File(context.filesDir, "scans").apply { mkdirs() }
+        val permanentPdf = File(scansDir, "permanent_scan.pdf").apply { writeBytes(ByteArray(4096)) }
+        val tempCacheFile = File(context.cacheDir, "temp_thumb.jpg").apply { writeBytes(ByteArray(512)) }
+        val uri = Uri.fromFile(permanentPdf)
+
+        documentStore.addOrUpdateDocument(uri, "permanent_scan", isScanned = true, page = 2, total = 8)
+        // Re-opening without explicit isScanned=true must not wipe existing isScanned flag
+        documentStore.addOrUpdateDocument(uri, "permanent_scan", isScanned = false)
+        assertTrue(documentStore.getDocuments().first { it.uriString == uri.toString() }.isScanned)
+
+        val cacheBefore = documentStore.getCacheUsageBytes()
+        assertTrue(cacheBefore >= 512L)
+        assertTrue(documentStore.getStorageUsageBytes() >= cacheBefore + 4096L)
+
+        documentStore.clearTemporaryCache()
+        assertFalse(tempCacheFile.exists())
+        assertEquals(0L, documentStore.getCacheUsageBytes())
+        assertTrue(permanentPdf.exists())
+    }
 }

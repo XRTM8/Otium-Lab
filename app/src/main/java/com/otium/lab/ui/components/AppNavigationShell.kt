@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 enum class AppDestination(val labelAr: String, val icon: ImageVector) {
     LIBRARY("المكتبة", Icons.Rounded.FolderOpen),
@@ -25,10 +24,15 @@ fun AppNavigationShell(
     content: @Composable () -> Unit
 ) {
     if (isLandscape) {
-        Row(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
             NavigationRail(
                 containerColor = MaterialTheme.colorScheme.surface,
-                header = { Spacer(modifier = Modifier.height(6.dp)) }
+                header = { Spacer(modifier = Modifier.height(8.dp)) }
             ) {
                 AppDestination.entries.forEach { destination ->
                     val isSelected = currentDestination == destination
@@ -36,13 +40,17 @@ fun AppNavigationShell(
                         selected = isSelected,
                         onClick = { onSelectDestination(destination) },
                         icon = {
-                            Icon(destination.icon, contentDescription = destination.labelAr, modifier = Modifier.size(22.dp))
+                            Icon(
+                                imageVector = destination.icon,
+                                contentDescription = destination.labelAr,
+                                modifier = Modifier.size(22.dp)
+                            )
                         },
                         label = {
                             Text(
-                                destination.labelAr,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp
+                                text = destination.labelAr,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
                         },
                         colors = NavigationRailItemDefaults.colors(
@@ -55,43 +63,13 @@ fun AppNavigationShell(
                     )
                 }
             }
+            VerticalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
         }
     } else {
-        Scaffold(
-            bottomBar = {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
-                ) {
-                    AppDestination.entries.forEach { destination ->
-                        val isSelected = currentDestination == destination
-                        NavigationBarItem(
-                            selected = isSelected,
-                            onClick = { onSelectDestination(destination) },
-                            icon = {
-                                Icon(destination.icon, contentDescription = destination.labelAr, modifier = Modifier.size(24.dp))
-                            },
-                            label = {
-                                Text(
-                                    destination.labelAr,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-                    }
-                }
-            }
-        ) { paddingValues ->
-            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) { content() }
+        // Portrait uses top-bar navigation instead of a wasteful 2-tab bottom bar
+        Box(modifier = Modifier.fillMaxSize()) {
+            content()
         }
     }
 }

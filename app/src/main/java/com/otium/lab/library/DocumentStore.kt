@@ -26,8 +26,18 @@ class DocumentStore(private val context: Context) {
         try {
             val scansDir = File(context.filesDir, "scans")
             if (scansDir.exists()) scansDir.listFiles()?.forEach { total += it.length() }
+            total += getCacheUsageBytes()
+        } catch (_: Exception) {}
+        return total
+    }
+
+    fun getCacheUsageBytes(): Long {
+        var total = 0L
+        try {
             val cacheDir = context.cacheDir
-            if (cacheDir.exists()) cacheDir.walkTopDown().forEach { total += it.length() }
+            if (cacheDir.exists()) {
+                cacheDir.walkTopDown().filter { it.isFile }.forEach { total += it.length() }
+            }
         } catch (_: Exception) {}
         return total
     }
@@ -110,12 +120,13 @@ class DocumentStore(private val context: Context) {
         val resolvedPage = if (page > 1) page else (existing?.lastPage ?: 1)
         val resolvedTotal = if (total > 0) total else (existing?.totalPages ?: 0)
         val resolvedOffset = if (page > 1) offset else (existing?.scrollOffset ?: 0)
+        val resolvedScanned = isScanned || (existing?.isScanned == true)
 
         val db = dbHelper.writableDatabase
         val values = ContentValues().apply {
             put(OtiumDbHelper.COL_DOC_URI, uri.toString())
             put(OtiumDbHelper.COL_DOC_TITLE, resolvedTitle)
-            put(OtiumDbHelper.COL_DOC_IS_SCANNED, if (isScanned) 1 else 0)
+            put(OtiumDbHelper.COL_DOC_IS_SCANNED, if (resolvedScanned) 1 else 0)
             put(OtiumDbHelper.COL_DOC_TIMESTAMP, System.currentTimeMillis())
             put(OtiumDbHelper.COL_DOC_LAST_PAGE, resolvedPage)
             put(OtiumDbHelper.COL_DOC_TOTAL_PAGES, resolvedTotal)

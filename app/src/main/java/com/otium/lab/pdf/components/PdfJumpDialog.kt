@@ -1,15 +1,14 @@
 package com.otium.lab.pdf.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun PdfJumpDialog(
@@ -22,32 +21,51 @@ fun PdfJumpDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("انتقال سريع إلى صفحة", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Text(
+                text = "انتقال سريع إلى صفحة",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
             Column {
-                Text("أدخل رقم الصفحة (1 - $pageCount):", fontSize = 12.sp, color = Color.Gray)
+                Text(
+                    text = "\u200Eأدخل رقم الصفحة (1 - $pageCount):\u200E",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = jumpInputText,
                     onValueChange = { jumpInputText = it.filter { char -> char.isDigit() } },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(14.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     OutlinedButton(
                         onClick = { jumpInputText = "1" },
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
-                    ) { Text("الأولى", fontSize = 12.sp) }
+                    ) { Text("الأولى", style = MaterialTheme.typography.labelMedium) }
                     OutlinedButton(
                         onClick = { jumpInputText = "${(pageCount / 2).coerceAtLeast(1)}" },
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
-                    ) { Text("المنتصف", fontSize = 12.sp) }
+                    ) { Text("المنتصف", style = MaterialTheme.typography.labelMedium) }
                     OutlinedButton(
                         onClick = { jumpInputText = "$pageCount" },
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
-                    ) { Text("الأخيرة", fontSize = 12.sp) }
+                    ) { Text("الأخيرة", style = MaterialTheme.typography.labelMedium) }
                 }
             }
         },
@@ -59,6 +77,7 @@ fun PdfJumpDialog(
                         onConfirmJump(target)
                     }
                 },
+                shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text("انتقال", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)

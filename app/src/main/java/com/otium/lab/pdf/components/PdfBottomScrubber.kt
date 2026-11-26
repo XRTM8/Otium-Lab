@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun PdfBottomScrubber(
@@ -48,14 +47,13 @@ fun PdfBottomScrubber(
                     Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            barBg.copy(alpha = 0.88f),
+                            barBg.copy(alpha = 0.90f),
                             barBg.copy(alpha = 0.98f)
                         )
                     )
                 )
                 .navigationBarsPadding()
         ) {
-            // Dynamic Floating Scrubber Bubble while dragging
             AnimatedVisibility(
                 visible = isDraggingSlider,
                 enter = fadeIn(tween(100)),
@@ -65,13 +63,15 @@ fun PdfBottomScrubber(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 8.dp
+                    shadowElevation = 6.dp
                 ) {
+                    val activePage = sliderValue.toInt()
+                    val percent = ((activePage.toFloat() / pageCount.toFloat()) * 100).toInt()
                     Text(
-                        text = "\u200Eصفحة ${sliderValue.toInt()} من $pageCount\u200E",
+                        text = "\u200Eصفحة $activePage من $pageCount · $percent%\u200E",
                         color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
                 }
@@ -84,33 +84,36 @@ fun PdfBottomScrubber(
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Quick Jump Trigger
-                Row(
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = textColor.copy(alpha = 0.08f),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable(onClick = onOpenJumpDialog)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val displayNum = if (isDraggingSlider) sliderValue.toInt() else currentPage
-                    Text(
-                        text = "\u200E$displayNum / $pageCount\u200E",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        Icons.Rounded.UnfoldMore,
-                        contentDescription = "انتقال سريع",
-                        tint = textColor.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val displayNum = if (isDraggingSlider) sliderValue.toInt() else currentPage
+                        Text(
+                            text = "\u200E$displayNum / $pageCount\u200E",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.UnfoldMore,
+                            contentDescription = "انتقال سريع",
+                            tint = textColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-                // Continuous Silk Scrubber
                 Slider(
                     value = sliderValue,
                     onValueChange = onSliderValueChange,
@@ -121,7 +124,7 @@ fun PdfBottomScrubber(
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,
                         activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                        inactiveTrackColor = textColor.copy(alpha = 0.2f)
                     )
                 )
             }

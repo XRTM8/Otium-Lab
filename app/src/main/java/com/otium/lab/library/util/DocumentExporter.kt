@@ -39,9 +39,9 @@ object DocumentExporter {
                             cs.setGraphicsStateParameters(gs)
                             for (hl in pageHls) {
                                 val argb = hl.colorArgb.toInt()
-                                val r = (argb shr 16) and 0xFF
-                                val g = (argb shr 8) and 0xFF
-                                val b = argb and 0xFF
+                                val r = ((argb shr 16) and 0xFF) / 255f
+                                val g = ((argb shr 8) and 0xFF) / 255f
+                                val b = (argb and 0xFF) / 255f
                                 cs.setNonStrokingColor(r, g, b)
                                 for (rect in hl.bounds) {
                                     val x = box.lowerLeftX + rect.left * pw

@@ -66,32 +66,41 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
         pageCache.evictAll()
     }
 
-    suspend fun renderPage(pageIndex: Int, targetWidth: Int = 1080): Bitmap = withContext(renderDispatcher) {
+    suspend fun renderPage(pageIndex: Int, targetWidth: Int = 1080): Bitmap {
         val clampedWidth = targetWidth.coerceIn(300, 2400)
         val cached = pageCache.get(pageIndex)
         if (cached != null && !cached.isRecycled && cached.width >= (clampedWidth * 0.85f).toInt()) {
-            return@withContext cached
+            return cached
         }
-
-        val r = renderer ?: throw IllegalStateException("PdfRenderer غير مفتوح")
-        if (pageIndex < 0 || pageIndex >= pageCount) {
-            throw IndexOutOfBoundsException("رقم الصفحة $pageIndex غير صالح (عدد الصفحات: $pageCount)")
+        if (renderExecutor.isShutdown) {
+            throw IllegalStateException("PdfRenderer مغلق")
         }
+        return withContext(renderDispatcher) {
+            val cachedInside = pageCache.get(pageIndex)
+            if (cachedInside != null && !cachedInside.isRecycled && cachedInside.width >= (clampedWidth * 0.85f).toInt()) {
+                return@withContext cachedInside
+            }
 
-        val page = r.openPage(pageIndex)
-        try {
-            val aspect = page.height.toFloat() / page.width.toFloat()
-            val width = clampedWidth
-            val height = (width * aspect).toInt().coerceIn(300, 4000)
+            val r = renderer ?: throw IllegalStateException("PdfRenderer غير مفتوح")
+            if (pageIndex < 0 || pageIndex >= pageCount) {
+                throw IndexOutOfBoundsException("رقم الصفحة $pageIndex غير صالح (عدد الصفحات: $pageCount)")
+            }
 
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(Color.WHITE)
+            val page = r.openPage(pageIndex)
+            try {
+                val aspect = page.height.toFloat() / page.width.toFloat().coerceAtLeast(1f)
+                val width = clampedWidth
+                val height = (width * aspect).toInt().coerceIn(300, 4000)
 
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            pageCache.put(pageIndex, bitmap)
-            bitmap
-        } finally {
-            try { page.close() } catch (_: Exception) {}
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(Color.WHITE)
+
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                pageCache.put(pageIndex, bitmap)
+                bitmap
+            } finally {
+                try { page.close() } catch (_: Exception) {}
+            }
         }
     }
 

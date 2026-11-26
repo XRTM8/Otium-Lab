@@ -1,15 +1,17 @@
 package com.otium.lab.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.otium.lab.library.DocumentStore
 import com.otium.lab.ui.components.UpdateBanner
 import com.otium.lab.ui.settings.components.AboutOtiumCard
@@ -21,37 +23,78 @@ import com.otium.lab.ui.theme.ThemePreferences
 @Composable
 fun SettingsScreen(
     themePreferences: ThemePreferences,
-    documentStore: DocumentStore
+    documentStore: DocumentStore,
+    isLandscape: Boolean,
+    onBack: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = if (isLandscape) 32.dp else 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "الإعدادات والمظهر",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (!isLandscape) {
+                Surface(
+                    onClick = onBack,
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "العودة للمكتبة",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "الإعدادات والمظهر",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
 
-        // 1. Updates Banner
         UpdateBanner()
 
-        // 2. Theme Selection
+        SettingsSectionLabel(text = "المظهر")
         ThemeSelectionCard(themePreferences = themePreferences)
 
-        // 3. Reading Preferences (Keep screen on, volume keys, layout)
+        Spacer(modifier = Modifier.height(2.dp))
+        SettingsSectionLabel(text = "تجربة القراءة")
         ReadingPreferencesCard(themePreferences = themePreferences)
 
-        // 4. Storage & Cache Management
+        Spacer(modifier = Modifier.height(2.dp))
+        SettingsSectionLabel(text = "التخزين")
         StorageCacheCard(documentStore = documentStore)
 
-        // 5. About Otium System Specs
+        Spacer(modifier = Modifier.height(2.dp))
+        SettingsSectionLabel(text = "عن التطبيق")
         AboutOtiumCard()
 
-        Spacer(modifier = Modifier.height(36.dp))
+        Spacer(modifier = Modifier.height(20.dp))
     }
+}
+
+@Composable
+private fun SettingsSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    )
 }

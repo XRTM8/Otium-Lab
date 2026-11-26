@@ -10,20 +10,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
-import androidx.compose.material.icons.rounded.AutoStories
-import androidx.compose.material.icons.rounded.Highlight
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.ViewStream
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.otium.lab.pdf.model.PageColorMode
-import com.otium.lab.pdf.model.ReadingLayout
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,14 +31,11 @@ fun PdfTopOverlay(
     pageCount: Int,
     barBg: Color,
     textColor: Color,
-    readingLayout: ReadingLayout,
     pageColorMode: PageColorMode,
     isSelectionModeActive: Boolean = false,
     onOpenSearch: () -> Unit = {},
     onOpenToc: () -> Unit = {},
-    onToggleSelectionMode: () -> Unit = {},
-    onToggleLayout: () -> Unit,
-    onToggleColorMode: () -> Unit,
+    onOpenDisplayOptions: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -58,7 +52,7 @@ fun PdfTopOverlay(
                     Brush.verticalGradient(
                         colors = listOf(
                             barBg.copy(alpha = 0.98f),
-                            barBg.copy(alpha = 0.88f),
+                            barBg.copy(alpha = 0.90f),
                             Color.Transparent
                         )
                     )
@@ -71,15 +65,16 @@ fun PdfTopOverlay(
                         Text(
                             text = title,
                             maxLines = 1,
-                            fontSize = 16.sp,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         if (pageCount > 0) {
                             Text(
                                 text = "\u200Eصفحة $currentPage من $pageCount\u200E",
-                                fontSize = 12.sp,
-                                color = textColor.copy(alpha = 0.7f)
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textColor.copy(alpha = 0.72f)
                             )
                         }
                     }
@@ -87,7 +82,7 @@ fun PdfTopOverlay(
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Icon(
-                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "رجوع",
                             tint = textColor
                         )
@@ -105,37 +100,21 @@ fun PdfTopOverlay(
                     IconButton(onClick = onOpenToc) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.MenuBook,
-                            contentDescription = "فهرس المحتويات",
+                            contentDescription = "فهرس المحتويات والتظليلات",
                             tint = textColor
                         )
                     }
 
                     IconButton(
-                        onClick = onToggleSelectionMode,
-                        modifier = if (isSelectionModeActive) {
-                            Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
+                        onClick = onOpenDisplayOptions,
+                        modifier = if (isSelectionModeActive || pageColorMode != PageColorMode.ORIGINAL) {
+                            Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), CircleShape)
                         } else Modifier
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Highlight,
-                            contentDescription = if (isSelectionModeActive) "إيقاف وضع التظليل" else "أداة التظليل",
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = "خيارات العرض والقراءة",
                             tint = if (isSelectionModeActive) MaterialTheme.colorScheme.primary else textColor
-                        )
-                    }
-
-                    IconButton(onClick = onToggleLayout) {
-                        Icon(
-                            imageVector = if (readingLayout == ReadingLayout.VERTICAL) Icons.Rounded.AutoStories else Icons.Rounded.ViewStream,
-                            contentDescription = readingLayout.labelAr,
-                            tint = textColor
-                        )
-                    }
-
-                    IconButton(onClick = onToggleColorMode) {
-                        Icon(
-                            imageVector = Icons.Rounded.Palette,
-                            contentDescription = pageColorMode.labelAr,
-                            tint = if (pageColorMode == PageColorMode.AMOLED_BLACK) MaterialTheme.colorScheme.primary else textColor
                         )
                     }
                 },

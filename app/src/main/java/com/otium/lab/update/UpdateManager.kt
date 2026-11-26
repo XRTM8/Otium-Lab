@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 data class UpdateInfo(
@@ -45,8 +46,8 @@ class UpdateManager(private val context: Context) {
     private val feedUrl = "https://github.com/XRTM8/Otium-Mobile/releases/latest/download/latest.json"
     private val apiFallbackUrl = "https://api.github.com/repos/XRTM8/Otium-Mobile/releases/latest"
 
-    fun checkForUpdates(): Flow<UpdateState> = flow {
-        emit(UpdateState.Checking)
+    fun checkForUpdates(silentOnNetworkError: Boolean = true): Flow<UpdateState> = flow {
+        if (!silentOnNetworkError) emit(UpdateState.Checking)
         val current = BuildConfig.VERSION_NAME
 
         try {
@@ -57,54 +58,63 @@ class UpdateManager(private val context: Context) {
                 emit(UpdateState.UpToDate(current))
             }
         } catch (e: Exception) {
-            emit(UpdateState.Error(e.localizedMessage ?: "فشل فحص التحديثات"))
+            if (silentOnNetworkError) {
+                emit(UpdateState.Idle)
+            } else {
+                emit(UpdateState.Error(e.localizedMessage ?: "فشل فحص التحديثات"))
+            }
         }
     }.flowOn(Dispatchers.IO)
 
     fun downloadUpdate(update: UpdateInfo): Flow<UpdateState> = flow {
-        emit(UpdateState.Downloading(0f, "0.0", "%.1f".format(update.sizeBytes / (1024f * 1024f))))
+        val totalStrInit = String.format(Locale.US, "%.1f", update.sizeBytes / (1024f * 1024f))
+        emit(UpdateState.Downloading(0f, "0.0", totalStrInit))
 
         val apkFile = File(context.cacheDir, "Otium-update.apk")
         if (apkFile.exists()) apkFile.delete()
 
         try {
             val request = Request.Builder().url(update.downloadUrl).build()
-            val response = client.newCall(request).execute()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    emit(UpdateState.Error("فشل تحميل التحديث: رمز الاستجابة ${response.code}"))
+                    return@flow
+                }
 
-            if (!response.isSuccessful) {
-                emit(UpdateState.Error("فشل تحميل التحديث: رمز الاستجابة ${response.code}"))
-                return@flow
-            }
+                val body = response.body ?: throw IllegalStateException("جسم الاستجابة فارغ")
+                val totalBytes = if (update.sizeBytes > 0) update.sizeBytes else body.contentLength()
+                var downloaded = 0L
+                var lastEmitTime = 0L
 
-            val body = response.body ?: throw IllegalStateException("جسم الاستجابة فارغ")
-            val totalBytes = if (update.sizeBytes > 0) update.sizeBytes else body.contentLength()
-            var downloaded = 0L
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(8192)
 
-            val digest = MessageDigest.getInstance("SHA-256")
-            val buffer = ByteArray(8192)
+                body.byteStream().use { input ->
+                    FileOutputStream(apkFile).use { output ->
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            digest.update(buffer, 0, bytesRead)
+                            downloaded += bytesRead
 
-            body.byteStream().use { input ->
-                FileOutputStream(apkFile).use { output ->
-                    var bytesRead: Int
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        digest.update(buffer, 0, bytesRead)
-                        downloaded += bytesRead
-
-                        val progress = if (totalBytes > 0) downloaded.toFloat() / totalBytes else 0f
-                        val downMb = "%.1f".format(downloaded / (1024f * 1024f))
-                        val totMb = "%.1f".format(totalBytes / (1024f * 1024f))
-                        emit(UpdateState.Downloading(progress, downMb, totMb))
+                            val now = System.currentTimeMillis()
+                            if (now - lastEmitTime >= 150L || (totalBytes > 0 && downloaded >= totalBytes)) {
+                                lastEmitTime = now
+                                val progress = if (totalBytes > 0) (downloaded.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+                                val downMb = String.format(Locale.US, "%.1f", downloaded / (1024f * 1024f))
+                                val totMb = String.format(Locale.US, "%.1f", totalBytes.coerceAtLeast(downloaded) / (1024f * 1024f))
+                                emit(UpdateState.Downloading(progress, downMb, totMb))
+                            }
+                        }
                     }
                 }
-            }
 
-            // Verify SHA-256 checksum if provided
-            val computedHash = digest.digest().joinToString("") { "%02x".format(it) }
-            if (update.sha256.isNotBlank() && !computedHash.equals(update.sha256, ignoreCase = true)) {
-                apkFile.delete()
-                emit(UpdateState.Error("فشل التحقق من أمان التحديث: البصمة المشفرة غير متطابقة"))
-                return@flow
+                val computedHash = digest.digest().joinToString("") { "%02x".format(it) }
+                if (update.sha256.isNotBlank() && !computedHash.equals(update.sha256, ignoreCase = true)) {
+                    apkFile.delete()
+                    emit(UpdateState.Error("فشل التحقق من أمان التحديث: البصمة المشفرة غير متطابقة"))
+                    return@flow
+                }
             }
 
             emit(UpdateState.ReadyToInstall(apkFile))

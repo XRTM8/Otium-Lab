@@ -99,8 +99,9 @@ fun PdfPageItem(
                 modifier = if (isHorizontal) Modifier.fillMaxHeight().aspectRatio(aspect) else Modifier.fillMaxWidth().aspectRatio(aspect),
                 contentAlignment = Alignment.Center
             ) {
+                val imageBitmap = remember(bmp) { bmp.asImageBitmap() }
                 Image(
-                    bitmap = bmp.asImageBitmap(),
+                    bitmap = imageBitmap,
                     contentDescription = "صفحة ${pageIndex + 1}",
                     colorFilter = colorFilter,
                     contentScale = ContentScale.FillBounds,

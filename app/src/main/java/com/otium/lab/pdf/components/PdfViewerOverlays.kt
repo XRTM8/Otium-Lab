@@ -30,6 +30,7 @@ fun PdfViewerOverlays(
     sliderValue: Float,
     isDraggingSlider: Boolean,
     showJumpDialog: Boolean,
+    showDisplaySheet: Boolean = false,
     showSearch: Boolean = false,
     searchQuery: String = "",
     searchMatchCount: Int = 0,
@@ -41,7 +42,9 @@ fun PdfViewerOverlays(
     onOpenSearch: () -> Unit = {}, onCloseSearch: () -> Unit = {}, onQueryChange: (String) -> Unit = {},
     onNextSearchMatch: () -> Unit = {}, onPrevSearchMatch: () -> Unit = {},
     onOpenToc: () -> Unit = {}, onDismissToc: () -> Unit = {}, onSelectTocPage: (Int) -> Unit = {},
-    onToggleSelectionMode: () -> Unit, onToggleLayout: () -> Unit, onToggleColorMode: () -> Unit, onClose: () -> Unit,
+    onOpenDisplayOptions: () -> Unit = {}, onDismissDisplayOptions: () -> Unit = {},
+    onSelectReadingLayout: (ReadingLayout) -> Unit = {}, onSelectColorMode: (PageColorMode) -> Unit = {},
+    onToggleSelectionMode: () -> Unit, onClose: () -> Unit,
     onCopyText: () -> Unit, onApplyHighlight: (Long) -> Unit, onDeleteHighlight: () -> Unit,
     onDeleteHighlightItem: (PdfHighlight) -> Unit = {}, onClearSelection: () -> Unit,
     onJumpToBeginning: () -> Unit, onDismissResumePill: () -> Unit,
@@ -56,14 +59,11 @@ fun PdfViewerOverlays(
             pageCount = pageCount,
             barBg = barBg,
             textColor = textColor,
-            readingLayout = readingLayout,
             pageColorMode = pageColorMode,
             isSelectionModeActive = isSelectionModeActive,
             onOpenSearch = onOpenSearch,
             onOpenToc = onOpenToc,
-            onToggleSelectionMode = onToggleSelectionMode,
-            onToggleLayout = onToggleLayout,
-            onToggleColorMode = onToggleColorMode,
+            onOpenDisplayOptions = onOpenDisplayOptions,
             onClose = onClose,
             modifier = Modifier.align(Alignment.TopCenter)
         )
@@ -86,7 +86,7 @@ fun PdfViewerOverlays(
         PdfHighlightBanner(
             visible = isSelectionModeActive && selectedSpans.isEmpty() && selectedHighlight == null,
             onCancel = onToggleSelectionMode,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 70.dp)
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp)
         )
 
         PdfSelectionActionBar(
@@ -97,7 +97,7 @@ fun PdfViewerOverlays(
             onHighlight = onApplyHighlight,
             onDeleteHighlight = onDeleteHighlight,
             onClear = onClearSelection,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 70.dp)
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp)
         )
 
         PdfResumePill(
@@ -106,7 +106,7 @@ fun PdfViewerOverlays(
             totalPages = pageCount,
             onJumpToBeginning = onJumpToBeginning,
             onDismiss = onDismissResumePill,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 85.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp)
         )
 
         PdfBottomScrubber(
@@ -124,14 +124,35 @@ fun PdfViewerOverlays(
         )
 
         if (showJumpDialog) {
-            PdfJumpDialog(pageCount = pageCount, initialPage = currentPage, onDismiss = onDismissJumpDialog, onConfirmJump = onConfirmJump)
+            PdfJumpDialog(
+                pageCount = pageCount,
+                initialPage = currentPage,
+                onDismiss = onDismissJumpDialog,
+                onConfirmJump = onConfirmJump
+            )
         }
 
         if (showTocDialog) {
             PdfTableOfContentsDialog(
-                outline = outline, currentPage = currentPage, highlights = allHighlights,
-                documentTitle = title, onDeleteHighlight = onDeleteHighlightItem,
-                onSelectPage = onSelectTocPage, onDismiss = onDismissToc
+                outline = outline,
+                currentPage = currentPage,
+                highlights = allHighlights,
+                documentTitle = title,
+                onDeleteHighlight = onDeleteHighlightItem,
+                onSelectPage = onSelectTocPage,
+                onDismiss = onDismissToc
+            )
+        }
+
+        if (showDisplaySheet) {
+            PdfDisplayOptionsSheet(
+                pageColorMode = pageColorMode,
+                readingLayout = readingLayout,
+                isSelectionModeActive = isSelectionModeActive,
+                onSelectColorMode = onSelectColorMode,
+                onSelectReadingLayout = onSelectReadingLayout,
+                onToggleSelectionMode = onToggleSelectionMode,
+                onDismiss = onDismissDisplayOptions
             )
         }
     }

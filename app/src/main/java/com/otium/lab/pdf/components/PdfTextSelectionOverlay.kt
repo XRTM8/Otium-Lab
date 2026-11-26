@@ -105,16 +105,16 @@ fun PdfTextSelectionOverlay(
             val canvasWidth = size.width
             val canvasHeight = size.height
 
-            // 1. Draw saved highlights
+            // 1. Draw saved highlights (SrcOver alpha works on both Light/Sepia and AMOLED Black pages)
             highlights.forEach { highlight ->
-                val color = Color(highlight.colorArgb).copy(alpha = 0.38f)
+                val color = Color(highlight.colorArgb).copy(alpha = 0.34f)
                 highlight.bounds.forEach { b ->
                     val left = b.left * canvasWidth; val top = b.top * canvasHeight
                     val width = (b.right - b.left) * canvasWidth; val height = (b.bottom - b.top) * canvasHeight
 
                     drawRoundRect(
                         color = color, topLeft = Offset(left, top), size = Size(width, height),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()), blendMode = BlendMode.Multiply
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                     )
                 }
             }

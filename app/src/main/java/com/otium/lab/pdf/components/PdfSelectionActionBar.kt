@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,10 +53,12 @@ fun PdfSelectionActionBar(
         modifier = modifier
     ) {
         Surface(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).shadow(12.dp, RoundedCornerShape(20.dp)),
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .shadow(10.dp, RoundedCornerShape(20.dp)),
             shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF1E293B),
-            tonalElevation = 6.dp
+            color = MaterialTheme.colorScheme.inverseSurface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -67,7 +70,7 @@ fun PdfSelectionActionBar(
                     Icon(Icons.Rounded.Highlight, contentDescription = "تظليل", tint = Color(activeColor), modifier = Modifier.size(20.dp))
                 }
 
-                Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color.White.copy(alpha = 0.2f)))
+                Box(modifier = Modifier.height(22.dp).width(1.dp).background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.2f)))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                     HighlightPalette.forEach { colorArgb ->
@@ -77,27 +80,48 @@ fun PdfSelectionActionBar(
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
-                                modifier = Modifier.size(20.dp).clip(CircleShape).background(Color(colorArgb))
-                                    .then(if (isCurrent) Modifier.border(2.dp, Color.White, CircleShape) else Modifier)
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(colorArgb))
+                                    .then(
+                                        if (isCurrent) Modifier.border(2.dp, MaterialTheme.colorScheme.inverseOnSurface, CircleShape)
+                                        else Modifier
+                                    )
                             )
                         }
                     }
                 }
 
-                Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color.White.copy(alpha = 0.2f)))
+                Box(modifier = Modifier.height(22.dp).width(1.dp).background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.2f)))
 
                 IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ", tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.ContentCopy,
+                        contentDescription = "نسخ",
+                        tint = MaterialTheme.colorScheme.inverseOnSurface,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
 
                 if (selectedHighlight != null) {
                     IconButton(onClick = onDeleteHighlight, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف التظليل", tint = Color(0xFFF87171), modifier = Modifier.size(20.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = "حذف التظليل",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
 
                 IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Rounded.Close, contentDescription = "إلغاء", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "إلغاء",
+                        tint = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
