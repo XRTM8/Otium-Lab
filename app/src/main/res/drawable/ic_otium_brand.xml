@@ -1,31 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="96dp"
     android:height="96dp"
     android:viewportWidth="96"
     android:viewportHeight="96">
 
-    <!-- Subtle Glow Behind Core -->
+    <!-- Radial Velvet Halo Behind Emblem -->
     <path
-        android:fillColor="#1F080F"
-        android:pathData="M48,16 C65.67,16 80,30.33 80,48 C80,65.67 65.67,80 48,80 C30.33,80 16,65.67 16,48 C16,30.33 30.33,16 48,16 Z" />
-
-    <!-- Left Book Wing (Regal Burgundy) -->
+        android:fillColor="#2572142B"
+        android:pathData="M48,48m-36,0a36,36 0,1 1,72 0a36,36 0,1 1,-72 0" />
     <path
-        android:fillColor="#881337"
-        android:pathData="M46,28 C36,26 26,29 20,34 L20,68 C26,63 36,61 46,63 Z" />
+        android:fillColor="#22FF3366"
+        android:pathData="M48,49m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
 
-    <!-- Right Book Wing (Vibrant Ruby) -->
-    <path
-        android:fillColor="#F43F5E"
-        android:pathData="M50,28 C60,26 70,29 76,34 L76,68 C70,63 60,61 50,63 Z" />
-
-    <!-- Spine / Center Pillar (Platinum White) -->
+    <!-- Platinum Crown Diamond -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M46.5,26 L49.5,26 L49.5,65 L46.5,65 Z" />
-
-    <!-- Regal Crown Star Accent (Warm Gold) -->
+        android:pathData="M48,18 L54,24 L48,30 L42,24 Z" />
     <path
-        android:fillColor="#E2C799"
-        android:pathData="M48,18 L50.5,24 L56,24.5 L51.8,28.2 L53,33.5 L48,30.5 L43,33.5 L44.2,28.2 L40,24.5 L45.5,24 Z" />
+        android:fillColor="#FFB3C1"
+        android:pathData="M48,20.6 L51.4,24 L48,27.4 L44.6,24 Z" />
+
+    <!-- Left Folio Wing -->
+    <path
+        android:fillColor="#E02447"
+        android:pathData="M46,35 C36,32 26,35 21,40 L21,67 C27,62 36,60 46,63 Z" />
+    <path
+        android:fillColor="#9C1030"
+        android:pathData="M46,38 C38,35.5 29,37.5 24,41.5 L24,64 C29,60 38,58.5 46,61 Z" />
+
+    <!-- Right Folio Wing -->
+    <path
+        android:fillColor="#9C1030"
+        android:pathData="M50,35 C60,32 70,35 75,40 L75,67 C69,62 60,60 50,63 Z" />
+    <path
+        android:fillColor="#E02447"
+        android:pathData="M50,35 C59,32.5 67,34.5 72,38.5 L72,48 C66,44.5 58,43 50,45.5 Z" />
+
+    <!-- Platinum Spine & Bookmark -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46.5,33.5 L49.5,33.5 L49.5,65.5 L46.5,65.5 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,37 L38.5,35.5 L38.5,51 L35.2,47.8 L32,51 Z" />
+
+    <!-- Flowing Bottom Ribbon -->
+    <path
+        android:fillColor="#E02447"
+        android:pathData="M30,68 C39,65 50,65 60,69 C66,71.2 69,69.5 69,69.5 C69,69.5 65,73.5 57,71.5 C48,69 39,69.5 30,68 Z" />
+
 </vector>

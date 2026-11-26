@@ -54,14 +54,16 @@ fun DocumentFilterChips(
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
                         selected = isSelected,
+                        borderWidth = 0.5.dp,
+                        selectedBorderWidth = 0.8.dp,
                         borderColor = MaterialTheme.colorScheme.outlineVariant,
-                        selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                        selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
                     ),
                     colors = FilterChipDefaults.filterChipColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                        selectedLabelColor = MaterialTheme.colorScheme.onSurface
                     )
                 )
             }

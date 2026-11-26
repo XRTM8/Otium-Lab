@@ -69,7 +69,7 @@ fun DocumentCard(
             MaterialTheme.colorScheme.surface
         },
         border = BorderStroke(
-            width = if (isSelected) 2.dp else 1.dp,
+            width = if (isSelected) 1.5.dp else 0.5.dp,
             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
         ),
         modifier = modifier

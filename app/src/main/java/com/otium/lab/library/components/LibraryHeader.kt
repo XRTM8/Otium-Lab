@@ -1,7 +1,10 @@
 package com.otium.lab.library.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -12,8 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.otium.lab.BuildConfig
 
 @Composable
 fun LibraryHeader(
@@ -34,14 +40,36 @@ fun LibraryHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "المكتبة",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "أوتيوم",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                        .border(
+                            0.5.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "v${BuildConfig.VERSION_NAME}",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = if (documentCount == 0) "جاهز للقراءة المحلية" else "$documentCount مستند محلي",
+                text = if (documentCount == 0) "قارئ PDF أصيل وعالي السرعة" else "المكتبة · $documentCount مستند محلي",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -54,11 +82,11 @@ fun LibraryHeader(
             if (showSearchButton) {
                 Surface(
                     onClick = onToggleSearch,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = CircleShape,
                     color = if (isSearchExpanded) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
                     border = BorderStroke(
-                        1.dp,
-                        if (isSearchExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        0.5.dp,
+                        if (isSearchExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                         else MaterialTheme.colorScheme.outlineVariant
                     ),
                     modifier = Modifier.size(40.dp)
@@ -68,7 +96,7 @@ fun LibraryHeader(
                             imageVector = if (isSearchExpanded) Icons.Rounded.Close else Icons.Rounded.Search,
                             contentDescription = if (isSearchExpanded) "إغلاق البحث" else "بحث في المستندات",
                             tint = if (isSearchExpanded) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
@@ -97,9 +125,9 @@ fun LibraryHeader(
             if (!isLandscape) {
                 Surface(
                     onClick = onOpenSettings,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = CircleShape,
                     color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.size(40.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -107,7 +135,7 @@ fun LibraryHeader(
                             imageVector = Icons.Rounded.Settings,
                             contentDescription = "الإعدادات",
                             tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }

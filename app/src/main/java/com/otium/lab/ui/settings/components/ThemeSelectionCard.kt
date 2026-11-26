@@ -41,34 +41,34 @@ fun ThemeSelectionCard(
     val specs = listOf(
         ThemePreviewSpec(
             mode = AppThemeMode.LIGHT,
-            bg = Color(0xFFFAF8F9),
-            cardBg = Color(0xFFFFFFFF),
-            border = Color(0xFFDFCFD5),
-            textLine = Color(0xFF140D10),
-            accent = Color(0xFF881337)
+            bg = Color(0xFFFFFFFF),
+            cardBg = Color(0xFFF6F7F9),
+            border = Color(0x1F000000),
+            textLine = Color(0xFF0F1014),
+            accent = Color(0xFF72142B)
         ),
         ThemePreviewSpec(
             mode = AppThemeMode.CREAM,
             bg = Color(0xFFFBF7EE),
-            cardBg = Color(0xFFF5EFE2),
-            border = Color(0xFFDFD3BD),
+            cardBg = Color(0xFFF4ECE0),
+            border = Color(0x1F000000),
             textLine = Color(0xFF231815),
-            accent = Color(0xFF881337)
+            accent = Color(0xFF72142B)
         ),
         ThemePreviewSpec(
             mode = AppThemeMode.AMOLED,
             bg = Color(0xFF000000),
-            cardBg = Color(0xFF1C1116),
-            border = Color(0xFF422530),
-            textLine = Color(0xFFF5F2F3),
-            accent = Color(0xFFBE123C)
+            cardBg = Color(0xFF14151B),
+            border = Color(0x24FFFFFF),
+            textLine = Color(0xFFF5F6F8),
+            accent = Color(0xFF9E1B42)
         )
     )
 
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier.fillMaxWidth()
     ) {
         Row(

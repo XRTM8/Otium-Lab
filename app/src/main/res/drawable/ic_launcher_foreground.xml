@@ -1,31 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Subtle Background Ambient Glow -->
+    <!-- Subtle Crimson Under-glow Behind Emblem -->
     <path
-        android:fillColor="#1F080F"
-        android:pathData="M54,20 C72.78,20 88,35.22 88,54 C88,72.78 72.78,88 54,88 C35.22,88 20,72.78 20,54 C20,35.22 35.22,20 54,20 Z" />
+        android:fillColor="#22FF3366"
+        android:pathData="M54,55m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0" />
 
-    <!-- Left Book Wing (Regal Burgundy) -->
-    <path
-        android:fillColor="#881337"
-        android:pathData="M52,32 C41,30 30,33 24,39 L24,75 C30,69 41,67 52,69 Z" />
-
-    <!-- Right Book Wing (Vibrant Ruby) -->
-    <path
-        android:fillColor="#F43F5E"
-        android:pathData="M56,32 C67,30 78,33 84,39 L84,75 C78,69 67,67 56,69 Z" />
-
-    <!-- Spine / Center Pillar (Platinum White) -->
+    <!-- Platinum Crown Diamond (Athar Nuqta Signature) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M52.5,30 L55.5,30 L55.5,72 L52.5,72 Z" />
-
-    <!-- Regal Crown Star Accent (Warm Gold) -->
+        android:pathData="M54,23 L60.5,29.5 L54,36 L47.5,29.5 Z" />
     <path
-        android:fillColor="#E2C799"
-        android:pathData="M54,22 L56.8,28.5 L63,29 L58.3,33.2 L59.6,39 L54,35.7 L48.4,39 L49.7,33.2 L45,29 L51.2,28.5 Z" />
+        android:fillColor="#FFB3C1"
+        android:pathData="M54,25.8 L57.7,29.5 L54,33.2 L50.3,29.5 Z" />
+
+    <!-- Left Folio Wing (Vibrant Crimson) -->
+    <path
+        android:fillColor="#E02447"
+        android:pathData="M52,41 C41,38 30,41 25,46 L25,75 C31,70 41,68 52,71 Z" />
+
+    <!-- Left Wing Inner Velvet Fold -->
+    <path
+        android:fillColor="#9C1030"
+        android:pathData="M52,44 C43,41.5 34,43.5 28,47.5 L28,72 C34,68 43,66.5 52,69 Z" />
+
+    <!-- Right Folio Wing (Deep Velvet Burgundy) -->
+    <path
+        android:fillColor="#9C1030"
+        android:pathData="M56,41 C67,38 78,41 83,46 L83,75 C77,70 67,68 56,71 Z" />
+
+    <!-- Right Wing Highlight Fold -->
+    <path
+        android:fillColor="#E02447"
+        android:pathData="M56,41 C66,38.5 75,40.5 80,44.5 L80,55 C74,51 65,49.5 56,52 Z" />
+
+    <!-- Crisp Text Line Accents on Right Page -->
+    <path
+        android:fillColor="#4DFFFFFF"
+        android:pathData="M62,56 L76,54.5 L76,57 L62,58.5 Z" />
+    <path
+        android:fillColor="#38FFFFFF"
+        android:pathData="M62,62 L74,60.8 L74,63.2 L62,64.4 Z" />
+
+    <!-- Platinum Center Spine & Flowing Bookmark Ribbon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M52.4,39.5 L55.6,39.5 L55.6,73.5 L52.4,73.5 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M37,43 L44,41.5 L44,58 L40.5,54.5 L37,58 Z" />
+
+    <!-- Flowing Bottom Calligraphy Tail Ribbon -->
+    <path
+        android:fillColor="#E02447"
+        android:pathData="M34,76 C44,72.5 56,72.5 67,77 C73,79.5 77,77.5 77,77.5 C77,77.5 72,82 64,79.5 C54,76.5 44,77.5 34,76 Z" />
+
 </vector>

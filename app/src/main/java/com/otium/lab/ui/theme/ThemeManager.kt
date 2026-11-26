@@ -21,88 +21,88 @@ enum class AppThemeMode(
     AMOLED("أموليـد أسود", false)
 }
 
-// 1. Light Theme: Warm Studio White + Imperial Deep Burgundy
+// 1. Light Theme (Athar AMOLED White Palette + Deep Royal Burgundy #72142B)
 val LightPalette = lightColorScheme(
-    primary = Color(0xFF881337),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFE4E6),
-    onPrimaryContainer = Color(0xFF4C0519),
-    secondary = Color(0xFF9F1239),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFCE7ED),
-    onSecondaryContainer = Color(0xFF881337),
-    background = Color(0xFFFAF8F9),
-    onBackground = Color(0xFF140D10),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF140D10),
-    surfaceVariant = Color(0xFFF5EFF2),
-    onSurfaceVariant = Color(0xFF57474E),
+    primary = Color(0xFF72142B),             // BurgundyDeep
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFF4DCE2),
+    onPrimaryContainer = Color(0xFF4A0B1B),
+    secondary = Color(0xFF8B1538),           // BurgundyWarm
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFECEEF2),  // WhiteSurfaceElevated
+    onSecondaryContainer = Color(0xFF72142B),
+    background = Color(0xFFFFFFFF),          // AmoledWhite
+    onBackground = Color(0xFF0F1014),        // DarkText
+    surface = Color(0xFFF6F7F9),             // WhiteSurface
+    onSurface = Color(0xFF0F1014),
+    surfaceVariant = Color(0xFFECEEF2),      // WhiteSurfaceElevated
+    onSurfaceVariant = Color(0xFF5A606E),    // DarkTextMuted
     surfaceTint = Color.Transparent,
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFFAF6F7),
-    surfaceContainer = Color(0xFFF5EFF2),
-    surfaceContainerHigh = Color(0xFFEDE3E7),
-    surfaceContainerHighest = Color(0xFFE4D6DC),
-    outline = Color(0xFFDFCFD5),
-    outlineVariant = Color(0xFFECE1E5),
-    inverseSurface = Color(0xFF1C1116),
-    inverseOnSurface = Color(0xFFF8FAFC)
+    surfaceContainerLow = Color(0xFFF6F7F9),
+    surfaceContainer = Color(0xFFECEEF2),
+    surfaceContainerHigh = Color(0xFFDFE2E8), // WhiteSurfaceActive
+    surfaceContainerHighest = Color(0xFFD5D9E1),
+    outline = Color(0x2E000000),
+    outlineVariant = Color(0x1F000000),      // WhiteBorder
+    inverseSurface = Color(0xFF14151B),
+    inverseOnSurface = Color(0xFFF5F6F8)
 )
 
-// 2. Cream Theme: Warm Book Paper + Imperial Deep Burgundy
+// 2. Cream Theme (Warm Book Paper + Deep Royal Burgundy #72142B)
 val CreamPalette = lightColorScheme(
-    primary = Color(0xFF881337),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFF8D7E0),
-    onPrimaryContainer = Color(0xFF4C0519),
-    secondary = Color(0xFF9F1239),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF2E1DB),
-    onSecondaryContainer = Color(0xFF7F1D3A),
+    primary = Color(0xFF72142B),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFF3D5DC),
+    onPrimaryContainer = Color(0xFF4A0B1B),
+    secondary = Color(0xFF8B1538),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFEBE1D0),
+    onSecondaryContainer = Color(0xFF72142B),
     background = Color(0xFFFBF7EE),
     onBackground = Color(0xFF231815),
-    surface = Color(0xFFF5EFE2),
+    surface = Color(0xFFF4ECE0),
     onSurface = Color(0xFF231815),
-    surfaceVariant = Color(0xFFEBE2D1),
+    surfaceVariant = Color(0xFFE9DEC9),
     onSurfaceVariant = Color(0xFF6B5B49),
     surfaceTint = Color.Transparent,
     surfaceContainerLowest = Color(0xFFFDFBF5),
-    surfaceContainerLow = Color(0xFFF5EFE2),
-    surfaceContainer = Color(0xFFEFE5D5),
-    surfaceContainerHigh = Color(0xFFE6D9C4),
-    surfaceContainerHighest = Color(0xFFDDD0B8),
-    outline = Color(0xFFD5C8B0),
-    outlineVariant = Color(0xFFE4D9C4),
-    inverseSurface = Color(0xFF2A211D),
+    surfaceContainerLow = Color(0xFFF4ECE0),
+    surfaceContainer = Color(0xFFEBE1D0),
+    surfaceContainerHigh = Color(0xFFE2D5C0),
+    surfaceContainerHighest = Color(0xFFD8C9B1),
+    outline = Color(0x2E000000),
+    outlineVariant = Color(0x1F000000),
+    inverseSurface = Color(0xFF231815),
     inverseOnSurface = Color(0xFFFBF7EE)
 )
 
-// 3. AMOLED Theme: Pitch Black OLED + Warm Velvet Burgundy-Obsidian Surfaces
+// 3. AMOLED Theme (Athar Pure AMOLED Black #000000 + StudioSurface #14151B + Velvet Burgundy #9E1B42)
 val AmoledPalette = darkColorScheme(
-    primary = Color(0xFFBE123C),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF4C0519),
-    onPrimaryContainer = Color(0xFFFFE4E6),
-    secondary = Color(0xFFE11D48),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF3B0816),
-    onSecondaryContainer = Color(0xFFFECDD3),
-    background = Color(0xFF000000),
-    onBackground = Color(0xFFF8FAFC),
-    surface = Color(0xFF130C0F),
-    onSurface = Color(0xFFF5F2F3),
-    surfaceVariant = Color(0xFF1D1217),
-    onSurfaceVariant = Color(0xFFA899A0),
+    primary = Color(0xFF9E1B42),             // BurgundyAccent
+    onPrimary = Color(0xFFF5F6F8),           // PureWhite
+    primaryContainer = Color(0xFF330D1A),    // Solid Velvet Burgundy Pill Container
+    onPrimaryContainer = Color(0xFFF5F6F8),
+    secondary = Color(0xFF8B1538),           // BurgundyWarm
+    onSecondary = Color(0xFFF5F6F8),
+    secondaryContainer = Color(0x249E1B42),  // BurgundyMuted (14% tint)
+    onSecondaryContainer = Color(0xFFF48AA7),
+    background = Color(0xFF000000),          // AmoledBlack
+    onBackground = Color(0xFFF5F6F8),        // PureWhite
+    surface = Color(0xFF14151B),             // StudioSurface
+    onSurface = Color(0xFFF5F6F8),
+    surfaceVariant = Color(0xFF1E2028),      // StudioSurfaceElevated
+    onSurfaceVariant = Color(0xFFA1A3AF),    // MutedWhite
     surfaceTint = Color.Transparent,
-    surfaceContainerLowest = Color(0xFF090607),
-    surfaceContainerLow = Color(0xFF130C0F),
-    surfaceContainer = Color(0xFF1C1116),
-    surfaceContainerHigh = Color(0xFF25161D),
-    surfaceContainerHighest = Color(0xFF2F1C24),
-    outline = Color(0xFF422530),
-    outlineVariant = Color(0xFF331D25),
-    inverseSurface = Color(0xFF1C1116),
-    inverseOnSurface = Color(0xFFF8FAFC)
+    surfaceContainerLowest = Color(0xFF0A0B0E), // StudioBackground
+    surfaceContainerLow = Color(0xFF14151B),    // StudioSurface
+    surfaceContainer = Color(0xFF1E2028),       // StudioSurfaceElevated
+    surfaceContainerHigh = Color(0xFF282A36),   // StudioSurfaceActive
+    surfaceContainerHighest = Color(0xFF323544),
+    outline = Color(0x24FFFFFF),             // StudioBorderSubtle (14%)
+    outlineVariant = Color(0x14FFFFFF),      // StudioBorder (8% white hairline)
+    inverseSurface = Color(0xFF14151B),
+    inverseOnSurface = Color(0xFFF5F6F8)
 )
 
 @Composable
@@ -121,6 +121,7 @@ fun ColorScheme.animated(): ColorScheme {
     val aOnSurface by animateColorAsState(onSurface, animSpec, label = "onSurface")
     val aSurfaceVariant by animateColorAsState(surfaceVariant, animSpec, label = "surfaceVariant")
     val aOnSurfaceVariant by animateColorAsState(onSurfaceVariant, animSpec, label = "onSurfaceVariant")
+    val aSurfaceContainerLowest by animateColorAsState(surfaceContainerLowest, animSpec, label = "surfaceContainerLowest")
     val aSurfaceContainerLow by animateColorAsState(surfaceContainerLow, animSpec, label = "surfaceContainerLow")
     val aSurfaceContainer by animateColorAsState(surfaceContainer, animSpec, label = "surfaceContainer")
     val aSurfaceContainerHigh by animateColorAsState(surfaceContainerHigh, animSpec, label = "surfaceContainerHigh")
@@ -141,6 +142,7 @@ fun ColorScheme.animated(): ColorScheme {
         onSurface = aOnSurface,
         surfaceVariant = aSurfaceVariant,
         onSurfaceVariant = aOnSurfaceVariant,
+        surfaceContainerLowest = aSurfaceContainerLowest,
         surfaceContainerLow = aSurfaceContainerLow,
         surfaceContainer = aSurfaceContainer,
         surfaceContainerHigh = aSurfaceContainerHigh,

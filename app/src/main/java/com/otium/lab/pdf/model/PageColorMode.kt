@@ -18,9 +18,9 @@ enum class PageColorMode(
     ),
     AMOLED_BLACK(
         labelAr = "أموليـد أسود",
-        containerBg = Color(0xFF140D10),
-        barBg = Color(0xFF160E12),
-        textColor = Color(0xFFF8FAFC),
+        containerBg = Color(0xFF0A0B0E),
+        barBg = Color(0xFF14151B),
+        textColor = Color(0xFFF5F6F8),
         cardBg = Color.Black
     ),
     SEPIA(
