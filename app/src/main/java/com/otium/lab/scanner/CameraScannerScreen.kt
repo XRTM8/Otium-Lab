@@ -108,6 +108,8 @@ fun CameraScannerScreen(
     var smoothedQuad by remember { mutableStateOf<NormalizedQuad?>(null) }
     var stabilityProgress by remember { mutableFloatStateOf(0f) }
     var lastAutoCaptureTime by remember { mutableLongStateOf(0L) }
+    var missFrames by remember { mutableIntStateOf(0) }
+    var outlierFrames by remember { mutableIntStateOf(0) }
     var analysisSize by remember { mutableStateOf(Pair(1, 1)) }
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
@@ -163,12 +165,24 @@ fun CameraScannerScreen(
                     analysisSize = size
                     val nextQuad = result?.quad
                     if (nextQuad == null) {
-                        smoothedQuad = null
-                        stabilityProgress = 0f
+                        missFrames++
+                        if (missFrames >= 2) {
+                            smoothedQuad = null
+                            stabilityProgress = 0f
+                            outlierFrames = 0
+                        }
                     } else {
+                        missFrames = 0
                         val prev = smoothedQuad
+                        val drift = if (prev != null) maxCornerDrift(prev, nextQuad) else 0f
+                        if (prev != null && drift > 0.18f && outlierFrames < 2) {
+                            outlierFrames++
+                            stabilityProgress = (stabilityProgress - 0.1f).coerceAtLeast(0f)
+                            return@launch
+                        }
+                        outlierFrames = 0
                         val nextSmooth = if (prev == null) nextQuad else smoothQuad(prev, nextQuad, 0.45f)
-                        val steady = prev != null && maxCornerDrift(prev, nextQuad) < 0.028f
+                        val steady = prev != null && drift < 0.028f
                         smoothedQuad = nextSmooth
                         if (autoCaptureEnabled && !isCapturing) {
                             val nextProgress = if (steady) (stabilityProgress + 0.22f).coerceAtMost(1f) else (stabilityProgress - 0.15f).coerceAtLeast(0f)

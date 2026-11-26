@@ -50,8 +50,10 @@ pub fn detect_document_quad(image: &DynamicImage) -> Option<DetectedQuad> {
     let smooth = gaussian_blur_5x5(&luma, w, h);
     let (grad_mag, grad_ang) = sobel_gradients(&smooth, w, h);
 
-    let region_candidate = detect_via_adaptive_hull(&r_buf, &g_buf, &b_buf, &smooth, &grad_mag, w, h);
-    let hough_candidate = detect_via_oriented_hough(&grad_mag, &grad_ang, w, h);
+    let region_candidate = detect_via_adaptive_hull(&r_buf, &g_buf, &b_buf, &smooth, &grad_mag, w, h)
+        .map(|cand| refine_quad_subpixel(cand, &grad_mag, w, h));
+    let hough_candidate = detect_via_oriented_hough(&grad_mag, &grad_ang, w, h)
+        .map(|cand| refine_quad_subpixel(cand, &grad_mag, w, h));
 
     match (region_candidate, hough_candidate) {
         (Some(a), Some(b)) => Some(if a.confidence >= b.confidence { a } else { b }),
@@ -59,6 +61,111 @@ pub fn detect_document_quad(image: &DynamicImage) -> Option<DetectedQuad> {
         (None, Some(b)) => Some(b),
         (None, None) => None,
     }
+}
+
+/// Refines each of the 4 quad sides by snapping sample points to the strongest
+/// perpendicular gradient peak within +-7px and fitting a least-squares line.
+fn refine_quad_subpixel(cand: DetectedQuad, grad_mag: &[f32], w: usize, h: usize) -> DetectedQuad {
+    let wf = w as f32;
+    let hf = h as f32;
+    let pts = [
+        Point2D::new(cand.quad.top_left.x * wf, cand.quad.top_left.y * hf),
+        Point2D::new(cand.quad.top_right.x * wf, cand.quad.top_right.y * hf),
+        Point2D::new(cand.quad.bottom_right.x * wf, cand.quad.bottom_right.y * hf),
+        Point2D::new(cand.quad.bottom_left.x * wf, cand.quad.bottom_left.y * hf),
+    ];
+
+    let mut fitted_lines: Vec<(f32, f32, f32)> = Vec::with_capacity(4);
+    for side in 0..4 {
+        let p0 = pts[side];
+        let p1 = pts[(side + 1) % 4];
+        let dx = p1.x - p0.x;
+        let dy = p1.y - p0.y;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let nx = -dy / len;
+        let ny = dx / len;
+
+        let mut snapped = Vec::new();
+        for s in 2..22 {
+            let t = s as f32 / 24.0;
+            let bx = p0.x + dx * t;
+            let by = p0.y + dy * t;
+            let mut best_g = 0.0f32;
+            let mut best_pt = Point2D::new(bx, by);
+            for offset in -7..=7 {
+                let sx = (bx + nx * offset as f32).round() as isize;
+                let sy = (by + ny * offset as f32).round() as isize;
+                if sx >= 1 && sx < w as isize - 1 && sy >= 1 && sy < h as isize - 1 {
+                    let g = grad_mag[sy as usize * w + sx as usize];
+                    if g > best_g {
+                        best_g = g;
+                        best_pt = Point2D::new(sx as f32, sy as f32);
+                    }
+                }
+            }
+            if best_g > 20.0 {
+                snapped.push(best_pt);
+            }
+        }
+
+        if let Some(line) = fit_line_tls(&snapped) {
+            fitted_lines.push(line);
+        } else {
+            // Keep original edge line: a*x + b*y + c = 0
+            fitted_lines.push((nx, ny, -(nx * p0.x + ny * p0.y)));
+        }
+    }
+
+    let mut refined = [Point2D::new(0.0, 0.0); 4];
+    for i in 0..4 {
+        let l_prev = fitted_lines[(i + 3) % 4];
+        let l_curr = fitted_lines[i];
+        if let Some(inter) = intersect_abc(l_prev, l_curr) {
+            if (inter.x - pts[i].x).hypot(inter.y - pts[i].y) < wf.min(hf) * 0.08 {
+                refined[i] = inter;
+            } else {
+                refined[i] = pts[i];
+            }
+        } else {
+            refined[i] = pts[i];
+        }
+    }
+
+    validate_and_score_quad(order_quad_clockwise(refined), grad_mag, w, h).unwrap_or(cand)
+}
+
+fn fit_line_tls(points: &[Point2D]) -> Option<(f32, f32, f32)> {
+    if points.len() < 6 {
+        return None;
+    }
+    let n = points.len() as f32;
+    let mx = points.iter().map(|p| p.x).sum::<f32>() / n;
+    let my = points.iter().map(|p| p.y).sum::<f32>() / n;
+    let mut sxx = 0.0f32;
+    let mut syy = 0.0f32;
+    let mut sxy = 0.0f32;
+    for p in points {
+        let dx = p.x - mx;
+        let dy = p.y - my;
+        sxx += dx * dx;
+        syy += dy * dy;
+        sxy += dx * dy;
+    }
+    let theta = 0.5 * (2.0 * sxy).atan2(sxx - syy);
+    let nx = -theta.sin();
+    let ny = theta.cos();
+    let c = -(nx * mx + ny * my);
+    Some((nx, ny, c))
+}
+
+fn intersect_abc(l1: (f32, f32, f32), l2: (f32, f32, f32)) -> Option<Point2D> {
+    let det = l1.0 * l2.1 - l1.1 * l2.0;
+    if det.abs() < 1e-4 {
+        return None;
+    }
+    let x = (l1.1 * l2.2 - l2.1 * l1.2) / det;
+    let y = (l2.0 * l1.2 - l1.0 * l2.2) / det;
+    Some(Point2D::new(x, y))
 }
 
 fn detect_via_adaptive_hull(
@@ -103,9 +210,12 @@ fn detect_via_adaptive_hull(
     let mut mask = vec![false; w * h];
     for i in 0..(w * h) {
         let color_dist = ((r_buf[i] - bg_r).abs() + (g_buf[i] - bg_g).abs() + (b_buf[i] - bg_b).abs()) / 3.0;
+        let chroma = r_buf[i].max(g_buf[i]).max(b_buf[i]) - r_buf[i].min(g_buf[i]).min(b_buf[i]);
+        let bg_chroma = bg_r.max(bg_g).max(bg_b) - bg_r.min(bg_g).min(bg_b);
+        let neutral_paper_on_warm_desk = (bg_chroma - chroma) > 14.0 && smooth[i] > bg_l - 12.0;
         let brighter_than_bg = smooth[i] > (bg_l + 16.0).min(otsu);
-        let locally_bright = smooth[i] >= local_mean[i] * 0.90 && color_dist > 22.0;
-        mask[i] = brighter_than_bg || locally_bright;
+        let locally_bright = smooth[i] >= local_mean[i] * 0.90 && color_dist > 20.0;
+        mask[i] = brighter_than_bg || locally_bright || neutral_paper_on_warm_desk;
     }
 
     // Connected component labeling to find largest interior paper region
@@ -658,5 +768,59 @@ mod tests {
         assert!(detected.confidence > 0.4);
         assert!(detected.quad.top_left.x < 0.25 && detected.quad.top_left.y < 0.25);
         assert!(detected.quad.bottom_right.x > 0.70 && detected.quad.bottom_right.y > 0.75);
+    }
+
+    fn bbox_iou(q: &QuadCorners, tx0: f32, ty0: f32, tx1: f32, ty1: f32) -> f32 {
+        let px0 = q.top_left.x.min(q.bottom_left.x);
+        let py0 = q.top_left.y.min(q.top_right.y);
+        let px1 = q.top_right.x.max(q.bottom_right.x);
+        let py1 = q.bottom_left.y.max(q.bottom_right.y);
+        let ix0 = px0.max(tx0);
+        let iy0 = py0.max(ty0);
+        let ix1 = px1.min(tx1);
+        let iy1 = py1.min(ty1);
+        let inter = (ix1 - ix0).max(0.0) * (iy1 - iy0).max(0.0);
+        let area_p = (px1 - px0).max(0.0) * (py1 - py0).max(0.0);
+        let area_t = (tx1 - tx0).max(0.0) * (ty1 - ty0).max(0.0);
+        inter / (area_p + area_t - inter).max(1e-6)
+    }
+
+    #[test]
+    fn benchmark_iou_shadowed_and_warm_desk_documents() {
+        // Case 1: Heavy diagonal shadow across white paper on dark desk
+        let mut shadowed = RgbaImage::new(320, 420);
+        for y in 0..420 {
+            for x in 0..320 {
+                let in_paper = (40..280).contains(&x) && (50..370).contains(&y);
+                let in_shadow = x + y > 380;
+                let v = if in_paper {
+                    if in_shadow { 140 } else { 240 }
+                } else {
+                    if in_shadow { 45 } else { 75 }
+                };
+                shadowed.put_pixel(x, y, Rgba([v, v, v, 255]));
+            }
+        }
+        let det_shadow = detect_document_quad(&DynamicImage::ImageRgba8(shadowed))
+            .expect("should detect shadowed document");
+        let iou_shadow = bbox_iou(&det_shadow.quad, 40.0 / 320.0, 50.0 / 420.0, 280.0 / 320.0, 370.0 / 420.0);
+        assert!(iou_shadow >= 0.80, "shadow IoU was {iou_shadow}");
+
+        // Case 2: White paper on warm light-beige desk (similar luminance, different chroma)
+        let mut warm_desk = RgbaImage::new(320, 420);
+        for y in 0..420 {
+            for x in 0..320 {
+                let in_paper = (45..275).contains(&x) && (55..365).contains(&y);
+                if in_paper {
+                    warm_desk.put_pixel(x, y, Rgba([232, 232, 230, 255]));
+                } else {
+                    warm_desk.put_pixel(x, y, Rgba([228, 205, 170, 255]));
+                }
+            }
+        }
+        let det_warm = detect_document_quad(&DynamicImage::ImageRgba8(warm_desk))
+            .expect("should detect white paper on warm desk");
+        let iou_warm = bbox_iou(&det_warm.quad, 45.0 / 320.0, 55.0 / 420.0, 275.0 / 320.0, 365.0 / 420.0);
+        assert!(iou_warm >= 0.80, "warm desk IoU was {iou_warm}");
     }
 }
