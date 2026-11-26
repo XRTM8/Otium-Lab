@@ -42,7 +42,18 @@ fun PdfContentCanvas(
     onTransform: (Float, Offset) -> Unit, modifier: Modifier = Modifier
 ) {
     val isZoomed = scale > 1.05f
-    val renderTargetWidth = if (scale >= 1.8f) 2160 else 1080
+    var renderTargetWidth by remember { mutableIntStateOf(1080) }
+    LaunchedEffect(scale) {
+        val desired = when {
+            scale >= 2.0f -> 2400
+            scale >= 1.4f -> 1800
+            else -> 1080
+        }
+        if (desired != renderTargetWidth) {
+            kotlinx.coroutines.delay(220)
+            renderTargetWidth = desired
+        }
+    }
     val highlightsByPage = remember(allHighlights) { allHighlights.groupBy { it.pageIndex } }
     val matchesByPage = remember(searchMatches) { searchMatches.groupBy { it.pageIndex } }
 

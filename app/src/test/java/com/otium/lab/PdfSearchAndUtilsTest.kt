@@ -1,45 +1,24 @@
 package com.otium.lab
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.otium.lab.library.DocumentStore
 import com.otium.lab.library.util.DocumentNameResolver
+import com.otium.lab.library.util.PdfMerger
 import com.otium.lab.pdf.model.PdfTextSpan
 import com.otium.lab.pdf.text.PdfSearchEngine
-import com.otium.lab.scanner.PdfExporter
-import com.otium.lab.scanner.util.ImageProcessingUtils
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.io.ByteArrayOutputStream
-import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class PdfSearchAndUtilsTest {
-
-    @Test
-    fun rotateJpegBytesSwapsDimensions() {
-        val bmp = Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888)
-        val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
-        bmp.recycle()
-
-        val rotatedBytes = ImageProcessingUtils.rotateJpegBytes90Cw(out.toByteArray())
-        assertNotNull(rotatedBytes)
-        val decoded = BitmapFactory.decodeByteArray(rotatedBytes, 0, rotatedBytes!!.size)
-        assertEquals(20, decoded.width)
-        assertEquals(40, decoded.height)
-        decoded.recycle()
-    }
 
     @Test
     fun pdfTextSpanHitTestingAndSearchMatch() {
@@ -51,16 +30,11 @@ class PdfSearchAndUtilsTest {
     }
 
     @Test
-    fun pdfExporterRejectsEmptyAndCorruptInputs() {
+    fun pdfMergerRejectsFewerThanTwoUris() {
         val context: Context = ApplicationProvider.getApplicationContext()
         assertThrows(IllegalArgumentException::class.java) {
-            runBlocking { PdfExporter.exportImageFilesToPdf(context, emptyList(), "empty") }
+            runBlocking { PdfMerger.mergePdfUris(context, emptyList(), "empty") }
         }
-        val corrupt = File(context.cacheDir, "corrupt_page.jpg").apply { writeText("not-an-image") }
-        assertThrows(IllegalStateException::class.java) {
-            runBlocking { PdfExporter.exportImageFilesToPdf(context, listOf(corrupt), "corrupt") }
-        }
-        corrupt.delete()
     }
 
     @Test

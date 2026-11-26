@@ -51,6 +51,8 @@ class DocumentStoreAndAnnotationsTest {
 
         val docsBefore = documentStore.getDocuments()
         val storedA = docsBefore.first { it.uriString == uriA.toString() }
+        documentStore.updateFolder(uriA, "كتب_مختارة")
+        assertEquals("كتب_مختارة", documentStore.getDocuments().first { it.uriString == uriA.toString() }.folder)
 
         // Rename to an already existing filename -> should auto-disambiguate & migrate highlights
         assertTrue(documentStore.renameDocument(storedA, "target_name"))

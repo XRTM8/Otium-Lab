@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
 import java.util.concurrent.Executors
 
 class NativePdfRenderer(private val context: Context) : AutoCloseable {
@@ -23,12 +24,13 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
     private var renderExecutor = Executors.newSingleThreadExecutor()
     private var renderDispatcher = renderExecutor.asCoroutineDispatcher()
 
-    // Dynamically sized page cache (10-18 pages max, keeping heap footprint safely under 90MB)
-    private val cacheLimit = ((Runtime.getRuntime().maxMemory() / (1024 * 1024)) / 22).toInt().coerceIn(10, 18)
-    private val pageCache = object : LruCache<Int, Bitmap>(cacheLimit) {
-        override fun entryRemoved(evicted: Boolean, key: Int?, oldValue: Bitmap?, newValue: Bitmap?) {
-            // Let GC collect recycled bitmaps
-        }
+    // Byte-size bounded page cache (up to 96 MB or 1/6 of heap) to prevent OOM at high zoom
+    private val maxCacheKb = ((Runtime.getRuntime().maxMemory() / 1024L) / 6L)
+        .toInt()
+        .coerceIn(24 * 1024, 96 * 1024)
+    private val pageCache = object : LruCache<Int, Bitmap>(maxCacheKb) {
+        override fun sizeOf(key: Int, value: Bitmap): Int =
+            (value.allocationByteCount / 1024).coerceAtLeast(1)
     }
 
     var pageCount by mutableIntStateOf(0)
@@ -48,7 +50,10 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
         this.documentName = name
 
         val pfd = if (uri.scheme == "file") {
-            ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
+            val file = uri.path?.let(::File)
+                ?: throw FileNotFoundException("مسار الملف غير صالح")
+            if (!file.exists()) throw FileNotFoundException("الملف غير موجود: ${file.name}")
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         } else {
             context.contentResolver.openFileDescriptor(uri, "r")
                 ?: throw IllegalArgumentException("تعذر فتح ملف المستند من المسار: $uri")
@@ -88,6 +93,13 @@ class NativePdfRenderer(private val context: Context) : AutoCloseable {
         } finally {
             try { page.close() } catch (_: Exception) {}
         }
+    }
+
+    suspend fun prefetchPage(pageIndex: Int, targetWidth: Int = 1080) {
+        if (pageIndex !in 0 until pageCount) return
+        val cached = pageCache.get(pageIndex)
+        if (cached != null && !cached.isRecycled) return
+        runCatching { renderPage(pageIndex, targetWidth) }
     }
 
     override fun close() {

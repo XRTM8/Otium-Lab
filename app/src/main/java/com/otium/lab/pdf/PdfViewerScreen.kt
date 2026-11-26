@@ -62,6 +62,13 @@ fun PdfViewerScreen(
             state.hasRestoredPosition = true
         }
     }
+    LaunchedEffect(currentPage, state.isLoaded, state.renderer.pageCount) {
+        if (state.isLoaded && state.renderer.pageCount > 0) {
+            val idx = currentPage - 1
+            state.renderer.prefetchPage(idx + 1)
+            state.renderer.prefetchPage(idx - 1)
+        }
+    }
     LaunchedEffect(currentPage, state.listState.firstVisibleItemScrollOffset, state.isLoaded, state.hasRestoredPosition) {
         if (state.isLoaded && state.hasRestoredPosition && state.renderer.pageCount > 0) {
             delay(350)

@@ -34,20 +34,32 @@ class DocumentStore(private val context: Context) {
 
     fun clearTemporaryCache() {
         try {
-            context.cacheDir.deleteRecursively()
-            context.cacheDir.mkdirs()
+            val cutoff = System.currentTimeMillis() - 60 * 60 * 1000L
+            context.cacheDir.listFiles()?.forEach { entry ->
+                if (entry.name == "scan_session" && entry.isDirectory) {
+                    entry.listFiles()?.forEach { f ->
+                        if (f.lastModified() < cutoff) f.delete()
+                    }
+                } else {
+                    entry.deleteRecursively()
+                }
+            }
         } catch (_: Exception) {}
     }
 
-    private fun Cursor.toStoredDocument(): StoredDocument = StoredDocument(
-        uriString = getString(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_URI)),
-        title = getString(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TITLE)),
-        isScanned = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_IS_SCANNED)) == 1,
-        timestamp = getLong(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TIMESTAMP)),
-        lastPage = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_LAST_PAGE)),
-        totalPages = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TOTAL_PAGES)),
-        scrollOffset = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_SCROLL_OFFSET))
-    )
+    private fun Cursor.toStoredDocument(): StoredDocument {
+        val folderIdx = getColumnIndex(OtiumDbHelper.COL_DOC_FOLDER)
+        return StoredDocument(
+            uriString = getString(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_URI)),
+            title = getString(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TITLE)),
+            isScanned = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_IS_SCANNED)) == 1,
+            timestamp = getLong(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TIMESTAMP)),
+            lastPage = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_LAST_PAGE)),
+            totalPages = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_TOTAL_PAGES)),
+            scrollOffset = getInt(getColumnIndexOrThrow(OtiumDbHelper.COL_DOC_SCROLL_OFFSET)),
+            folder = if (folderIdx >= 0) getString(folderIdx) ?: "" else ""
+        )
+    }
 
     fun getDocuments(): List<StoredDocument> {
         val list = mutableListOf<StoredDocument>()
@@ -76,7 +88,8 @@ class DocumentStore(private val context: Context) {
                         timestamp = saved?.timestamp ?: f.lastModified(),
                         lastPage = saved?.lastPage ?: 1,
                         totalPages = saved?.totalPages ?: 0,
-                        scrollOffset = saved?.scrollOffset ?: 0
+                        scrollOffset = saved?.scrollOffset ?: 0,
+                        folder = saved?.folder ?: ""
                     )
                 )
             }
@@ -107,8 +120,22 @@ class DocumentStore(private val context: Context) {
             put(OtiumDbHelper.COL_DOC_LAST_PAGE, resolvedPage)
             put(OtiumDbHelper.COL_DOC_TOTAL_PAGES, resolvedTotal)
             put(OtiumDbHelper.COL_DOC_SCROLL_OFFSET, resolvedOffset)
+            put(OtiumDbHelper.COL_DOC_FOLDER, existing?.folder ?: "")
         }
         db.insertWithOnConflict(OtiumDbHelper.TABLE_DOCUMENTS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun updateFolder(uri: Uri, folder: String) {
+        val clean = folder.trim()
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put(OtiumDbHelper.COL_DOC_FOLDER, clean)
+        }
+        val rows = db.update(OtiumDbHelper.TABLE_DOCUMENTS, values, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(uri.toString()))
+        if (rows == 0) {
+            addOrUpdateDocument(uri)
+            db.update(OtiumDbHelper.TABLE_DOCUMENTS, values, "${OtiumDbHelper.COL_DOC_URI} = ?", arrayOf(uri.toString()))
+        }
     }
 
     private fun getDocument(uri: Uri): StoredDocument? {
@@ -187,6 +214,7 @@ class DocumentStore(private val context: Context) {
                     put(OtiumDbHelper.COL_DOC_LAST_PAGE, doc.lastPage)
                     put(OtiumDbHelper.COL_DOC_TOTAL_PAGES, doc.totalPages)
                     put(OtiumDbHelper.COL_DOC_SCROLL_OFFSET, doc.scrollOffset)
+                    put(OtiumDbHelper.COL_DOC_FOLDER, doc.folder)
                 }
                 if (db.insertWithOnConflict(OtiumDbHelper.TABLE_DOCUMENTS, null, insertValues, SQLiteDatabase.CONFLICT_REPLACE) != -1L) {
                     updatedRows = 1

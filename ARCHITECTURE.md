@@ -53,7 +53,7 @@ com.otium.lab.<feature>/
 | :--- | :--- | :--- | :--- |
 | **PDF Reader** | `PdfViewerScreen.kt` | `pdf.components.*` (`PdfTopOverlay`, `PdfBottomScrubber`, `PdfPageItem`, `PdfJumpDialog`, `PdfContentCanvas`, `PdfTextSelectionOverlay`, `PdfSelectionActionBar`, `PdfResumePill`) | `pdf.model.*` (`PageColorMode`, `ReadingLayout`, `PdfHighlight`, `PdfTextSpan`), `pdf.store.AnnotationStore`, `pdf.text.PdfTextExtractor` |
 | **Document Library** | `LibraryScreen.kt` | `library.components.*` (`ContinueReadingHero`, `DocumentCard`, `DocumentFilterChips`, `EmptyLibraryState`, `LibraryHeader`) | `library.DocumentStore.kt`, `library.StoredDocument.kt` |
-| **Camera Scanner** | `CameraScannerScreen.kt`, `ScanReviewScreen.kt` | `scanner.components.*` (`ScannerViewfinder`, `ScannerTopBar`, `ScannerBottomBar`, `DocumentCropOverlay`) | `scanner.util.DocumentEdgeDetector`, `DocumentRegionDetector`, `ScannerLiveAnalyzer`, `scanner.ScanSessionState`, `scanner.PdfExporter`, `otium-bridge` |
+| **Camera Scanner** | `GmsScannerScreen.kt`, `CameraScannerScreen.kt`, `ScanReviewScreen.kt` | `scanner.components.*` (`ScannerViewfinder`, `ScannerTopBar`, `ScannerBottomBar`, `DocumentCropOverlay`) | `scanner.util.DocumentEdgeDetector`, `DocumentRegionDetector`, `ScannerLiveAnalyzer`, `scanner.ScanSessionState`, `scanner.PdfExporter`, `otium-bridge` |
 | **Settings & Specs** | `SettingsScreen.kt` | `ui.settings.components.*` (`ThemeSelectionCard`, `ReadingPreferencesCard`, `StorageCacheCard`, `AboutOtiumCard`) | `ui.theme.ThemePreferences.kt` |
 | **Core Utilities** | `OtiumApp.kt` | `ui.components.*` | `core.extensions.*` (`ContextExtensions.kt`) |
 

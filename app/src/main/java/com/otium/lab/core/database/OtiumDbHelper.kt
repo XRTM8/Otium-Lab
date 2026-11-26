@@ -10,7 +10,7 @@ class OtiumDbHelper(private val context: Context) :
 
     companion object {
         const val DATABASE_NAME = "otium_core.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
 
         const val TABLE_DOCUMENTS = "documents"
         const val COL_DOC_URI = "uri_string"
@@ -20,6 +20,7 @@ class OtiumDbHelper(private val context: Context) :
         const val COL_DOC_LAST_PAGE = "last_page"
         const val COL_DOC_TOTAL_PAGES = "total_pages"
         const val COL_DOC_SCROLL_OFFSET = "scroll_offset"
+        const val COL_DOC_FOLDER = "folder"
 
         const val TABLE_HIGHLIGHTS = "highlights"
         const val COL_HL_ID = "id"
@@ -60,7 +61,8 @@ class OtiumDbHelper(private val context: Context) :
                 $COL_DOC_TIMESTAMP INTEGER NOT NULL,
                 $COL_DOC_LAST_PAGE INTEGER NOT NULL DEFAULT 1,
                 $COL_DOC_TOTAL_PAGES INTEGER NOT NULL DEFAULT 0,
-                $COL_DOC_SCROLL_OFFSET INTEGER NOT NULL DEFAULT 0
+                $COL_DOC_SCROLL_OFFSET INTEGER NOT NULL DEFAULT 0,
+                $COL_DOC_FOLDER TEXT NOT NULL DEFAULT ''
             );
             """.trimIndent()
         )
@@ -85,7 +87,11 @@ class OtiumDbHelper(private val context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future schema migrations
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_DOCUMENTS ADD COLUMN $COL_DOC_FOLDER TEXT NOT NULL DEFAULT ''")
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onOpen(db: SQLiteDatabase) {

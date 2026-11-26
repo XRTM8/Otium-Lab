@@ -114,11 +114,25 @@ class PdfViewerState(
         searchJob = scope.launch {
             delay(250)
             isSearching = true
-            val res = PdfSearchEngine.search(textExtractor, uri, renderer.pageCount, query)
+            var scrolledToFirst = false
+            val res = PdfSearchEngine.search(
+                extractor = textExtractor,
+                uri = uri,
+                pageCount = renderer.pageCount,
+                query = query,
+                onProgress = { partial ->
+                    searchMatches = partial
+                    if (!scrolledToFirst && partial.isNotEmpty()) {
+                        scrolledToFirst = true
+                        currentMatchIndex = 0
+                        onScrollToPage(partial[0].pageIndex)
+                    }
+                }
+            )
             searchMatches = res
             currentMatchIndex = 0
             isSearching = false
-            if (res.isNotEmpty()) onScrollToPage(res[0].pageIndex)
+            if (!scrolledToFirst && res.isNotEmpty()) onScrollToPage(res[0].pageIndex)
         }
     }
 

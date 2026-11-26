@@ -15,7 +15,8 @@ object PdfSearchEngine {
         uri: Uri,
         pageCount: Int,
         query: String,
-        maxResults: Int = 100
+        maxResults: Int = 100,
+        onProgress: ((List<PdfSearchMatch>) -> Unit)? = null
     ): List<PdfSearchMatch> = withContext(Dispatchers.IO) {
         val trimmed = query.trim()
         if (trimmed.isEmpty() || pageCount <= 0) return@withContext emptyList()
@@ -25,6 +26,7 @@ object PdfSearchEngine {
             coroutineContext.ensureActive()
             val pageText = extractor.extractPageText(uri, page)
             if (pageText.isBlank()) continue
+            val beforeSize = results.size
 
             try {
                 val matches = bridgeFindArabicMatches(pageText, trimmed)
@@ -40,7 +42,10 @@ object PdfSearchEngine {
                             endOffset = end
                         )
                     )
-                    if (results.size >= maxResults) return@withContext results
+                    if (results.size >= maxResults) {
+                        onProgress?.let { cb -> withContext(Dispatchers.Main) { cb(results.toList()) } }
+                        return@withContext results
+                    }
                 }
             } catch (_: Throwable) {
                 // Fallback substring matching when native bridge is unavailable
@@ -54,9 +59,16 @@ object PdfSearchEngine {
                             endOffset = idx + trimmed.length
                         )
                     )
-                    if (results.size >= maxResults) return@withContext results
+                    if (results.size >= maxResults) {
+                        onProgress?.let { cb -> withContext(Dispatchers.Main) { cb(results.toList()) } }
+                        return@withContext results
+                    }
                     idx = pageText.indexOf(trimmed, idx + 1, ignoreCase = true)
                 }
+            }
+            if (results.size > beforeSize && onProgress != null) {
+                val snapshot = results.toList()
+                withContext(Dispatchers.Main) { onProgress(snapshot) }
             }
         }
         results

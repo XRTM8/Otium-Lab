@@ -1,10 +1,11 @@
 package com.otium.lab.library.components
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,12 +27,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DocumentCard(
     doc: StoredDocument,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onShare: () -> Unit,
     onRename: () -> Unit,
+    onAssignFolder: () -> Unit = {},
     onExport: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -47,9 +52,10 @@ fun DocumentCard(
 
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
         tonalElevation = 1.dp,
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -101,6 +107,9 @@ fun DocumentCard(
                         if (doc.totalPages > 0) {
                             Text(text = " · ${doc.totalPages} ص", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                         }
+                        if (doc.folder.isNotBlank()) {
+                            Text(text = " · ${doc.folder}", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+                        }
                         Text(text = " · $dateStr", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -112,6 +121,7 @@ fun DocumentCard(
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(text = { Text("مشاركة") }, onClick = { showMenu = false; onShare() }, leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null) })
                         DropdownMenuItem(text = { Text("تعديل الاسم") }, onClick = { showMenu = false; onRename() }, leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) })
+                        DropdownMenuItem(text = { Text("تعيين مجلد") }, onClick = { showMenu = false; onAssignFolder() }, leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, contentDescription = null) })
                         DropdownMenuItem(text = { Text("حفظ في التنزيلات") }, onClick = { showMenu = false; onExport() }, leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null) })
                         DropdownMenuItem(text = { Text("حذف", color = MaterialTheme.colorScheme.error) }, onClick = { showMenu = false; onDelete() }, leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) })
                     }

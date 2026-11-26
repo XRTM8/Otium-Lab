@@ -84,9 +84,9 @@ fun StorageCacheCard(
                     Text("المساحة المستخدمة حالياً:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(2.dp))
                     val formattedSize = if (storageBytes > 1024 * 1024) {
-                        String.format("%.1f ميغابايت", storageBytes / (1024.0 * 1024.0))
+                        String.format(java.util.Locale.US, "%.1f ميغابايت", storageBytes / (1024.0 * 1024.0))
                     } else {
-                        String.format("%.1f كيلوبايت", storageBytes / 1024.0)
+                        String.format(java.util.Locale.US, "%.1f كيلوبايت", storageBytes / 1024.0)
                     }
                     Text(
                         formattedSize,

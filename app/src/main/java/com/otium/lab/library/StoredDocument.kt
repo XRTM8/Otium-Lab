@@ -9,7 +9,8 @@ data class StoredDocument(
     val timestamp: Long,
     val lastPage: Int = 1,
     val totalPages: Int = 0,
-    val scrollOffset: Int = 0
+    val scrollOffset: Int = 0,
+    val folder: String = ""
 ) {
     val uri: Uri get() = Uri.parse(uriString)
 }
