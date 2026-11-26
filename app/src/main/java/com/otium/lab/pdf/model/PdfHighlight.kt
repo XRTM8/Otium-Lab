@@ -32,5 +32,13 @@ data class PdfHighlight(
     val text: String,
     val colorArgb: Long,
     val bounds: List<NormalizedRect>,
+    val timestamp: Long = System.currentTimeMillis(),
+    val note: String = ""
+)
+
+data class PdfBookmark(
+    val id: String = UUID.randomUUID().toString(),
+    val pageIndex: Int,
+    val label: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )

@@ -20,7 +20,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.otium.lab.pdf.NativePdfRenderer
@@ -38,10 +40,14 @@ fun PdfContentCanvas(
     isSelectionModeActive: Boolean, selectedSpans: List<PdfTextSpan>, selectedHighlight: PdfHighlight?,
     selectedPage: Int, onViewportSizeChanged: (IntSize) -> Unit,
     onSelectSpans: (Int, List<PdfTextSpan>) -> Unit, onTapHighlight: (PdfHighlight) -> Unit,
-    onClearSelection: () -> Unit, onTap: () -> Unit, onDoubleTap: () -> Unit,
+    onClearSelection: () -> Unit, onTap: () -> Unit,
+    onTapNextPage: () -> Unit = {}, onTapPrevPage: () -> Unit = {},
+    onDoubleTap: () -> Unit,
     onTransform: (Float, Offset) -> Unit, modifier: Modifier = Modifier
 ) {
     val isZoomed = scale > 1.05f
+    val layoutDirection = LocalLayoutDirection.current
+    var viewportWidthPx by remember { mutableIntStateOf(0) }
     var renderTargetWidth by remember { mutableIntStateOf(1080) }
     LaunchedEffect(scale) {
         val desired = when {
@@ -59,14 +65,29 @@ fun PdfContentCanvas(
 
     Box(
         modifier = modifier.fillMaxSize()
-            .onSizeChanged(onViewportSizeChanged)
+            .onSizeChanged {
+                viewportWidthPx = it.width
+                onViewportSizeChanged(it)
+            }
             .then(
                 if (!isSelectionModeActive) {
-                    Modifier.pointerInput(isZoomed) {
+                    Modifier.pointerInput(isZoomed, readingLayout, layoutDirection) {
                         detectPdfViewerGestures(
                             isZoomed = isZoomed,
                             onTransform = onTransform,
-                            onTap = onTap,
+                            onTap = { tapOffset ->
+                                if (readingLayout == ReadingLayout.HORIZONTAL && !isZoomed && viewportWidthPx > 0) {
+                                    val xNorm = tapOffset.x / viewportWidthPx.toFloat()
+                                    val isRtl = layoutDirection == LayoutDirection.Rtl
+                                    when {
+                                        xNorm < 0.22f -> if (isRtl) onTapNextPage() else onTapPrevPage()
+                                        xNorm > 0.78f -> if (isRtl) onTapPrevPage() else onTapNextPage()
+                                        else -> onTap()
+                                    }
+                                } else {
+                                    onTap()
+                                }
+                            },
                             onDoubleTap = onDoubleTap
                         )
                     }

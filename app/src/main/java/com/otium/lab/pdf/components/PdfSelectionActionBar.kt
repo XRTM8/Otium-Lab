@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -42,6 +43,7 @@ fun PdfSelectionActionBar(
     selectedHighlight: PdfHighlight?,
     onCopy: () -> Unit,
     onHighlight: (Long) -> Unit,
+    onOpenNoteDialog: () -> Unit,
     onDeleteHighlight: () -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier
@@ -54,34 +56,34 @@ fun PdfSelectionActionBar(
     ) {
         Surface(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
                 .shadow(10.dp, RoundedCornerShape(20.dp)),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.inverseSurface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 val activeColor = selectedHighlight?.colorArgb ?: HighlightPalette.first()
-                IconButton(onClick = { onHighlight(activeColor) }, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Rounded.Highlight, contentDescription = "تظليل", tint = Color(activeColor), modifier = Modifier.size(20.dp))
+                IconButton(onClick = { onHighlight(activeColor) }, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Rounded.Highlight, contentDescription = "تظليل", tint = Color(activeColor), modifier = Modifier.size(19.dp))
                 }
 
                 Box(modifier = Modifier.height(22.dp).width(1.dp).background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.2f)))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
                     HighlightPalette.forEach { colorArgb ->
                         val isCurrent = selectedHighlight?.colorArgb == colorArgb
                         Box(
-                            modifier = Modifier.size(34.dp).clip(CircleShape).clickable { onHighlight(colorArgb) },
+                            modifier = Modifier.size(30.dp).clip(CircleShape).clickable { onHighlight(colorArgb) },
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
+                                    .size(19.dp)
                                     .clip(CircleShape)
                                     .background(Color(colorArgb))
                                     .then(
@@ -95,32 +97,42 @@ fun PdfSelectionActionBar(
 
                 Box(modifier = Modifier.height(22.dp).width(1.dp).background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.2f)))
 
-                IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = onOpenNoteDialog, modifier = Modifier.size(34.dp)) {
+                    val hasNote = !selectedHighlight?.note.isNullOrBlank()
+                    Icon(
+                        imageVector = Icons.Rounded.EditNote,
+                        contentDescription = "إضافة ملاحظة",
+                        tint = if (hasNote) Color(0xFFFACC15) else MaterialTheme.colorScheme.inverseOnSurface,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                IconButton(onClick = onCopy, modifier = Modifier.size(34.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.ContentCopy,
                         contentDescription = "نسخ",
                         tint = MaterialTheme.colorScheme.inverseOnSurface,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
                 if (selectedHighlight != null) {
-                    IconButton(onClick = onDeleteHighlight, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = onDeleteHighlight, modifier = Modifier.size(34.dp)) {
                         Icon(
                             imageVector = Icons.Rounded.DeleteOutline,
                             contentDescription = "حذف التظليل",
                             tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
 
-                IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = onClear, modifier = Modifier.size(34.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = "إلغاء",
                         tint = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }

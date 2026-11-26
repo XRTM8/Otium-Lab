@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.LruCache
 import com.otium.lab.pdf.model.PdfTextSpan
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
@@ -44,7 +45,7 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
         return try {
             val doc = if (uri.scheme == "file" && uri.path != null) {
                 val f = File(uri.path!!)
-                if (f.exists()) PDDocument.load(f) else loadFromResolver(uri)
+                if (f.exists()) PDDocument.load(f, MemoryUsageSetting.setupTempFileOnly()) else loadFromResolver(uri)
             } else {
                 loadFromResolver(uri)
             }
@@ -67,7 +68,7 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
                 }
             } ?: return null
             cachedTempFile = cacheFile
-            PDDocument.load(cacheFile)
+            PDDocument.load(cacheFile, MemoryUsageSetting.setupTempFileOnly())
         } catch (_: Exception) {
             runCatching { cacheFile.delete() }
             cachedTempFile = null
@@ -116,6 +117,18 @@ class PdfTextExtractor(private val context: Context) : AutoCloseable {
     fun clearCache() {
         pageSpanCache.evictAll()
         closeDocument()
+    }
+
+    companion object {
+        fun cleanupStaleStreamCache(context: Context) {
+            try {
+                context.cacheDir.listFiles()?.forEach { entry ->
+                    if (entry.isFile && (entry.name.startsWith("stream_doc_") || entry.name.startsWith("annotated_"))) {
+                        entry.delete()
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     override fun close() = clearCache()

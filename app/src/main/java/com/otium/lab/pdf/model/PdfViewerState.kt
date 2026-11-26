@@ -44,11 +44,14 @@ class PdfViewerState(
     var errorMessage by mutableStateOf<String?>(null)
     var showControls by mutableStateOf(true)
     var showJumpDialog by mutableStateOf(false)
+    var showNoteDialog by mutableStateOf(false)
     var isSelectionModeActive by mutableStateOf(false)
+    var lockHorizontalPan by mutableStateOf(false)
 
     var savedPage by mutableIntStateOf(1)
     var savedOffset by mutableIntStateOf(0)
     var allHighlights by mutableStateOf<List<PdfHighlight>>(emptyList())
+    var allBookmarks by mutableStateOf<List<PdfBookmark>>(emptyList())
 
     var selectedSpans by mutableStateOf<List<PdfTextSpan>>(emptyList())
     var selectedHighlight by mutableStateOf<PdfHighlight?>(null)
@@ -83,7 +86,9 @@ class PdfViewerState(
     }
 
     fun handleBack(onClose: () -> Unit) {
-        if (showDisplaySheet) {
+        if (showNoteDialog) {
+            showNoteDialog = false
+        } else if (showDisplaySheet) {
             showDisplaySheet = false
         } else if (showSearch) {
             closeSearch()
@@ -139,19 +144,23 @@ class PdfViewerState(
         }
     }
 
-    fun applyHighlight(scope: CoroutineScope, colorArgb: Long) {
+    fun applyHighlight(scope: CoroutineScope, colorArgb: Long, noteOverride: String? = null) {
         val existing = selectedHighlight
         val spans = selectedSpans
         val targetPage = selectedPage
         clearSelection()
         isSelectionModeActive = false
         scope.launch {
-            val toSave = existing?.copy(colorArgb = colorArgb) ?: if (spans.isNotEmpty()) {
+            val toSave = existing?.copy(
+                colorArgb = colorArgb,
+                note = noteOverride ?: existing.note
+            ) ?: if (spans.isNotEmpty()) {
                 PdfHighlight(
                     pageIndex = targetPage,
                     text = spans.joinToString(" ") { it.text },
                     colorArgb = colorArgb,
-                    bounds = spans.map { NormalizedRect(it.normLeft, it.normTop, it.normRight, it.normBottom) }
+                    bounds = spans.map { NormalizedRect(it.normLeft, it.normTop, it.normRight, it.normBottom) },
+                    note = noteOverride ?: ""
                 )
             } else null
             if (toSave != null) {
@@ -160,6 +169,7 @@ class PdfViewerState(
                     annotationStore.getAllHighlights(uri)
                 }
                 if (existing == null) Toast.makeText(context, "تم حفظ التظليل", Toast.LENGTH_SHORT).show()
+                else if (noteOverride != null) Toast.makeText(context, "تم حفظ الملاحظة", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -174,6 +184,30 @@ class PdfViewerState(
                 annotationStore.getAllHighlights(uri)
             }
             Toast.makeText(context, "تم حذف التظليل", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun toggleBookmark(scope: CoroutineScope, pageIndex: Int) {
+        val chapterLabel = outline.lastOrNull { it.pageIndex <= pageIndex }?.title ?: ""
+        scope.launch {
+            val added = withContext(Dispatchers.IO) {
+                annotationStore.toggleBookmark(uri, pageIndex, chapterLabel)
+            }
+            allBookmarks = withContext(Dispatchers.IO) { annotationStore.getBookmarks(uri) }
+            Toast.makeText(
+                context,
+                if (added) "تمت إضافة علامة مرجعية (ص ${pageIndex + 1})" else "تمت إزالة العلامة المرجعية",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun deleteBookmark(scope: CoroutineScope, bookmark: PdfBookmark) {
+        scope.launch {
+            allBookmarks = withContext(Dispatchers.IO) {
+                annotationStore.deleteBookmark(bookmark.id)
+                annotationStore.getBookmarks(uri)
+            }
         }
     }
 }
@@ -209,7 +243,6 @@ fun rememberPdfViewerState(
         }
     }
 
-    // Keep screen awake & Immersive mode
     val keepScreenOn by themePreferences.keepScreenOn
     DisposableEffect(keepScreenOn) {
         val window = context.findActivity()?.window
@@ -234,9 +267,11 @@ fun rememberPdfViewerState(
                     annotationStore.getAllHighlights(uri)
                 )
             }
+            val bookmarks = withContext(Dispatchers.IO) { annotationStore.getBookmarks(uri) }
             state.savedPage = lastPage
             state.savedOffset = lastOffset
             state.allHighlights = highlights
+            state.allBookmarks = bookmarks
             state.hasRestoredPosition = lastPage <= 1
             state.showResumePill = lastPage > 1
             state.isLoaded = true

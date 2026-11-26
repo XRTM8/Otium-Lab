@@ -10,7 +10,8 @@ data class StoredDocument(
     val lastPage: Int = 1,
     val totalPages: Int = 0,
     val scrollOffset: Int = 0,
-    val folder: String = ""
+    val folder: String = "",
+    val highlightCount: Int = 0
 ) {
     val uri: Uri get() = Uri.parse(uriString)
 }

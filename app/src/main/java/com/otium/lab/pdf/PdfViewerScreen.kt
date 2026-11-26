@@ -18,12 +18,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.otium.lab.core.extensions.findActivity
+import com.otium.lab.pdf.components.HighlightPalette
 import com.otium.lab.pdf.components.PdfContentCanvas
 import com.otium.lab.pdf.components.PdfViewerOverlays
 import com.otium.lab.pdf.model.*
 import com.otium.lab.pdf.util.BindReaderVolumeKeys
 import com.otium.lab.ui.theme.ThemePreferences
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,6 +47,12 @@ fun PdfViewerScreen(
             if (state.renderer.pageCount <= 0) 1
             else if (state.readingLayout == ReadingLayout.VERTICAL) (state.listState.firstVisibleItemIndex + 1).coerceAtMost(state.renderer.pageCount)
             else (state.pagerState.currentPage + 1).coerceAtMost(state.renderer.pageCount)
+        }
+    }
+
+    val isCurrentBookmarked by remember {
+        derivedStateOf {
+            state.allBookmarks.any { it.pageIndex == (currentPage - 1) }
         }
     }
 
@@ -114,6 +123,21 @@ fun PdfViewerScreen(
         }
     }
 
+    val latestPage by rememberUpdatedState(currentPage)
+    val latestPageCount by rememberUpdatedState(state.renderer.pageCount)
+    val latestIsLoaded by rememberUpdatedState(state.isLoaded)
+    val latestHasRestored by rememberUpdatedState(state.hasRestoredPosition)
+    DisposableEffect(uri) {
+        onDispose {
+            if (latestIsLoaded && latestHasRestored && latestPageCount > 0) {
+                val offset = if (state.readingLayout == ReadingLayout.VERTICAL) state.listState.firstVisibleItemScrollOffset else 0
+                CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+                    state.documentStore.updateProgress(uri, latestPage, latestPageCount, offset)
+                }
+            }
+        }
+    }
+
     BackHandler { state.handleBack(onClose) }
 
     val volumeKeysPageTurn by themePreferences.volumeKeysPageTurn
@@ -149,7 +173,10 @@ fun PdfViewerScreen(
             onViewportSizeChanged = { state.viewportSize = it },
             onSelectSpans = { p, spans -> state.selectedPage = p; state.selectedHighlight = null; state.selectedSpans = spans },
             onTapHighlight = { h -> state.selectedPage = h.pageIndex; state.selectedSpans = emptyList(); state.selectedHighlight = h },
-            onClearSelection = { state.clearSelection() }, onTap = { state.showControls = !state.showControls },
+            onClearSelection = { state.clearSelection() },
+            onTap = { state.showControls = !state.showControls },
+            onTapNextPage = { if (currentPage < state.renderer.pageCount) scrollTo(currentPage) },
+            onTapPrevPage = { if (currentPage > 1) scrollTo(currentPage - 2) },
             onDoubleTap = { if (state.targetScale > 1.2f) { state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f } else state.targetScale = 2.2f },
             onTransform = { zoom, pan ->
                 val newScale = (state.targetScale * zoom).coerceIn(1f, 4.5f)
@@ -157,7 +184,7 @@ fun PdfViewerScreen(
                 if (newScale > 1.05f) {
                     val maxX = ((state.viewportSize.width * (newScale - 1f)) / 2f).coerceAtLeast(100f)
                     val maxY = ((state.viewportSize.height * (newScale - 1f)) / 2f).coerceAtLeast(100f)
-                    state.offsetX = (state.offsetX + pan.x).coerceIn(-maxX, maxX)
+                    state.offsetX = if (state.lockHorizontalPan) 0f else (state.offsetX + pan.x).coerceIn(-maxX, maxX)
                     state.offsetY = (state.offsetY + pan.y).coerceIn(-maxY, maxY)
                 } else { state.targetScale = 1f; state.offsetX = 0f; state.offsetY = 0f }
             }
@@ -166,13 +193,16 @@ fun PdfViewerScreen(
         PdfViewerOverlays(
             showControls = state.showControls, title = title, currentPage = currentPage, pageCount = state.renderer.pageCount,
             barBg = mode.barBg, textColor = mode.textColor, readingLayout = state.readingLayout, pageColorMode = state.pageColorMode,
-            isSelectionModeActive = state.isSelectionModeActive, selectedSpans = state.selectedSpans, selectedHighlight = state.selectedHighlight,
+            isSelectionModeActive = state.isSelectionModeActive, lockHorizontalPan = state.lockHorizontalPan,
+            isBookmarked = isCurrentBookmarked,
+            selectedSpans = state.selectedSpans, selectedHighlight = state.selectedHighlight,
             showResumePill = state.showResumePill, resumedPage = state.savedPage, sliderValue = state.sliderValue,
             isDraggingSlider = state.isDraggingSlider, showJumpDialog = state.showJumpDialog,
+            showNoteDialog = state.showNoteDialog,
             showDisplaySheet = state.showDisplaySheet,
             showSearch = state.showSearch, searchQuery = state.searchQuery, searchMatchCount = state.searchMatches.size,
             currentSearchMatchIndex = state.currentMatchIndex, isSearching = state.isSearching, showTocDialog = state.showTocDialog,
-            outline = state.outline, allHighlights = state.allHighlights,
+            outline = state.outline, allHighlights = state.allHighlights, allBookmarks = state.allBookmarks,
             onOpenSearch = { state.showSearch = true },
             onCloseSearch = { state.closeSearch() },
             onQueryChange = { q -> state.updateSearchQuery(scope, q) { scrollTo(it) } },
@@ -201,6 +231,12 @@ fun PdfViewerScreen(
             onSelectColorMode = { newMode ->
                 state.pageColorMode = newMode
             },
+            onToggleLockHorizontalPan = {
+                state.lockHorizontalPan = !state.lockHorizontalPan
+                if (state.lockHorizontalPan) state.offsetX = 0f
+            },
+            onToggleBookmark = { state.toggleBookmark(scope, currentPage - 1) },
+            onDeleteBookmark = { bm -> state.deleteBookmark(scope, bm) },
             onToggleSelectionMode = {
                 state.isSelectionModeActive = !state.isSelectionModeActive
                 if (!state.isSelectionModeActive) state.clearSelection()
@@ -214,6 +250,13 @@ fun PdfViewerScreen(
                 state.clearSelection(); state.isSelectionModeActive = false
             },
             onApplyHighlight = { color -> state.applyHighlight(scope, color) },
+            onOpenNoteDialog = { state.showNoteDialog = true },
+            onDismissNoteDialog = { state.showNoteDialog = false },
+            onSaveHighlightNote = { note ->
+                state.showNoteDialog = false
+                val activeColor = state.selectedHighlight?.colorArgb ?: HighlightPalette.first()
+                state.applyHighlight(scope, activeColor, noteOverride = note)
+            },
             onDeleteHighlight = { state.deleteHighlight(scope, state.selectedHighlight) },
             onDeleteHighlightItem = { h -> state.deleteHighlight(scope, h) },
             onClearSelection = { state.clearSelection(); state.isSelectionModeActive = false },

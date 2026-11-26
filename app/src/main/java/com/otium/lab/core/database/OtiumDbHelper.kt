@@ -10,7 +10,7 @@ class OtiumDbHelper(private val context: Context) :
 
     companion object {
         const val DATABASE_NAME = "otium_core.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 3
 
         const val TABLE_DOCUMENTS = "documents"
         const val COL_DOC_URI = "uri_string"
@@ -30,6 +30,14 @@ class OtiumDbHelper(private val context: Context) :
         const val COL_HL_COLOR = "color_argb"
         const val COL_HL_BOUNDS = "bounds_json"
         const val COL_HL_TIMESTAMP = "timestamp"
+        const val COL_HL_NOTE = "note"
+
+        const val TABLE_BOOKMARKS = "bookmarks"
+        const val COL_BM_ID = "id"
+        const val COL_BM_URI = "uri_string"
+        const val COL_BM_PAGE = "page_index"
+        const val COL_BM_LABEL = "label"
+        const val COL_BM_TIMESTAMP = "timestamp"
 
         @Volatile
         private var instance: OtiumDbHelper? = null
@@ -77,12 +85,14 @@ class OtiumDbHelper(private val context: Context) :
                 $COL_HL_TEXT TEXT NOT NULL,
                 $COL_HL_COLOR INTEGER NOT NULL,
                 $COL_HL_BOUNDS TEXT NOT NULL,
-                $COL_HL_TIMESTAMP INTEGER NOT NULL
+                $COL_HL_TIMESTAMP INTEGER NOT NULL,
+                $COL_HL_NOTE TEXT NOT NULL DEFAULT ''
             );
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_hl_uri_page ON $TABLE_HIGHLIGHTS ($COL_HL_URI, $COL_HL_PAGE);")
 
+        createBookmarksTable(db)
         migrateFromPreferences(db)
     }
 
@@ -92,6 +102,27 @@ class OtiumDbHelper(private val context: Context) :
                 db.execSQL("ALTER TABLE $TABLE_DOCUMENTS ADD COLUMN $COL_DOC_FOLDER TEXT NOT NULL DEFAULT ''")
             } catch (_: Exception) {}
         }
+        if (oldVersion < 3) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_HIGHLIGHTS ADD COLUMN $COL_HL_NOTE TEXT NOT NULL DEFAULT ''")
+            } catch (_: Exception) {}
+            createBookmarksTable(db)
+        }
+    }
+
+    private fun createBookmarksTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_BOOKMARKS (
+                $COL_BM_ID TEXT PRIMARY KEY,
+                $COL_BM_URI TEXT NOT NULL,
+                $COL_BM_PAGE INTEGER NOT NULL,
+                $COL_BM_LABEL TEXT NOT NULL DEFAULT '',
+                $COL_BM_TIMESTAMP INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_bm_uri_page ON $TABLE_BOOKMARKS ($COL_BM_URI, $COL_BM_PAGE);")
     }
 
     override fun onOpen(db: SQLiteDatabase) {
@@ -142,8 +173,8 @@ class OtiumDbHelper(private val context: Context) :
                     val stmt = db.compileStatement(
                         """
                         INSERT OR REPLACE INTO $TABLE_HIGHLIGHTS
-                        ($COL_HL_ID, $COL_HL_URI, $COL_HL_PAGE, $COL_HL_TEXT, $COL_HL_COLOR, $COL_HL_BOUNDS, $COL_HL_TIMESTAMP)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ($COL_HL_ID, $COL_HL_URI, $COL_HL_PAGE, $COL_HL_TEXT, $COL_HL_COLOR, $COL_HL_BOUNDS, $COL_HL_TIMESTAMP, $COL_HL_NOTE)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """.trimIndent()
                     )
                     for ((uriKey, value) in allEntries) {
@@ -158,6 +189,7 @@ class OtiumDbHelper(private val context: Context) :
                             stmt.bindLong(5, obj.optLong("colorArgb", 0L))
                             stmt.bindString(6, (obj.optJSONArray("bounds") ?: JSONArray()).toString())
                             stmt.bindLong(7, obj.optLong("timestamp", System.currentTimeMillis()))
+                            stmt.bindString(8, obj.optString("note", ""))
                             stmt.executeInsert()
                         }
                     }

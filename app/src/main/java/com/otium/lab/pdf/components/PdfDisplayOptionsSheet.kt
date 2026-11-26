@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Highlight
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material3.*
@@ -28,9 +29,11 @@ fun PdfDisplayOptionsSheet(
     pageColorMode: PageColorMode,
     readingLayout: ReadingLayout,
     isSelectionModeActive: Boolean,
+    lockHorizontalPan: Boolean,
     onSelectColorMode: (PageColorMode) -> Unit,
     onSelectReadingLayout: (ReadingLayout) -> Unit,
     onToggleSelectionMode: () -> Unit,
+    onToggleLockHorizontalPan: () -> Unit,
     onOpenSearch: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -46,7 +49,7 @@ fun PdfDisplayOptionsSheet(
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
                 text = "خيارات العرض والقراءة",
@@ -55,7 +58,7 @@ fun PdfDisplayOptionsSheet(
             )
 
             // 1. Page Color Mode
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "لون الصفحة",
                     style = MaterialTheme.typography.labelLarge,
@@ -76,7 +79,7 @@ fun PdfDisplayOptionsSheet(
                             ),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(68.dp)
+                                .height(64.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .clickable { onSelectColorMode(mode) }
                         ) {
@@ -112,7 +115,7 @@ fun PdfDisplayOptionsSheet(
             }
 
             // 2. Reading Layout
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "نمط التصفح",
                     style = MaterialTheme.typography.labelLarge,
@@ -137,7 +140,7 @@ fun PdfDisplayOptionsSheet(
                                 .clickable { onSelectReadingLayout(layout) }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
@@ -177,11 +180,11 @@ fun PdfDisplayOptionsSheet(
                     }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Rounded.Highlight,
                             contentDescription = null,
@@ -212,7 +215,53 @@ fun PdfDisplayOptionsSheet(
                 }
             }
 
-            // 4. Search inside Document
+            // 4. Horizontal Pan Lock when Zoomed
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (lockHorizontalPan) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(
+                    1.dp,
+                    if (lockHorizontalPan) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onToggleLockHorizontalPan() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lock,
+                            contentDescription = null,
+                            tint = if (lockHorizontalPan) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "قفل الانزلاق الأفقي عند التكبير",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "يمنع تحرك الصفحة يميناً ويساراً أثناء القراءة",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = lockHorizontalPan,
+                        onCheckedChange = { onToggleLockHorizontalPan() }
+                    )
+                }
+            }
+
+            // 5. Search inside Document
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -226,7 +275,7 @@ fun PdfDisplayOptionsSheet(
                     }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(

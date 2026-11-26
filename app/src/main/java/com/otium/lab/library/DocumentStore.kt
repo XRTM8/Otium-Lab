@@ -74,13 +74,23 @@ class DocumentStore(private val context: Context) {
     fun getDocuments(): List<StoredDocument> {
         val list = mutableListOf<StoredDocument>()
         val recentMap = mutableMapOf<String, StoredDocument>()
+        val highlightCounts = mutableMapOf<String, Int>()
 
         val db = dbHelper.readableDatabase
+        db.rawQuery(
+            "SELECT ${OtiumDbHelper.COL_HL_URI}, COUNT(*) FROM ${OtiumDbHelper.TABLE_HIGHLIGHTS} GROUP BY ${OtiumDbHelper.COL_HL_URI}",
+            null
+        ).use { hc ->
+            while (hc.moveToNext()) {
+                highlightCounts[hc.getString(0)] = hc.getInt(1)
+            }
+        }
+
         val cursor = db.query(OtiumDbHelper.TABLE_DOCUMENTS, null, null, null, null, null, "${OtiumDbHelper.COL_DOC_TIMESTAMP} DESC")
         cursor.use { c ->
             while (c.moveToNext()) {
                 val doc = c.toStoredDocument()
-                recentMap[doc.uriString] = doc
+                recentMap[doc.uriString] = doc.copy(highlightCount = highlightCounts[doc.uriString] ?: 0)
             }
         }
 
@@ -99,7 +109,8 @@ class DocumentStore(private val context: Context) {
                         lastPage = saved?.lastPage ?: 1,
                         totalPages = saved?.totalPages ?: 0,
                         scrollOffset = saved?.scrollOffset ?: 0,
-                        folder = saved?.folder ?: ""
+                        folder = saved?.folder ?: "",
+                        highlightCount = highlightCounts[uriStr] ?: 0
                     )
                 )
             }
@@ -236,6 +247,11 @@ class DocumentStore(private val context: Context) {
                     put(OtiumDbHelper.COL_HL_URI, newUri.toString())
                 }
                 db.update(OtiumDbHelper.TABLE_HIGHLIGHTS, hlValues, "${OtiumDbHelper.COL_HL_URI} = ?", arrayOf(doc.uriString))
+
+                val bmValues = ContentValues().apply {
+                    put(OtiumDbHelper.COL_BM_URI, newUri.toString())
+                }
+                db.update(OtiumDbHelper.TABLE_BOOKMARKS, bmValues, "${OtiumDbHelper.COL_BM_URI} = ?", arrayOf(doc.uriString))
             }
             db.setTransactionSuccessful()
         } finally {

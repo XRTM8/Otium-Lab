@@ -23,7 +23,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.otium.lab.pdf.model.PdfOutlineItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +37,7 @@ fun PdfBottomScrubber(
     isDraggingSlider: Boolean,
     barBg: Color,
     textColor: Color,
+    outline: List<PdfOutlineItem> = emptyList(),
     isSelectionModeActive: Boolean = false,
     onToggleSelectionMode: () -> Unit = {},
     onSliderValueChange: (Float) -> Unit,
@@ -70,13 +73,27 @@ fun PdfBottomScrubber(
                 ) {
                     val activePage = sliderValue.toInt()
                     val percent = ((activePage.toFloat() / pageCount.toFloat()) * 100).toInt()
-                    Text(
-                        text = "\u200Eصفحة $activePage من $pageCount · $percent%\u200E",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                    )
+                    val activeChapter = outline.lastOrNull { it.pageIndex <= activePage - 1 }?.title
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "\u200Eصفحة $activePage من $pageCount · $percent%\u200E",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (!activeChapter.isNullOrBlank()) {
+                            Text(
+                                text = activeChapter,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
 

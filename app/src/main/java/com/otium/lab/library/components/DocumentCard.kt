@@ -160,6 +160,21 @@ fun DocumentCard(
                             )
                         }
 
+                        if (doc.highlightCount > 0) {
+                            Text(
+                                text = "${doc.highlightCount} تظليل",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "·",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+
                         Text(
                             text = dateStr,
                             style = MaterialTheme.typography.labelSmall,

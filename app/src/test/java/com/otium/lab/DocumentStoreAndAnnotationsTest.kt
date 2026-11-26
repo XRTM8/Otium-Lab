@@ -96,4 +96,36 @@ class DocumentStoreAndAnnotationsTest {
         assertEquals(0L, documentStore.getCacheUsageBytes())
         assertTrue(permanentPdf.exists())
     }
+
+    @Test
+    fun highlightNotesBookmarksAndHighlightCountWorkEndToEnd() {
+        val scansDir = File(context.filesDir, "scans").apply { mkdirs() }
+        val file = File(scansDir, "study_notes.pdf").apply { writeText("%PDF-1.4\n") }
+        val uri = Uri.fromFile(file)
+
+        documentStore.addOrUpdateDocument(uri, "study_notes", isScanned = true, page = 1, total = 20)
+        annotationStore.saveHighlight(
+            uri,
+            PdfHighlight(
+                id = "hl-note-1",
+                pageIndex = 4,
+                text = "تعريف مهم",
+                colorArgb = 0xFFFACC15L,
+                bounds = listOf(NormalizedRect(0.1f, 0.2f, 0.6f, 0.24f)),
+                note = "يرد في الاختبار النهائي"
+            )
+        )
+
+        val loadedHl = annotationStore.getAllHighlights(uri).first()
+        assertEquals("يرد في الاختبار النهائي", loadedHl.note)
+        assertEquals(1, documentStore.getDocuments().first { it.uriString == uri.toString() }.highlightCount)
+
+        assertTrue(annotationStore.toggleBookmark(uri, pageIndex = 6, label = "الفصل الثاني"))
+        assertEquals(1, annotationStore.getBookmarks(uri).size)
+        assertEquals("الفصل الثاني", annotationStore.getBookmarks(uri).first().label)
+        assertFalse(annotationStore.toggleBookmark(uri, pageIndex = 6))
+        assertTrue(annotationStore.getBookmarks(uri).isEmpty())
+
+        assertTrue(documentStore.deleteDocument(documentStore.getDocuments().first { it.uriString == uri.toString() }))
+    }
 }

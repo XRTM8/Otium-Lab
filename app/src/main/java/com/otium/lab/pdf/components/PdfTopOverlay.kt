@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
@@ -29,7 +31,9 @@ fun PdfTopOverlay(
     pageCount: Int,
     barBg: Color,
     textColor: Color,
+    isBookmarked: Boolean = false,
     isSelectionModeActive: Boolean = false,
+    onToggleBookmark: () -> Unit = {},
     onToggleSelectionMode: () -> Unit = {},
     onOpenToc: () -> Unit = {},
     onOpenDisplayOptions: () -> Unit = {},
@@ -78,11 +82,23 @@ fun PdfTopOverlay(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onToggleBookmark, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                            contentDescription = if (isBookmarked) "إزالة العلامة المرجعية" else "إضافة علامة مرجعية",
+                            tint = if (isBookmarked) MaterialTheme.colorScheme.primary else textColor
+                        )
+                    }
+
                     IconButton(
                         onClick = onToggleSelectionMode,
-                        modifier = if (isSelectionModeActive) {
-                            Modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                        } else Modifier
+                        modifier = Modifier
+                            .size(40.dp)
+                            .then(
+                                if (isSelectionModeActive) {
+                                    Modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                                } else Modifier
+                            )
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Highlight,
@@ -91,15 +107,15 @@ fun PdfTopOverlay(
                         )
                     }
 
-                    IconButton(onClick = onOpenToc) {
+                    IconButton(onClick = onOpenToc, modifier = Modifier.size(40.dp)) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.MenuBook,
-                            contentDescription = "الفهرس والتظليلات والبحث",
+                            contentDescription = "الفهرس والتظليلات والعلامات",
                             tint = textColor
                         )
                     }
 
-                    IconButton(onClick = onOpenDisplayOptions) {
+                    IconButton(onClick = onOpenDisplayOptions, modifier = Modifier.size(40.dp)) {
                         Icon(
                             imageVector = Icons.Rounded.Tune,
                             contentDescription = "خيارات العرض والقراءة",

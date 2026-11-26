@@ -52,6 +52,7 @@ fun OtiumApp(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             com.otium.lab.update.UpdateManager(context).cleanupStaleUpdateApk()
+            com.otium.lab.pdf.text.PdfTextExtractor.cleanupStaleStreamCache(context)
         }
     }
 

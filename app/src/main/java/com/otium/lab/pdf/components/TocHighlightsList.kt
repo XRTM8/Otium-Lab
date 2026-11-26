@@ -1,6 +1,5 @@
 package com.otium.lab.pdf.components
 
-import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,7 +40,11 @@ fun TocHighlightsList(
         sb.append("*تم التصدير عبر تطبيق Otium*\n\n---\n\n")
         highlights.forEach { h ->
             sb.append("### صفحة ${h.pageIndex + 1}:\n")
-            sb.append("> ${h.text}\n\n")
+            sb.append("> ${h.text}\n")
+            if (h.note.isNotBlank()) {
+                sb.append("\n**ملاحظة:** ${h.note}\n")
+            }
+            sb.append("\n")
         }
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -55,7 +58,7 @@ fun TocHighlightsList(
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 text = "لم تقم بتظليل أي نصوص في هذا المستند بعد",
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -87,7 +90,7 @@ fun TocHighlightsList(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onSelectPage(h.pageIndex) }
                     ) {
                         Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
-                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(h.colorArgb)).padding(top = 4.dp))
+                            Box(modifier = Modifier.padding(top = 4.dp).size(12.dp).clip(CircleShape).background(Color(h.colorArgb)))
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -105,6 +108,20 @@ fun TocHighlightsList(
                                     overflow = TextOverflow.Ellipsis,
                                     lineHeight = 18.sp
                                 )
+                                if (h.note.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                    ) {
+                                        Text(
+                                            text = h.note,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
                             }
                             IconButton(onClick = { onDeleteHighlight(h) }, modifier = Modifier.size(28.dp)) {
                                 Icon(
