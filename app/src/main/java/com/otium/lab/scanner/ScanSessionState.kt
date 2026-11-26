@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import uniffi.otium_bridge.CornerPoints
 import uniffi.otium_bridge.bridgeApplyScanFilter
 import uniffi.otium_bridge.bridgeDeskewAndClean
+import uniffi.otium_bridge.bridgeDewarpBook
 import uniffi.otium_bridge.bridgeWarpAndFilter
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -510,7 +511,42 @@ class ScanSessionState(
         }
     }
 
-    fun stampSignatureOnPage(index: Int, signatureBitmap: Bitmap) {
+    fun dewarpBookPage(index: Int) {
+        if (index !in accumulatedPageFiles.indices || isStagingPage || isExportingPdf) return
+        val file = accumulatedPageFiles[index]
+        isStagingPage = true
+        scope.launch {
+            try {
+                val updatedFile = withContext(Dispatchers.Default) {
+                    val raw = file.readBytes()
+                    val processed = bridgeDewarpBook(raw)
+                    withContext(Dispatchers.IO) {
+                        val nextFile = File(file.parentFile, "page_${UUID.randomUUID()}.jpg")
+                        FileOutputStream(nextFile).use { it.write(processed) }
+                        file.delete()
+                        nextFile
+                    }
+                }
+                if (index in accumulatedPageFiles.indices) {
+                    accumulatedPageFiles[index] = updatedFile
+                }
+                Toast.makeText(context, "تم تسطيح انحناء الصفحة", Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to dewarp book page", t)
+                Toast.makeText(context, "تعذر تسطيح الصفحة", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
+    fun stampSignatureOnPage(
+        index: Int,
+        signatureBitmap: Bitmap,
+        normX: Float = 0.64f,
+        normY: Float = 0.80f,
+        normW: Float = 0.28f
+    ) {
         if (index !in accumulatedPageFiles.indices || isStagingPage || isExportingPdf) return
         val file = accumulatedPageFiles[index]
         isStagingPage = true
@@ -522,10 +558,10 @@ class ScanSessionState(
                     val mutable = pageBmp.copy(Bitmap.Config.ARGB_8888, true)
                     pageBmp.recycle()
                     val canvas = Canvas(mutable)
-                    val sigW = (mutable.width * 0.28f).toInt().coerceAtLeast(80)
-                    val sigH = (sigW * (signatureBitmap.height.toFloat() / signatureBitmap.width.coerceAtLeast(1))).toInt().coerceAtLeast(30)
-                    val left = (mutable.width - sigW - (mutable.width * 0.08f).toInt()).coerceAtLeast(0)
-                    val top = (mutable.height - sigH - (mutable.height * 0.06f).toInt()).coerceAtLeast(0)
+                    val sigW = (mutable.width * normW.coerceIn(0.10f, 0.70f)).toInt().coerceAtLeast(60)
+                    val sigH = (sigW * (signatureBitmap.height.toFloat() / signatureBitmap.width.coerceAtLeast(1))).toInt().coerceAtLeast(25)
+                    val left = (mutable.width * normX).toInt().coerceIn(0, (mutable.width - sigW).coerceAtLeast(0))
+                    val top = (mutable.height * normY).toInt().coerceIn(0, (mutable.height - sigH).coerceAtLeast(0))
                     canvas.drawBitmap(signatureBitmap, null, Rect(left, top, left + sigW, top + sigH), null)
                     val bytes = compressBitmapToBytes(mutable)
                     mutable.recycle()

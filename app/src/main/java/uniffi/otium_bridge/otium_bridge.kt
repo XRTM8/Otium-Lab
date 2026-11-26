@@ -725,6 +725,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -747,6 +749,8 @@ internal interface UniffiLib : Library {
     fun uniffi_otium_bridge_fn_func_bridge_deskew_and_clean(`imageBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_detect_document_edges(`imageBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_otium_bridge_fn_func_bridge_dewarp_book(`imageBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_otium_bridge_fn_func_bridge_find_arabic_matches(`text`: RustBuffer.ByValue,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -874,6 +878,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_detect_document_edges(
     ): Short
+    fun uniffi_otium_bridge_checksum_func_bridge_dewarp_book(
+    ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches(
     ): Short
     fun uniffi_otium_bridge_checksum_func_bridge_warp_and_filter(
@@ -907,6 +913,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_detect_document_edges() != 39879.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_otium_bridge_checksum_func_bridge_dewarp_book() != 15122.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_otium_bridge_checksum_func_bridge_find_arabic_matches() != 52324.toShort()) {
@@ -1389,6 +1398,16 @@ public object FfiConverterSequenceTypeArabicMatchRecord: FfiConverterRustBuffer<
             return FfiConverterOptionalTypeDetectedDocumentRecord.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_detect_document_edges(
+        FfiConverterByteArray.lower(`imageBytes`),_status)
+}
+    )
+    }
+    
+
+    @Throws(BridgeException::class) fun `bridgeDewarpBook`(`imageBytes`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BridgeException) { _status ->
+    UniffiLib.INSTANCE.uniffi_otium_bridge_fn_func_bridge_dewarp_book(
         FfiConverterByteArray.lower(`imageBytes`),_status)
 }
     )

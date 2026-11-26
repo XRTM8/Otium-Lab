@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.otium.lab.scanner.components.DocumentSaveNameDialog
 import com.otium.lab.scanner.components.SignaturePadDialog
+import com.otium.lab.scanner.components.SignaturePlacementDialog
 import com.otium.lab.scanner.model.ScanFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,7 +56,8 @@ fun ScanReviewScreen(
     onMove: (Int, Int) -> Unit,
     onRotate: (Int) -> Unit,
     onDeskew: (Int) -> Unit = {},
-    onStampSignature: (Int, Bitmap) -> Unit = { _, _ -> },
+    onDewarpBook: (Int) -> Unit = {},
+    onStampSignature: (Int, Bitmap, Float, Float, Float) -> Unit = { _, _, _, _, _ -> },
     onEditPage: (Int) -> Unit = {},
     onDelete: (Int) -> Unit,
     onApplyFilterAll: (ScanFilter) -> Unit = {},
@@ -64,6 +67,7 @@ fun ScanReviewScreen(
     var showNameDialog by remember { mutableStateOf(false) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
     var signingPageIndex by remember { mutableStateOf<Int?>(null) }
+    var placingSignature by remember { mutableStateOf<Pair<Int, Bitmap>?>(null) }
     var activeBatchFilter by remember { mutableStateOf<ScanFilter?>(null) }
     Scaffold(
         topBar = {
@@ -157,6 +161,9 @@ fun ScanReviewScreen(
                                 IconButton(onClick = { onDeskew(index) }, enabled = !isBusy) {
                                     Icon(Icons.Rounded.Straighten, contentDescription = "تعديل الميلان وتنظيف الحواف")
                                 }
+                                IconButton(onClick = { onDewarpBook(index) }, enabled = !isBusy) {
+                                    Icon(Icons.Rounded.MenuBook, contentDescription = "تسطيح كتاب")
+                                }
                                 IconButton(onClick = { signingPageIndex = index }, enabled = !isBusy) {
                                     Icon(Icons.Rounded.Draw, contentDescription = "توقيع إلكتروني")
                                 }
@@ -244,10 +251,32 @@ fun ScanReviewScreen(
         SignaturePadDialog(
             onConfirm = { bmp ->
                 signingPageIndex = null
-                onStampSignature(idx, bmp)
+                placingSignature = idx to bmp
             },
             onDismiss = { signingPageIndex = null }
         )
+    }
+    placingSignature?.let { (idx, sigBmp) ->
+        val file = pages.getOrNull(idx)
+        val pageBmp by produceState<Bitmap?>(null, file) {
+            value = file?.let { f ->
+                withContext(Dispatchers.IO) {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeFile(f.absolutePath, opts)
+                }
+            }
+        }
+        if (pageBmp != null) {
+            SignaturePlacementDialog(
+                pageBitmap = pageBmp!!,
+                signatureBitmap = sigBmp,
+                onConfirm = { nx, ny, nw ->
+                    placingSignature = null
+                    onStampSignature(idx, sigBmp, nx, ny, nw)
+                },
+                onDismiss = { placingSignature = null }
+            )
+        }
     }
     if (showNameDialog) {
         val defaultName = remember {

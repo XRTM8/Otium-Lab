@@ -199,6 +199,15 @@ pub fn bridge_deskew_and_clean(image_bytes: Vec<u8>) -> Result<Vec<u8>, BridgeEr
 }
 
 #[uniffi::export]
+pub fn bridge_dewarp_book(image_bytes: Vec<u8>) -> Result<Vec<u8>, BridgeError> {
+    let dyn_img = image::load_from_memory(&image_bytes)
+        .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+    let rgba = dyn_img.to_rgba8();
+    let dewarped = otium_scanner::processor::DocumentScanner::dewarp_book_rgba(&rgba);
+    encode_jpeg_92(&image::DynamicImage::ImageRgba8(dewarped))
+}
+
+#[uniffi::export]
 pub fn bridge_apply_scan_filter(
     image_bytes: Vec<u8>,
     filter_mode: String,

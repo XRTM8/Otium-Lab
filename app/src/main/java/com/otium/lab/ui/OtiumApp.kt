@@ -111,6 +111,7 @@ fun OtiumApp(
                     onMove = scanSession::movePage,
                     onRotate = scanSession::rotatePage,
                     onDeskew = scanSession::deskewAndCleanPage,
+                    onDewarpBook = scanSession::dewarpBookPage,
                     onStampSignature = scanSession::stampSignatureOnPage,
                     onEditPage = scanSession::startReEditPage,
                     onDelete = scanSession::removePage,

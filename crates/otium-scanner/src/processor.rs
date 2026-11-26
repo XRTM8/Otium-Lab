@@ -392,6 +392,95 @@ impl DocumentScanner {
         out
     }
 
+    /// Flattens vertical page curvature typical of open books by tracking dark-text
+    /// vertical centroids across 8 horizontal bands, fitting a smooth parabolic offset,
+    /// and unwarping each column with bilinear interpolation.
+    pub fn dewarp_book_rgba(image: &RgbaImage) -> RgbaImage {
+        let (w, h) = image.dimensions();
+        if w < 160 || h < 160 {
+            return image.clone();
+        }
+        let raw = image.as_raw();
+        let stride = (w as usize) * 4;
+        let bands = 8usize;
+        let band_w = (w as usize / bands).max(1);
+        let y_start = (h as usize) / 8;
+        let y_end = (h as usize) * 7 / 8;
+
+        let mut band_centers = vec![0.0f32; bands];
+        let mut band_weights = vec![0.0f32; bands];
+        for b in 0..bands {
+            let x0 = b * band_w;
+            let x1 = if b + 1 == bands { w as usize } else { x0 + band_w };
+            let mut sum_y = 0.0f64;
+            let mut cnt = 0.0f64;
+            for y in (y_start..y_end).step_by(2) {
+                let row = y * stride;
+                for x in (x0..x1).step_by(2) {
+                    let i = row + x * 4;
+                    let luma = (raw[i] as u32 * 77 + raw[i + 1] as u32 * 150 + raw[i + 2] as u32 * 29) >> 8;
+                    if luma < 145 {
+                        sum_y += y as f64;
+                        cnt += 1.0;
+                    }
+                }
+            }
+            if cnt > 20.0 {
+                band_centers[b] = (sum_y / cnt) as f32;
+                band_weights[b] = cnt as f32;
+            }
+        }
+
+        let valid_centers: Vec<f32> = band_centers
+            .iter()
+            .zip(band_weights.iter())
+            .filter(|(_, &wt)| wt > 0.0)
+            .map(|(&c, _)| c)
+            .collect();
+        if valid_centers.len() < 4 {
+            return image.clone();
+        }
+        let ref_y = valid_centers.iter().sum::<f32>() / valid_centers.len() as f32;
+
+        let max_shift = h as f32 * 0.04;
+        let shifts: Vec<f32> = (0..bands)
+            .map(|b| {
+                if band_weights[b] > 0.0 {
+                    (band_centers[b] - ref_y).clamp(-max_shift, max_shift)
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+
+        let w_f = w as f32;
+        let h_f = h as f32;
+        let mut out = vec![255u8; (w as usize) * (h as usize) * 4];
+
+        for x in 0..w {
+            let pos = (x as f32 / w_f) * (bands - 1) as f32;
+            let b0 = (pos.floor() as usize).min(bands - 1);
+            let b1 = (b0 + 1).min(bands - 1);
+            let frac = pos - b0 as f32;
+            let dy = shifts[b0] * (1.0 - frac) + shifts[b1] * frac;
+
+            for y in 0..h {
+                let sy = (y as f32 + dy).clamp(0.0, h_f - 1.001);
+                let y0 = sy as usize;
+                let fy = sy - y0 as f32;
+                let i0 = y0 * stride + (x as usize) * 4;
+                let i1 = (y0 + 1).min(h as usize - 1) * stride + (x as usize) * 4;
+                let dst = (y as usize) * stride + (x as usize) * 4;
+                for c in 0..4 {
+                    out[dst + c] = ((1.0 - fy) * raw[i0 + c] as f32 + fy * raw[i1 + c] as f32)
+                        .clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+
+        RgbaImage::from_raw(w, h, out).unwrap_or_else(|| image.clone())
+    }
+
     fn downscale_dims(w: usize, h: usize) -> (usize, usize) {
         let max_side = w.max(h) as f32;
         let scale = (140.0 / max_side).min(1.0);
@@ -593,5 +682,19 @@ mod tests {
         }
         let deskewed = DocumentScanner::deskew_rgba(&img);
         assert_eq!(deskewed.dimensions(), (240, 240));
+    }
+
+    #[test]
+    fn dewarp_book_preserves_dimensions_on_curved_lines() {
+        let mut img = RgbaImage::from_pixel(240, 240, Rgba([255, 255, 255, 255]));
+        for x in 20..220 {
+            let norm = (x as f32 - 120.0) / 100.0;
+            let curve = (norm * norm) * 8.0;
+            let y = (120.0 + curve).round() as u32;
+            img.put_pixel(x, y, Rgba([20, 20, 20, 255]));
+            img.put_pixel(x, y + 1, Rgba([20, 20, 20, 255]));
+        }
+        let dewarped = DocumentScanner::dewarp_book_rgba(&img);
+        assert_eq!(dewarped.dimensions(), (240, 240));
     }
 }
