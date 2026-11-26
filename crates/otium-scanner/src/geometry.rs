@@ -48,7 +48,16 @@ impl QuadCorners {
         .sqrt();
         let target_height = height_left.max(height_right).round() as u32;
 
-        (target_width.max(100), target_height.max(100))
+        let mut w = target_width.max(100);
+        let mut h = target_height.max(100);
+        const MAX_OUTPUT_DIM: u32 = 2480;
+        let max_dim = w.max(h);
+        if max_dim > MAX_OUTPUT_DIM {
+            let scale = MAX_OUTPUT_DIM as f32 / max_dim as f32;
+            w = ((w as f32 * scale).round() as u32).max(100);
+            h = ((h as f32 * scale).round() as u32).max(100);
+        }
+        (w, h)
     }
 }
 

@@ -20,6 +20,7 @@ fun ScannerViewfinder(
     analysisWidth: Int = 1,
     analysisHeight: Int = 1,
     stabilityProgress: Float = 0f,
+    showGrid: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "viewfinder")
@@ -34,6 +35,14 @@ fun ScannerViewfinder(
     )
 
     Canvas(modifier = modifier.fillMaxSize()) {
+        if (showGrid) {
+            val gridColor = Color.White.copy(alpha = 0.22f)
+            val stroke = 1.dp.toPx()
+            drawLine(gridColor, Offset(size.width / 3f, 0f), Offset(size.width / 3f, size.height), stroke)
+            drawLine(gridColor, Offset(size.width * 2f / 3f, 0f), Offset(size.width * 2f / 3f, size.height), stroke)
+            drawLine(gridColor, Offset(0f, size.height / 3f), Offset(size.width, size.height / 3f), stroke)
+            drawLine(gridColor, Offset(0f, size.height * 2f / 3f), Offset(size.width, size.height * 2f / 3f), stroke)
+        }
         if (detectedQuad != null && analysisWidth > 1 && analysisHeight > 1) {
             val scale = maxOf(size.width / analysisWidth, size.height / analysisHeight)
             val displayedWidth = analysisWidth * scale

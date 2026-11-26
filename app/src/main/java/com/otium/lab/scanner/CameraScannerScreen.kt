@@ -57,6 +57,7 @@ import kotlin.math.hypot
 fun CameraScannerScreen(
     pageCount: Int = 0,
     onImageCaptured: (ByteArray) -> Unit,
+    onQuickBatchCapture: (ByteArray) -> Unit = onImageCaptured,
     onFinishBatch: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -98,9 +99,11 @@ fun CameraScannerScreen(
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var isFlashOn by remember { mutableStateOf(false) }
+    var showGrid by remember { mutableStateOf(false) }
     var isCapturing by remember { mutableStateOf(false) }
     var showShutterFlash by remember { mutableStateOf(false) }
     var autoCaptureEnabled by remember { mutableStateOf(true) }
+    var quickBatchEnabled by remember { mutableStateOf(false) }
     var smoothedQuad by remember { mutableStateOf<NormalizedQuad?>(null) }
     var stabilityProgress by remember { mutableFloatStateOf(0f) }
     var lastAutoCaptureTime by remember { mutableLongStateOf(0L) }
@@ -116,7 +119,10 @@ fun CameraScannerScreen(
         scope.launch { showShutterFlash = true; delay(70); showShutterFlash = false }
         captureScannerPhoto(context, scope, capture) { bytes ->
             isCapturing = false
-            if (bytes != null) onImageCaptured(bytes)
+            if (bytes != null) {
+                if (quickBatchEnabled) onQuickBatchCapture(bytes)
+                else onImageCaptured(bytes)
+            }
         }
     }
 
@@ -203,6 +209,7 @@ fun CameraScannerScreen(
             analysisWidth = analysisSize.first,
             analysisHeight = analysisSize.second,
             stabilityProgress = if (autoCaptureEnabled) stabilityProgress else 0f,
+            showGrid = showGrid,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -224,6 +231,7 @@ fun CameraScannerScreen(
         ScannerTopBar(
             pageCount = pageCount,
             isFlashOn = isFlashOn,
+            showGrid = showGrid,
             primaryColor = primaryColor,
             statusText = liveStatus,
             onClose = onClose,
@@ -232,6 +240,7 @@ fun CameraScannerScreen(
                     isFlashOn = !isFlashOn; cam.cameraControl.enableTorch(isFlashOn)
                 }
             },
+            onToggleGrid = { showGrid = !showGrid },
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
@@ -239,25 +248,49 @@ fun CameraScannerScreen(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color.Black.copy(alpha = 0.62f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 14.dp)
             ) {
-                Row(modifier = Modifier.padding(4.dp)) {
-                    CaptureModeChip(
-                        label = "التقاط تلقائي",
-                        selected = autoCaptureEnabled,
-                        primaryColor = primaryColor,
-                        onClick = { autoCaptureEnabled = true }
-                    )
-                    CaptureModeChip(
-                        label = "يدوياً",
-                        selected = !autoCaptureEnabled,
-                        primaryColor = primaryColor,
-                        onClick = { autoCaptureEnabled = false; stabilityProgress = 0f }
-                    )
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Black.copy(alpha = 0.62f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+                ) {
+                    Row(modifier = Modifier.padding(4.dp)) {
+                        CaptureModeChip(
+                            label = "تلقائي",
+                            selected = autoCaptureEnabled,
+                            primaryColor = primaryColor,
+                            onClick = { autoCaptureEnabled = true }
+                        )
+                        CaptureModeChip(
+                            label = "يدوياً",
+                            selected = !autoCaptureEnabled,
+                            primaryColor = primaryColor,
+                            onClick = { autoCaptureEnabled = false; stabilityProgress = 0f }
+                        )
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Black.copy(alpha = 0.62f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+                ) {
+                    Row(modifier = Modifier.padding(4.dp)) {
+                        CaptureModeChip(
+                            label = "صفحة",
+                            selected = !quickBatchEnabled,
+                            primaryColor = primaryColor,
+                            onClick = { quickBatchEnabled = false }
+                        )
+                        CaptureModeChip(
+                            label = "مسح سريع",
+                            selected = quickBatchEnabled,
+                            primaryColor = primaryColor,
+                            onClick = { quickBatchEnabled = true }
+                        )
+                    }
                 }
             }
 

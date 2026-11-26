@@ -106,10 +106,12 @@ fun OtiumApp(
                 )
                 scanSession.isReviewingBatch -> ScanReviewScreen(
                     pages = scanSession.accumulatedPageFiles.toList(),
+                    isBusy = scanSession.isStagingPage || scanSession.isExportingPdf,
                     onBack = { scanSession.closeReview() },
                     onMove = scanSession::movePage,
                     onRotate = scanSession::rotatePage,
                     onDelete = scanSession::removePage,
+                    onApplyFilterAll = scanSession::applyFilterToAllPages,
                     onSave = { title ->
                         scanSession.saveBatch(title) { uri, savedTitle ->
                             activePdfUri = uri
@@ -121,6 +123,7 @@ fun OtiumApp(
                 currentDestination == AppDestination.SCANNER -> CameraScannerScreen(
                     pageCount = scanSession.accumulatedPageFiles.size,
                     onImageCaptured = { bytes -> scanSession.capturedImageBytes = bytes },
+                    onQuickBatchCapture = { bytes -> scanSession.quickProcessAndStagePage(bytes) },
                     onFinishBatch = { scanSession.reviewBatch() },
                     onClose = {
                         scanSession.clearSession()

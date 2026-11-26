@@ -422,7 +422,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "otium-bridge"
-version = "2.6.0"
+version = "2.7.0"
 dependencies = [
  "image",
  "otium-core",
@@ -433,18 +433,18 @@ dependencies = [
 
 [[package]]
 name = "otium-core"
-version = "2.6.0"
+version = "2.7.0"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "otium-scan-math"
-version = "2.6.0"
+version = "2.7.0"
 
 [[package]]
 name = "otium-scanner"
-version = "2.6.0"
+version = "2.7.0"
 dependencies = [
  "image",
  "otium-core",

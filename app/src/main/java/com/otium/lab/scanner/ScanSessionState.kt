@@ -7,10 +7,16 @@ import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.*
 import com.otium.lab.library.DocumentStore
+import com.otium.lab.scanner.model.ScanFilter
+import com.otium.lab.scanner.util.DocumentEdgeDetector
+import com.otium.lab.scanner.util.ImageProcessingUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.otium_bridge.CornerPoints
+import uniffi.otium_bridge.bridgeApplyScanFilter
+import uniffi.otium_bridge.bridgeWarpAndFilter
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -32,15 +38,19 @@ class ScanSessionState(
     var isReviewingBatch by mutableStateOf(false)
         private set
     private var sessionGeneration = 0
+    private val rawOriginals = mutableMapOf<String, File>()
 
     fun clearSession() {
         sessionGeneration++
         val snapshot = accumulatedPageFiles.toList()
+        val rawSnapshot = rawOriginals.values.toList()
         accumulatedPageFiles.clear()
+        rawOriginals.clear()
         capturedImageBytes = null
         isReviewingBatch = false
         scope.launch(Dispatchers.IO) {
             snapshot.forEach { runCatching { it.delete() } }
+            rawSnapshot.forEach { runCatching { it.delete() } }
         }
     }
 
@@ -99,6 +109,118 @@ class ScanSessionState(
                 Log.e("ScanSession", "Failed to export scanned PDF", t)
                 isExportingPdf = false
                 Toast.makeText(context, "تعذر إنشاء ملف الـ PDF: ${t.localizedMessage ?: ""}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun quickProcessAndStagePage(rawBytes: ByteArray, defaultFilter: ScanFilter = ScanFilter.MAGIC_COLOR) {
+        val generation = sessionGeneration
+        isStagingPage = true
+        scope.launch {
+            try {
+                val (processedFile, rawFile) = withContext(Dispatchers.Default) {
+                    val dims = ImageProcessingUtils.imageDimensions(rawBytes)
+                    val detection = DocumentEdgeDetector.detectBytes(rawBytes)
+                    val processedBytes = if (detection != null && dims != null) {
+                        val q = detection.quad
+                        val corners = CornerPoints(
+                            topLeftX = q.topLeft.x * dims.first,
+                            topLeftY = q.topLeft.y * dims.second,
+                            topRightX = q.topRight.x * dims.first,
+                            topRightY = q.topRight.y * dims.second,
+                            bottomRightX = q.bottomRight.x * dims.first,
+                            bottomRightY = q.bottomRight.y * dims.second,
+                            bottomLeftX = q.bottomLeft.x * dims.first,
+                            bottomLeftY = q.bottomLeft.y * dims.second
+                        )
+                        runCatching { bridgeWarpAndFilter(rawBytes, corners, defaultFilter.mode) }
+                            .getOrElse { ImageProcessingUtils.applyFallbackFilter(rawBytes, defaultFilter) }
+                    } else {
+                        runCatching { bridgeApplyScanFilter(rawBytes, defaultFilter.mode) }
+                            .getOrElse { ImageProcessingUtils.applyFallbackFilter(rawBytes, defaultFilter) }
+                    }
+                    withContext(Dispatchers.IO) {
+                        val tempDir = File(context.cacheDir, "scan_session").apply { if (!exists()) mkdirs() }
+                        val pFile = File(tempDir, "page_${UUID.randomUUID()}.jpg").also { f ->
+                            FileOutputStream(f).use { it.write(processedBytes) }
+                        }
+                        val rFile = File(tempDir, "raw_${UUID.randomUUID()}.jpg").also { f ->
+                            FileOutputStream(f).use { it.write(rawBytes) }
+                        }
+                        pFile to rFile
+                    }
+                }
+                if (generation == sessionGeneration) {
+                    rawOriginals[processedFile.absolutePath] = rawFile
+                    accumulatedPageFiles.add(processedFile)
+                } else {
+                    processedFile.delete()
+                    rawFile.delete()
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to quick-process page", t)
+                Toast.makeText(context, "تعذر معالجة الصفحة", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
+            }
+        }
+    }
+
+    fun applyFilterToAllPages(filter: ScanFilter) {
+        if (accumulatedPageFiles.isEmpty() || isStagingPage || isExportingPdf) return
+        val generation = sessionGeneration
+        isStagingPage = true
+        val snapshot = accumulatedPageFiles.toList()
+        scope.launch {
+            try {
+                val updated = withContext(Dispatchers.Default) {
+                    val tempDir = File(context.cacheDir, "scan_session").apply { if (!exists()) mkdirs() }
+                    snapshot.map { currentFile ->
+                        val sourceFile = rawOriginals[currentFile.absolutePath]?.takeIf { it.exists() } ?: currentFile
+                        val sourceBytes = sourceFile.readBytes()
+                        val dims = ImageProcessingUtils.imageDimensions(sourceBytes)
+                        val detection = if (sourceFile !== currentFile) DocumentEdgeDetector.detectBytes(sourceBytes) else null
+                        val outBytes = if (detection != null && dims != null) {
+                            val q = detection.quad
+                            val corners = CornerPoints(
+                                topLeftX = q.topLeft.x * dims.first,
+                                topLeftY = q.topLeft.y * dims.second,
+                                topRightX = q.topRight.x * dims.first,
+                                topRightY = q.topRight.y * dims.second,
+                                bottomRightX = q.bottomRight.x * dims.first,
+                                bottomRightY = q.bottomRight.y * dims.second,
+                                bottomLeftX = q.bottomLeft.x * dims.first,
+                                bottomLeftY = q.bottomLeft.y * dims.second
+                            )
+                            runCatching { bridgeWarpAndFilter(sourceBytes, corners, filter.mode) }
+                                .getOrElse { ImageProcessingUtils.applyFallbackFilter(sourceBytes, filter) }
+                        } else {
+                            runCatching { bridgeApplyScanFilter(sourceBytes, filter.mode) }
+                                .getOrElse { ImageProcessingUtils.applyFallbackFilter(sourceBytes, filter) }
+                        }
+                        val nextFile = File(tempDir, "page_${UUID.randomUUID()}.jpg")
+                        FileOutputStream(nextFile).use { it.write(outBytes) }
+                        Triple(currentFile, nextFile, rawOriginals[currentFile.absolutePath])
+                    }
+                }
+                if (generation == sessionGeneration) {
+                    accumulatedPageFiles.clear()
+                    updated.forEach { (oldFile, newFile, rawFile) ->
+                        if (rawFile != null) {
+                            rawOriginals.remove(oldFile.absolutePath)
+                            rawOriginals[newFile.absolutePath] = rawFile
+                        }
+                        oldFile.delete()
+                        accumulatedPageFiles.add(newFile)
+                    }
+                } else {
+                    updated.forEach { (_, newFile, _) -> newFile.delete() }
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanSession", "Failed to apply filter to batch", t)
+                Toast.makeText(context, "تعذر تطبيق الفلتر", Toast.LENGTH_SHORT).show()
+            } finally {
+                isStagingPage = false
             }
         }
     }

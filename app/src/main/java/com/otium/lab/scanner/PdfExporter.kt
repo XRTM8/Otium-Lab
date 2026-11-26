@@ -30,12 +30,12 @@ object PdfExporter {
         }
 
         val pdfDocument = PdfDocument()
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         var writtenPages = 0
 
         try {
             for (file in pageFiles) {
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                val decoded = decodeForPdf(file.absolutePath, maxDim = 1800)
                     ?: throw IllegalStateException("تعذر قراءة الصفحة ${writtenPages + 1}")
                 writtenPages++
                 try {
@@ -43,11 +43,11 @@ object PdfExporter {
                     val page = pdfDocument.startPage(pageInfo)
                     val canvas: Canvas = page.canvas
 
-                    val margin = 20
+                    val margin = 16
                     val availW = A4_WIDTH - (margin * 2)
                     val availH = A4_HEIGHT - (margin * 2)
 
-                    val aspect = bitmap.height.toFloat() / bitmap.width.toFloat()
+                    val aspect = decoded.height.toFloat() / decoded.width.toFloat()
                     var drawW = availW
                     var drawH = (drawW * aspect).toInt()
 
@@ -60,10 +60,10 @@ object PdfExporter {
                     val top = margin + (availH - drawH) / 2
                     val dstRect = Rect(left, top, left + drawW, top + drawH)
 
-                    canvas.drawBitmap(bitmap, null, dstRect, paint)
+                    canvas.drawBitmap(decoded, null, dstRect, paint)
                     pdfDocument.finishPage(page)
                 } finally {
-                    bitmap.recycle() // Free memory immediately
+                    decoded.recycle() // Free memory immediately
                 }
             }
 
@@ -112,5 +112,20 @@ object PdfExporter {
         } finally {
             tempFiles.forEach { it.delete() }
         }
+    }
+
+    private fun decodeForPdf(path: String, maxDim: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        val w = bounds.outWidth
+        val h = bounds.outHeight
+        if (w <= 0 || h <= 0) return null
+        var inSampleSize = 1
+        while (maxOf(w, h) / inSampleSize > maxDim) inSampleSize *= 2
+        val opts = BitmapFactory.Options().apply {
+            this.inSampleSize = inSampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeFile(path, opts)
     }
 }

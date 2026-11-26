@@ -3,6 +3,8 @@ package com.otium.lab.scanner.util
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Offset
 import com.otium.lab.scanner.model.NormalizedQuad
+import uniffi.otium_bridge.bridgeDetectDocumentEdges
+import java.io.ByteArrayOutputStream
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -11,13 +13,45 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
 
-/** Detects four long page edges. A weak or inconsistent result is rejected instead of guessed. */
+/** Detects four long page edges via Rust multi-strategy detector with Kotlin fallback. */
 object DocumentEdgeDetector {
     data class Detection(val quad: NormalizedQuad, val confidence: Float)
     private data class Line(val angle: Int, val rho: Int, val votes: Int)
     private const val MAX_SIDE = 320
 
+    fun detectBytes(jpegBytes: ByteArray): Detection? {
+        return try {
+            val res = bridgeDetectDocumentEdges(jpegBytes) ?: return null
+            val c = res.corners
+            Detection(
+                quad = NormalizedQuad(
+                    topLeft = Offset(c.topLeftX, c.topLeftY),
+                    topRight = Offset(c.topRightX, c.topRightY),
+                    bottomRight = Offset(c.bottomRightX, c.bottomRightY),
+                    bottomLeft = Offset(c.bottomLeftX, c.bottomLeftY)
+                ),
+                confidence = res.confidence
+            )
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     fun detect(source: Bitmap): Detection? {
+        if (source.width >= 80 && source.height >= 80) {
+            try {
+                val scale = MAX_SIDE.toFloat() / max(source.width, source.height)
+                val w = (source.width * scale).toInt().coerceAtLeast(2)
+                val h = (source.height * scale).toInt().coerceAtLeast(2)
+                val thumb = Bitmap.createScaledBitmap(source, w, h, true)
+                val stream = ByteArrayOutputStream()
+                thumb.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+                if (thumb !== source) thumb.recycle()
+                detectBytes(stream.toByteArray())?.let { return it }
+            } catch (_: Throwable) {
+                // Fall back to Kotlin detector when native bridge is unavailable (e.g. JVM unit tests)
+            }
+        }
         DocumentRegionDetector.detect(source)?.let { return it }
         if (source.width < 80 || source.height < 80) return null
         val scale = MAX_SIDE.toFloat() / max(source.width, source.height)

@@ -1,6 +1,8 @@
+pub mod detector;
 pub mod geometry;
 pub mod processor;
 
+pub use detector::*;
 pub use geometry::*;
 pub use processor::*;
 

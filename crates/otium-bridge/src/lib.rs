@@ -90,6 +90,80 @@ pub fn bridge_find_arabic_matches(text: String, query: String) -> Vec<ArabicMatc
         .collect()
 }
 
+#[derive(uniffi::Record, Clone, Copy, Debug)]
+pub struct DetectedDocumentRecord {
+    pub corners: CornerPoints,
+    pub confidence: f32,
+}
+
+#[uniffi::export]
+pub fn bridge_detect_document_edges(image_bytes: Vec<u8>) -> Option<DetectedDocumentRecord> {
+    let dyn_img = image::load_from_memory(&image_bytes).ok()?;
+    let detected = otium_scanner::detector::detect_document_quad(&dyn_img)?;
+    Some(DetectedDocumentRecord {
+        corners: CornerPoints {
+            top_left_x: detected.quad.top_left.x,
+            top_left_y: detected.quad.top_left.y,
+            top_right_x: detected.quad.top_right.x,
+            top_right_y: detected.quad.top_right.y,
+            bottom_right_x: detected.quad.bottom_right.x,
+            bottom_right_y: detected.quad.bottom_right.y,
+            bottom_left_x: detected.quad.bottom_left.x,
+            bottom_left_y: detected.quad.bottom_left.y,
+        },
+        confidence: detected.confidence,
+    })
+}
+
+#[uniffi::export]
+pub fn bridge_warp_and_filter(
+    image_bytes: Vec<u8>,
+    corners: CornerPoints,
+    filter_mode: String,
+) -> Result<Vec<u8>, BridgeError> {
+    let dyn_img = image::load_from_memory(&image_bytes)
+        .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+
+    let quad = otium_scanner::geometry::QuadCorners::new(
+        otium_scanner::geometry::Point2D::new(corners.top_left_x, corners.top_left_y),
+        otium_scanner::geometry::Point2D::new(corners.top_right_x, corners.top_right_y),
+        otium_scanner::geometry::Point2D::new(corners.bottom_right_x, corners.bottom_right_y),
+        otium_scanner::geometry::Point2D::new(corners.bottom_left_x, corners.bottom_left_y),
+    );
+
+    let warped_rgba = otium_scanner::processor::DocumentScanner::warp_perspective(&dyn_img, &quad, None)
+        .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+
+    let mut output_bytes = Cursor::new(Vec::new());
+    match filter_mode.as_str() {
+        "magic_color" => {
+            let filtered = otium_scanner::processor::DocumentScanner::magic_color_filter(&warped_rgba);
+            image::DynamicImage::ImageRgba8(filtered)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+        "clean_white" => {
+            let cleaned = otium_scanner::processor::DocumentScanner::clean_document_filter(&warped_rgba, 1.2);
+            image::DynamicImage::ImageLuma8(cleaned)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+        "bw" => {
+            let cleaned = otium_scanner::processor::DocumentScanner::clean_document_filter(&warped_rgba, 2.2);
+            image::DynamicImage::ImageLuma8(cleaned)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+        _ => {
+            image::DynamicImage::ImageRgba8(warped_rgba)
+                .write_to(&mut output_bytes, ImageFormat::Jpeg)
+                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+        }
+    }
+
+    Ok(output_bytes.into_inner())
+}
+
 #[uniffi::export]
 pub fn bridge_warp_document(
     image_bytes: Vec<u8>,

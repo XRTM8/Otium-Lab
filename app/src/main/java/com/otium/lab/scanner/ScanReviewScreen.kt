@@ -8,16 +8,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.RotateRight
 import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.otium.lab.scanner.components.DocumentSaveNameDialog
+import com.otium.lab.scanner.model.ScanFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -42,14 +45,17 @@ import java.util.Locale
 @Composable
 fun ScanReviewScreen(
     pages: List<File>,
+    isBusy: Boolean = false,
     onBack: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onRotate: (Int) -> Unit,
     onDelete: (Int) -> Unit,
+    onApplyFilterAll: (ScanFilter) -> Unit = {},
     onSave: (String) -> Unit
 ) {
     var showNameDialog by remember { mutableStateOf(false) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
+    var activeBatchFilter by remember { mutableStateOf<ScanFilter?>(null) }
     Scaffold(
         topBar = {
             Row(
@@ -77,11 +83,31 @@ fun ScanReviewScreen(
             }
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(ScanFilter.entries) { filter ->
+                    FilterChip(
+                        selected = activeBatchFilter == filter,
+                        enabled = !isBusy && pages.isNotEmpty(),
+                        onClick = {
+                            activeBatchFilter = filter
+                            onApplyFilterAll(filter)
+                        },
+                        label = { Text("الكل: ${filter.labelAr}") }
+                    )
+                }
+            }
+            if (isBusy) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
             itemsIndexed(pages, key = { _, file -> file.absolutePath }) { index, file ->
                 val thumbnail by produceState<Bitmap?>(null, file) {
                     value = withContext(Dispatchers.IO) {
@@ -109,8 +135,8 @@ fun ScanReviewScreen(
                             Text("الصفحة ${index + 1}", style = MaterialTheme.typography.titleSmall)
                             Text("اضغط للمعاينة والتكبير", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = { onRotate(index) }) {
-                            Icon(Icons.Rounded.RotateRight, contentDescription = "تدوير 90 درجة")
+                        IconButton(onClick = { onRotate(index) }, enabled = !isBusy) {
+                            Icon(Icons.AutoMirrored.Rounded.RotateRight, contentDescription = "تدوير 90 درجة")
                         }
                         Column {
                             IconButton(onClick = { onMove(index, index - 1) }, enabled = index > 0) {
@@ -126,6 +152,7 @@ fun ScanReviewScreen(
                     }
                 }
             }
+        }
         }
     }
     previewIndex?.takeIf { it in pages.indices }?.let { idx ->
@@ -183,7 +210,7 @@ fun ScanReviewScreen(
                     }
                     Text("الصفحة ${idx + 1} من ${pages.size}", color = Color.White, style = MaterialTheme.typography.titleMedium)
                     IconButton(onClick = { onRotate(idx) }) {
-                        Icon(Icons.Rounded.RotateRight, contentDescription = "تدوير", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Rounded.RotateRight, contentDescription = "تدوير", tint = Color.White)
                     }
                 }
             }

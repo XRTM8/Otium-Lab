@@ -9,7 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.otium_bridge.CornerPoints
 import uniffi.otium_bridge.bridgeApplyScanFilter
+import uniffi.otium_bridge.bridgeWarpAndFilter
 
 @Stable
 class CropFilterState(
@@ -72,12 +74,31 @@ class CropFilterState(
     fun confirmCrop(scope: CoroutineScope) {
         if (isProcessing || !cropQuad.isValid()) return
         val dimensions = ImageProcessingUtils.imageDimensions(activeBytes) ?: return
+        val filter = selectedFilter
         isProcessing = true
         scope.launch(Dispatchers.Default) {
             val warped = ImageProcessingUtils.warpDocument(activeBytes, cropQuad, dimensions.first, dimensions.second)
+            val prefiltered = if (filter == ScanFilter.ORIGINAL) warped else {
+                try {
+                    val corners = CornerPoints(
+                        topLeftX = cropQuad.topLeft.x * dimensions.first,
+                        topLeftY = cropQuad.topLeft.y * dimensions.second,
+                        topRightX = cropQuad.topRight.x * dimensions.first,
+                        topRightY = cropQuad.topRight.y * dimensions.second,
+                        bottomRightX = cropQuad.bottomRight.x * dimensions.first,
+                        bottomRightY = cropQuad.bottomRight.y * dimensions.second,
+                        bottomLeftX = cropQuad.bottomLeft.x * dimensions.first,
+                        bottomLeftY = cropQuad.bottomLeft.y * dimensions.second
+                    )
+                    bridgeWarpAndFilter(activeBytes, corners, filter.mode)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
             withContext(Dispatchers.Main) {
                 filterCache.clear()
                 croppedBaseBytes = warped
+                if (prefiltered != null) filterCache[filter] = prefiltered
                 isCropping = false
                 isProcessing = false
             }

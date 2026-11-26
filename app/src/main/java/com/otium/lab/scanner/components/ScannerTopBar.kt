@@ -8,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.GridOff
+import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,10 +23,12 @@ import androidx.compose.ui.unit.sp
 fun ScannerTopBar(
     pageCount: Int,
     isFlashOn: Boolean,
+    showGrid: Boolean = false,
     primaryColor: Color,
     statusText: String? = null,
     onClose: () -> Unit,
     onToggleFlash: () -> Unit,
+    onToggleGrid: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -63,18 +67,32 @@ fun ScannerTopBar(
             )
         }
 
-        // Flash Toggle
-        IconButton(
-            onClick = onToggleFlash,
-            modifier = Modifier
-                .size(44.dp)
-                .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-        ) {
-            Icon(
-                imageVector = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
-                contentDescription = "الفلاش",
-                tint = if (isFlashOn) primaryColor else Color.White
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(
+                onClick = onToggleGrid,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (showGrid) Icons.Rounded.GridOn else Icons.Rounded.GridOff,
+                    contentDescription = "شبكة المحاذاة",
+                    tint = if (showGrid) primaryColor else Color.White
+                )
+            }
+            // Flash Toggle
+            IconButton(
+                onClick = onToggleFlash,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
+                    contentDescription = "الفلاش",
+                    tint = if (isFlashOn) primaryColor else Color.White
+                )
+            }
         }
     }
 }
