@@ -95,8 +95,8 @@ fun OtiumApp(
                     rawImageBytes = scanSession.capturedImageBytes!!,
                     pageNumber = (scanSession.editingPageIndex ?: scanSession.accumulatedPageFiles.size) + 1,
                     onAddMore = { bmp -> scanSession.addPageAndContinue(bmp) },
-                    onSavePdf = { bmp, title ->
-                        scanSession.saveWithLastPage(bmp, title) { uri, savedTitle ->
+                    onSavePdfWithOptions = { bmp, title, quality, pageSize ->
+                        scanSession.saveWithLastPage(bmp, title, quality, pageSize) { uri, savedTitle ->
                             activePdfUri = uri
                             activePdfTitle = savedTitle
                             currentDestination = AppDestination.LIBRARY
@@ -113,8 +113,8 @@ fun OtiumApp(
                     onEditPage = scanSession::startReEditPage,
                     onDelete = scanSession::removePage,
                     onApplyFilterAll = scanSession::applyFilterToAllPages,
-                    onSave = { title ->
-                        scanSession.saveBatch(title) { uri, savedTitle ->
+                    onSaveWithOptions = { title, quality, pageSize ->
+                        scanSession.saveBatch(title, quality, pageSize) { uri, savedTitle ->
                             activePdfUri = uri
                             activePdfTitle = savedTitle
                             currentDestination = AppDestination.LIBRARY

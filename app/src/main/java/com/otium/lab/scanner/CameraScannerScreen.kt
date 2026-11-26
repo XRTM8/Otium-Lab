@@ -99,6 +99,8 @@ fun CameraScannerScreen(
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var isFlashOn by remember { mutableStateOf(false) }
     var showGrid by remember { mutableStateOf(false) }
+    var showExposure by remember { mutableStateOf(false) }
+    var exposureIndex by remember { mutableIntStateOf(0) }
     var isCapturing by remember { mutableStateOf(false) }
     var showShutterFlash by remember { mutableStateOf(false) }
     var autoCaptureEnabled by remember { mutableStateOf(true) }
@@ -107,6 +109,7 @@ fun CameraScannerScreen(
     var idCardFrontBytes by remember { mutableStateOf<ByteArray?>(null) }
     var smoothedQuad by remember { mutableStateOf<NormalizedQuad?>(null) }
     var stabilityProgress by remember { mutableFloatStateOf(0f) }
+    var isFrameSharp by remember { mutableStateOf(true) }
     var lastAutoCaptureTime by remember { mutableLongStateOf(0L) }
     var missFrames by remember { mutableIntStateOf(0) }
     var outlierFrames by remember { mutableIntStateOf(0) }
@@ -160,9 +163,10 @@ fun CameraScannerScreen(
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-            analysis.setAnalyzer(analysisExecutor, ScannerLiveAnalyzer { result, size ->
+            analysis.setAnalyzer(analysisExecutor, ScannerLiveAnalyzer { result, size, sharp ->
                 scope.launch(Dispatchers.Main) {
                     analysisSize = size
+                    isFrameSharp = sharp
                     val nextQuad = result?.quad
                     if (nextQuad == null) {
                         missFrames++
@@ -185,12 +189,16 @@ fun CameraScannerScreen(
                         val steady = prev != null && drift < 0.028f
                         smoothedQuad = nextSmooth
                         if (autoCaptureEnabled && !isCapturing) {
-                            val nextProgress = if (steady) (stabilityProgress + 0.22f).coerceAtMost(1f) else (stabilityProgress - 0.15f).coerceAtLeast(0f)
-                            stabilityProgress = nextProgress
-                            val now = System.currentTimeMillis()
-                            if (nextProgress >= 1f && now - lastAutoCaptureTime > 2500L) {
-                                lastAutoCaptureTime = now
-                                triggerCapture()
+                            if (!sharp) {
+                                stabilityProgress = (stabilityProgress - 0.12f).coerceAtLeast(0f)
+                            } else {
+                                val nextProgress = if (steady) (stabilityProgress + 0.22f).coerceAtMost(1f) else (stabilityProgress - 0.15f).coerceAtLeast(0f)
+                                stabilityProgress = nextProgress
+                                val now = System.currentTimeMillis()
+                                if (nextProgress >= 1f && now - lastAutoCaptureTime > 2500L) {
+                                    lastAutoCaptureTime = now
+                                    triggerCapture()
+                                }
                             }
                         } else {
                             stabilityProgress = 0f
@@ -252,25 +260,49 @@ fun CameraScannerScreen(
             isCapturing -> "جارٍ الالتقاط..."
             idCardModeEnabled && idCardFrontBytes == null -> "صوّر الوجه الأمامي للبطاقة"
             idCardModeEnabled && idCardFrontBytes != null -> "تم الوجه الأمامي · صوّر الوجه الخلفي"
+            autoCaptureEnabled && !isFrameSharp && smoothedQuad != null -> "جارٍ التركيز..."
             autoCaptureEnabled && stabilityProgress > 0.35f -> "ثبّت الجهاز... جارٍ الالتقاط التلقائي"
             else -> null
         }
 
-        ScannerTopBar(
-            pageCount = pageCount,
-            isFlashOn = isFlashOn,
-            showGrid = showGrid,
-            primaryColor = primaryColor,
-            statusText = liveStatus,
-            onClose = onClose,
-            onToggleFlash = {
-                camera?.takeIf { it.cameraInfo.hasFlashUnit() }?.let { cam ->
-                    isFlashOn = !isFlashOn; cam.cameraControl.enableTorch(isFlashOn)
+        Column(modifier = Modifier.align(Alignment.TopCenter)) {
+            ScannerTopBar(
+                pageCount = pageCount,
+                isFlashOn = isFlashOn,
+                showGrid = showGrid,
+                showExposure = showExposure,
+                primaryColor = primaryColor,
+                statusText = liveStatus,
+                onClose = onClose,
+                onToggleFlash = {
+                    camera?.takeIf { it.cameraInfo.hasFlashUnit() }?.let { cam ->
+                        isFlashOn = !isFlashOn; cam.cameraControl.enableTorch(isFlashOn)
+                    }
+                },
+                onToggleGrid = { showGrid = !showGrid },
+                onToggleExposure = { showExposure = !showExposure }
+            )
+            val expState = camera?.cameraInfo?.exposureState
+            if (showExposure && expState != null && expState.isExposureCompensationSupported) {
+                val range = expState.exposureCompensationRange
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.Black.copy(alpha = 0.65f),
+                    modifier = Modifier.padding(horizontal = 28.dp)
+                ) {
+                    Slider(
+                        value = exposureIndex.toFloat(),
+                        onValueChange = { v ->
+                            val idx = v.toInt().coerceIn(range.lower, range.upper)
+                            exposureIndex = idx
+                            camera?.cameraControl?.setExposureCompensationIndex(idx)
+                        },
+                        valueRange = range.lower.toFloat()..range.upper.toFloat(),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
-            },
-            onToggleGrid = { showGrid = !showGrid },
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
+            }
+        }
 
         Column(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),

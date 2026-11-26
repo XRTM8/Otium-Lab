@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Exposure
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.GridOff
@@ -24,11 +25,13 @@ fun ScannerTopBar(
     pageCount: Int,
     isFlashOn: Boolean,
     showGrid: Boolean = false,
+    showExposure: Boolean = false,
     primaryColor: Color,
     statusText: String? = null,
     onClose: () -> Unit,
     onToggleFlash: () -> Unit,
     onToggleGrid: () -> Unit = {},
+    onToggleExposure: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -68,6 +71,18 @@ fun ScannerTopBar(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(
+                onClick = onToggleExposure,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Exposure,
+                    contentDescription = "تعديل الإضاءة",
+                    tint = if (showExposure) primaryColor else Color.White
+                )
+            }
             IconButton(
                 onClick = onToggleGrid,
                 modifier = Modifier

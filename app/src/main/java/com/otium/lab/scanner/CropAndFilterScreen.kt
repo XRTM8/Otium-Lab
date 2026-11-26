@@ -33,7 +33,8 @@ fun CropAndFilterScreen(
     rawImageBytes: ByteArray,
     pageNumber: Int = 1,
     onAddMore: (Bitmap) -> Unit,
-    onSavePdf: (Bitmap, String) -> Unit,
+    onSavePdfWithOptions: ((Bitmap, String, PdfExportQuality, PdfPageSize) -> Unit)? = null,
+    onSavePdf: (Bitmap, String) -> Unit = { _, _ -> },
     onCancel: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -141,9 +142,10 @@ fun CropAndFilterScreen(
             val defaultName = remember { "مستند_ممسوح_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}" }
             DocumentSaveNameDialog(
                 defaultTitle = defaultName,
-                onConfirm = { customName ->
+                onConfirmWithOptions = { customName, quality, pageSize ->
                     state.showSaveDialog = false
-                    onSavePdf(state.displayedBitmap!!, customName)
+                    if (onSavePdfWithOptions != null) onSavePdfWithOptions(state.displayedBitmap!!, customName, quality, pageSize)
+                    else onSavePdf(state.displayedBitmap!!, customName)
                 },
                 onDismiss = { state.showSaveDialog = false }
             )

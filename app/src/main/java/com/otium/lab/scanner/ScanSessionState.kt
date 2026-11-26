@@ -270,6 +270,8 @@ class ScanSessionState(
     fun saveWithLastPage(
         bitmap: Bitmap,
         title: String,
+        quality: PdfExportQuality = PdfExportQuality.BALANCED,
+        pageSize: PdfPageSize = PdfPageSize.A4,
         onExported: (Uri, String) -> Unit
     ) {
         if (isExportingPdf || isStagingPage) return
@@ -285,7 +287,7 @@ class ScanSessionState(
                 }
                 accumulatedPageFiles.add(tempFile)
                 capturedImageBytes = null
-                exportAccumulatedInternal(customTitle = title, onExported = onExported)
+                exportAccumulatedInternal(customTitle = title, quality = quality, pageSize = pageSize, onExported = onExported)
             } catch (t: Throwable) {
                 Log.e("ScanSession", "Failed to export scanned PDF", t)
                 isExportingPdf = false
@@ -485,12 +487,17 @@ class ScanSessionState(
         if (accumulatedPageFiles.isEmpty()) isReviewingBatch = false
     }
 
-    fun saveBatch(title: String, onExported: (Uri, String) -> Unit) {
+    fun saveBatch(
+        title: String,
+        quality: PdfExportQuality = PdfExportQuality.BALANCED,
+        pageSize: PdfPageSize = PdfPageSize.A4,
+        onExported: (Uri, String) -> Unit
+    ) {
         if (isExportingPdf || isStagingPage || accumulatedPageFiles.isEmpty()) return
         isExportingPdf = true
         scope.launch {
             try {
-                exportAccumulatedInternal(customTitle = title, onExported = onExported)
+                exportAccumulatedInternal(customTitle = title, quality = quality, pageSize = pageSize, onExported = onExported)
                 isReviewingBatch = false
             } catch (t: Throwable) {
                 Log.e("ScanSession", "Failed to export batch PDF", t)
@@ -502,11 +509,13 @@ class ScanSessionState(
 
     private suspend fun exportAccumulatedInternal(
         customTitle: String?,
+        quality: PdfExportQuality = PdfExportQuality.BALANCED,
+        pageSize: PdfPageSize = PdfPageSize.A4,
         onExported: (Uri, String) -> Unit
     ) {
         val filesSnapshot = accumulatedPageFiles.toList()
         val (file, uri) = withContext(Dispatchers.IO) {
-            val exported = PdfExporter.exportImageFilesToPdf(context, filesSnapshot, customTitle = customTitle)
+            val exported = PdfExporter.exportImageFilesToPdf(context, filesSnapshot, customTitle = customTitle, quality = quality, pageSize = pageSize)
             val fileUri = Uri.fromFile(exported)
             documentStore.addOrUpdateDocument(fileUri, exported.nameWithoutExtension, isScanned = true)
             filesSnapshot.forEach { it.delete() }

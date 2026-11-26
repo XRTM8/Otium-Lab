@@ -17,6 +17,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+enum class PdfExportQuality(val labelAr: String, val maxDim: Int) {
+    HIGH("عالية", 2200),
+    BALANCED("متوازنة", 1650),
+    COMPACT("مضغوطة", 1150)
+}
+
+enum class PdfPageSize(val labelAr: String) {
+    A4("A4 قياسي"),
+    FIT_IMAGE("بحجم الصورة")
+}
+
 object PdfExporter {
 
     private const val A4_WIDTH = 595
@@ -25,7 +36,9 @@ object PdfExporter {
     suspend fun exportImageFilesToPdf(
         context: Context,
         pageFiles: List<File>,
-        customTitle: String? = null
+        customTitle: String? = null,
+        quality: PdfExportQuality = PdfExportQuality.BALANCED,
+        pageSize: PdfPageSize = PdfPageSize.A4
     ): File = withContext(Dispatchers.IO) {
         if (pageFiles.isEmpty()) {
             throw IllegalArgumentException("قائمة الصفحات فارغة، لا يمكن إنشاء ملف PDF")
@@ -37,33 +50,43 @@ object PdfExporter {
 
         try {
             for (file in pageFiles) {
-                val decoded = decodeForPdf(file.absolutePath, maxDim = 1800)
+                val decoded = decodeForPdf(file.absolutePath, maxDim = quality.maxDim)
                     ?: throw IllegalStateException("تعذر قراءة الصفحة ${writtenPages + 1}")
                 writtenPages++
                 try {
-                    val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, writtenPages).create()
-                    val page = pdfDocument.startPage(pageInfo)
-                    val canvas: Canvas = page.canvas
+                    if (pageSize == PdfPageSize.FIT_IMAGE) {
+                        val aspect = decoded.height.toFloat() / decoded.width.toFloat().coerceAtLeast(1f)
+                        val pgW = A4_WIDTH
+                        val pgH = (pgW * aspect).toInt().coerceIn(200, 1400)
+                        val pageInfo = PdfDocument.PageInfo.Builder(pgW, pgH, writtenPages).create()
+                        val page = pdfDocument.startPage(pageInfo)
+                        page.canvas.drawBitmap(decoded, null, Rect(0, 0, pgW, pgH), paint)
+                        pdfDocument.finishPage(page)
+                    } else {
+                        val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, writtenPages).create()
+                        val page = pdfDocument.startPage(pageInfo)
+                        val canvas: Canvas = page.canvas
 
-                    val margin = 16
-                    val availW = A4_WIDTH - (margin * 2)
-                    val availH = A4_HEIGHT - (margin * 2)
+                        val margin = 16
+                        val availW = A4_WIDTH - (margin * 2)
+                        val availH = A4_HEIGHT - (margin * 2)
 
-                    val aspect = decoded.height.toFloat() / decoded.width.toFloat()
-                    var drawW = availW
-                    var drawH = (drawW * aspect).toInt()
+                        val aspect = decoded.height.toFloat() / decoded.width.toFloat()
+                        var drawW = availW
+                        var drawH = (drawW * aspect).toInt()
 
-                    if (drawH > availH) {
-                        drawH = availH
-                        drawW = (drawH / aspect).toInt()
+                        if (drawH > availH) {
+                            drawH = availH
+                            drawW = (drawH / aspect).toInt()
+                        }
+
+                        val left = margin + (availW - drawW) / 2
+                        val top = margin + (availH - drawH) / 2
+                        val dstRect = Rect(left, top, left + drawW, top + drawH)
+
+                        canvas.drawBitmap(decoded, null, dstRect, paint)
+                        pdfDocument.finishPage(page)
                     }
-
-                    val left = margin + (availW - drawW) / 2
-                    val top = margin + (availH - drawH) / 2
-                    val dstRect = Rect(left, top, left + drawW, top + drawH)
-
-                    canvas.drawBitmap(decoded, null, dstRect, paint)
-                    pdfDocument.finishPage(page)
                 } finally {
                     decoded.recycle() // Free memory immediately
                 }

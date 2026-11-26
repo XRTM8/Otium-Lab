@@ -53,7 +53,8 @@ fun ScanReviewScreen(
     onEditPage: (Int) -> Unit = {},
     onDelete: (Int) -> Unit,
     onApplyFilterAll: (ScanFilter) -> Unit = {},
-    onSave: (String) -> Unit
+    onSaveWithOptions: ((String, PdfExportQuality, PdfPageSize) -> Unit)? = null,
+    onSave: (String) -> Unit = {}
 ) {
     var showNameDialog by remember { mutableStateOf(false) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
@@ -227,7 +228,10 @@ fun ScanReviewScreen(
         }
         DocumentSaveNameDialog(
             defaultTitle = defaultName,
-            onConfirm = { showNameDialog = false; onSave(it) },
+            onConfirmWithOptions = { title, q, s ->
+                showNameDialog = false
+                if (onSaveWithOptions != null) onSaveWithOptions(title, q, s) else onSave(title)
+            },
             onDismiss = { showNameDialog = false }
         )
     }

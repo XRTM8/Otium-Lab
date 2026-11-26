@@ -4,7 +4,16 @@
 //! 2. Arabic text root normalization & fast in-page search
 
 use std::io::Cursor;
-use image::ImageFormat;
+use image::codecs::jpeg::JpegEncoder;
+
+fn encode_jpeg_92(img: &image::DynamicImage) -> Result<Vec<u8>, BridgeError> {
+    let mut output_bytes = Cursor::new(Vec::new());
+    let mut encoder = JpegEncoder::new_with_quality(&mut output_bytes, 92);
+    encoder
+        .encode_image(img)
+        .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+    Ok(output_bytes.into_inner())
+}
 
 uniffi::setup_scaffolding!();
 
@@ -134,34 +143,21 @@ pub fn bridge_warp_and_filter(
     let warped_rgba = otium_scanner::processor::DocumentScanner::warp_perspective(&dyn_img, &quad, None)
         .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
 
-    let mut output_bytes = Cursor::new(Vec::new());
     match filter_mode.as_str() {
         "magic_color" => {
             let filtered = otium_scanner::processor::DocumentScanner::magic_color_filter(&warped_rgba);
-            image::DynamicImage::ImageRgba8(filtered)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+            encode_jpeg_92(&image::DynamicImage::ImageRgba8(filtered))
         }
         "clean_white" => {
             let cleaned = otium_scanner::processor::DocumentScanner::clean_document_filter(&warped_rgba, 1.2);
-            image::DynamicImage::ImageLuma8(cleaned)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+            encode_jpeg_92(&image::DynamicImage::ImageLuma8(cleaned))
         }
         "bw" => {
             let cleaned = otium_scanner::processor::DocumentScanner::clean_document_filter(&warped_rgba, 2.2);
-            image::DynamicImage::ImageLuma8(cleaned)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+            encode_jpeg_92(&image::DynamicImage::ImageLuma8(cleaned))
         }
-        _ => {
-            image::DynamicImage::ImageRgba8(warped_rgba)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
-        }
+        _ => encode_jpeg_92(&image::DynamicImage::ImageRgba8(warped_rgba)),
     }
-
-    Ok(output_bytes.into_inner())
 }
 
 #[uniffi::export]
@@ -189,12 +185,7 @@ pub fn bridge_warp_document(
     let warped_rgba = otium_scanner::processor::DocumentScanner::warp_perspective(&dyn_img, &quad, target_dims)
         .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
 
-    let mut output_bytes = Cursor::new(Vec::new());
-    image::DynamicImage::ImageRgba8(warped_rgba)
-        .write_to(&mut output_bytes, ImageFormat::Jpeg)
-        .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
-
-    Ok(output_bytes.into_inner())
+    encode_jpeg_92(&image::DynamicImage::ImageRgba8(warped_rgba))
 }
 
 #[uniffi::export]
@@ -210,36 +201,27 @@ pub fn bridge_apply_scan_filter(
         .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
     let rgba = dyn_img.to_rgba8();
 
-    let mut output_bytes = Cursor::new(Vec::with_capacity(image_bytes.len()));
-
     match filter_mode.as_str() {
         "magic_color" => {
             let filtered = otium_scanner::processor::DocumentScanner::magic_color_filter(&rgba);
-            image::DynamicImage::ImageRgba8(filtered)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+            encode_jpeg_92(&image::DynamicImage::ImageRgba8(filtered))
         }
         "clean_white" => {
             let cleaned_gray = otium_scanner::processor::DocumentScanner::clean_document_filter(&rgba, 1.2);
-            image::DynamicImage::ImageLuma8(cleaned_gray)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+            encode_jpeg_92(&image::DynamicImage::ImageLuma8(cleaned_gray))
         }
         "bw" => {
             let cleaned_gray = otium_scanner::processor::DocumentScanner::clean_document_filter(&rgba, 2.2);
-            image::DynamicImage::ImageLuma8(cleaned_gray)
-                .write_to(&mut output_bytes, ImageFormat::Jpeg)
-                .map_err(|e| BridgeError::ImageProcessing { msg: e.to_string() })?;
+            encode_jpeg_92(&image::DynamicImage::ImageLuma8(cleaned_gray))
         }
-        _ => return Ok(image_bytes),
+        _ => Ok(image_bytes),
     }
-
-    Ok(output_bytes.into_inner())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::ImageFormat;
 
     #[test]
     fn test_bridge_arabic_stemming() {

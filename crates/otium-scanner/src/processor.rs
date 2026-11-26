@@ -3,6 +3,26 @@ use image::{DynamicImage, GrayImage, RgbaImage};
 use crate::geometry::{HomographyMatrix, Point2D, QuadCorners};
 use otium_core::{OtiumError, Result};
 
+#[inline]
+fn catmull_rom_weights(t: f32) -> [f32; 4] {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    [
+        0.5 * (-t + 2.0 * t2 - t3),
+        0.5 * (2.0 - 5.0 * t2 + 3.0 * t3),
+        0.5 * (t + 4.0 * t2 - 3.0 * t3),
+        0.5 * (-t2 + t3),
+    ]
+}
+
+#[inline]
+fn out_buffer_write(chunk: &mut [u8], offset: usize, acc: [f32; 4]) {
+    chunk[offset] = acc[0].clamp(0.0, 255.0) as u8;
+    chunk[offset + 1] = acc[1].clamp(0.0, 255.0) as u8;
+    chunk[offset + 2] = acc[2].clamp(0.0, 255.0) as u8;
+    chunk[offset + 3] = acc[3].clamp(0.0, 255.0) as u8;
+}
+
 pub struct DocumentScanner;
 
 impl DocumentScanner {
@@ -30,52 +50,80 @@ impl DocumentScanner {
 
         let max_x_bound = (src_w - 1) as f32;
         let max_y_bound = (src_h - 1) as f32;
-
+        let dst_stride = (dst_w as usize) * 4;
         let total_pixels = (dst_w as usize) * (dst_h as usize);
         let mut out_buffer: Vec<u8> = vec![255u8; total_pixels * 4];
 
-        for y in 0..dst_h {
-            let row_offset = (y as usize) * (dst_w as usize) * 4;
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .min(8)
+            .max(1);
+        let rows_per_chunk = ((dst_h as usize) + num_threads - 1) / num_threads;
 
-            for x in 0..dst_w {
-                let pixel_offset = row_offset + (x as usize) * 4;
-                let src_pt = homography.transform_point(Point2D::new(x as f32, y as f32));
-                let sx = src_pt.x;
-                let sy = src_pt.y;
+        std::thread::scope(|scope| {
+            for (chunk_idx, chunk) in out_buffer.chunks_mut(rows_per_chunk * dst_stride).enumerate() {
+                let start_y = chunk_idx * rows_per_chunk;
+                let chunk_rows = chunk.len() / dst_stride;
+                scope.spawn(move || {
+                    for local_y in 0..chunk_rows {
+                        let y = (start_y + local_y) as u32;
+                        let row_offset = local_y * dst_stride;
+                        for x in 0..dst_w {
+                            let pixel_offset = row_offset + (x as usize) * 4;
+                            let src_pt = homography.transform_point(Point2D::new(x as f32, y as f32));
+                            let sx = src_pt.x;
+                            let sy = src_pt.y;
 
-                if sx >= 0.0 && sx < max_x_bound && sy >= 0.0 && sy < max_y_bound {
-                    let x0 = sx as usize;
-                    let y0 = sy as usize;
+                            if sx >= 1.0 && sx < max_x_bound - 1.0 && sy >= 1.0 && sy < max_y_bound - 1.0 {
+                                // Catmull-Rom 4x4 bicubic interpolation for crisp Arabic/Latin strokes
+                                let x_int = sx.floor() as isize;
+                                let y_int = sy.floor() as isize;
+                                let fx = sx - x_int as f32;
+                                let fy = sy - y_int as f32;
 
-                    let fx = sx - (x0 as f32);
-                    let fy = sy - (y0 as f32);
-                    let inv_fx = 1.0 - fx;
-                    let inv_fy = 1.0 - fy;
+                                let wx = catmull_rom_weights(fx);
+                                let wy = catmull_rom_weights(fy);
 
-                    let [idx00, idx10, idx01, idx11] =
-                        otium_scan_math::rgba_neighbors(x0, y0, src_stride);
+                                let mut rgba_acc = [0.0f32; 4];
+                                for (ky, &wy_val) in wy.iter().enumerate() {
+                                    let row_base = ((y_int + ky as isize - 1) as usize) * src_stride;
+                                    for (kx, &wx_val) in wx.iter().enumerate() {
+                                        let w = wx_val * wy_val;
+                                        let idx = row_base + ((x_int + kx as isize - 1) as usize) * 4;
+                                        rgba_acc[0] += src_raw[idx] as f32 * w;
+                                        rgba_acc[1] += src_raw[idx + 1] as f32 * w;
+                                        rgba_acc[2] += src_raw[idx + 2] as f32 * w;
+                                        rgba_acc[3] += src_raw[idx + 3] as f32 * w;
+                                    }
+                                }
+                                out_buffer_write(chunk, pixel_offset, rgba_acc);
+                            } else if sx >= 0.0 && sx < max_x_bound && sy >= 0.0 && sy < max_y_bound {
+                                let x0 = sx as usize;
+                                let y0 = sy as usize;
+                                let fx = sx - (x0 as f32);
+                                let fy = sy - (y0 as f32);
+                                let inv_fx = 1.0 - fx;
+                                let inv_fy = 1.0 - fy;
+                                let [idx00, idx10, idx01, idx11] =
+                                    otium_scan_math::rgba_neighbors(x0, y0, src_stride);
 
-                    for c in 0..4 {
-                        let p00 = src_raw[idx00 + c] as f32;
-                        let p10 = src_raw[idx10 + c] as f32;
-                        let p01 = src_raw[idx01 + c] as f32;
-                        let p11 = src_raw[idx11 + c] as f32;
-
-                        let top = inv_fx * p00 + fx * p10;
-                        let bottom = inv_fx * p01 + fx * p11;
-                        let val = inv_fy * top + fy * bottom;
-
-                        out_buffer[pixel_offset + c] = val.clamp(0.0, 255.0) as u8;
+                                for c in 0..4 {
+                                    let top = inv_fx * src_raw[idx00 + c] as f32 + fx * src_raw[idx10 + c] as f32;
+                                    let bottom = inv_fx * src_raw[idx01 + c] as f32 + fx * src_raw[idx11 + c] as f32;
+                                    chunk[pixel_offset + c] = (inv_fy * top + fy * bottom).clamp(0.0, 255.0) as u8;
+                                }
+                            } else {
+                                chunk[pixel_offset] = 255;
+                                chunk[pixel_offset + 1] = 255;
+                                chunk[pixel_offset + 2] = 255;
+                                chunk[pixel_offset + 3] = 255;
+                            }
+                        }
                     }
-                } else {
-                    // Border / out of bounds pixels set to white
-                    out_buffer[pixel_offset] = 255;
-                    out_buffer[pixel_offset + 1] = 255;
-                    out_buffer[pixel_offset + 2] = 255;
-                    out_buffer[pixel_offset + 3] = 255;
-                }
+                });
             }
-        }
+        });
 
         RgbaImage::from_raw(dst_w, dst_h, out_buffer)
             .ok_or_else(|| OtiumError::ImageProcessing("Failed to construct image buffer".into()))
